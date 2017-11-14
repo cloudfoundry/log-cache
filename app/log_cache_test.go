@@ -2,6 +2,9 @@ package app_test
 
 import (
 	"context"
+	"fmt"
+	"io/ioutil"
+	"net/http"
 	"sync"
 
 	loggregator "code.cloudfoundry.org/go-loggregator"
@@ -13,25 +16,75 @@ import (
 )
 
 var _ = Describe("LogCache", func() {
-	It("connects to a logs provider server", func() {
+	It("connects and reads from a logs provider server", func() {
 		streamConnector := newSpyStreamConnector()
+		addEnvelope(1, "some-source-id", streamConnector)
+		addEnvelope(2, "some-source-id", streamConnector)
+		addEnvelope(3, "some-source-id", streamConnector)
+
 		cache := app.NewLogCache(streamConnector)
 
-		go cache.Start()
+		cache.Start()
 
 		Eventually(streamConnector.requests).Should(HaveLen(1))
-		Eventually(streamConnector.called).ShouldNot(BeZero())
+		Eventually(streamConnector.envelopes).Should(HaveLen(0))
+	})
+
+	It("returns data filtered by source ID", func() {
+		streamConnector := newSpyStreamConnector()
+		addEnvelope(1, "app-a", streamConnector)
+		addEnvelope(2, "app-b", streamConnector)
+		addEnvelope(3, "app-a", streamConnector)
+
+		cache := app.NewLogCache(
+			streamConnector,
+			app.WithEgressAddr("localhost:0"),
+		)
+
+		cache.Start()
+
+		URL := fmt.Sprintf("http://%s/app-a", cache.EgressAddr())
+		resp, err := http.Get(URL)
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+		data, err := ioutil.ReadAll(resp.Body)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(data).To(MatchJSON(`{
+			"envelopes": [
+				{
+					"timestamp": "1",
+					"sourceId": "app-a"
+				},
+				{
+					"timestamp": "3",
+					"sourceId": "app-a"
+				}
+			]
+		}`))
 	})
 })
+
+func addEnvelope(timestamp int64, sourceID string, c *spyStreamConnector) {
+	c.envelopes <- []*loggregator_v2.Envelope{
+		{
+			Timestamp: timestamp,
+			SourceId:  sourceID,
+		},
+	}
+}
 
 type spyStreamConnector struct {
 	mu        sync.Mutex
 	requests_ []*loggregator_v2.EgressBatchRequest
-	called_   int
+	envelopes chan []*loggregator_v2.Envelope
 }
 
 func newSpyStreamConnector() *spyStreamConnector {
-	return &spyStreamConnector{}
+	return &spyStreamConnector{
+		envelopes: make(chan []*loggregator_v2.Envelope, 100),
+	}
 }
 
 func (s *spyStreamConnector) Stream(ctx context.Context, req *loggregator_v2.EgressBatchRequest) loggregator.EnvelopeStream {
@@ -40,17 +93,13 @@ func (s *spyStreamConnector) Stream(ctx context.Context, req *loggregator_v2.Egr
 	s.requests_ = append(s.requests_, req)
 
 	return func() []*loggregator_v2.Envelope {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		s.called_++
-		return nil
+		select {
+		case e := <-s.envelopes:
+			return e
+		default:
+			return nil
+		}
 	}
-}
-
-func (s *spyStreamConnector) called() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.called_
 }
 
 func (s *spyStreamConnector) requests() []*loggregator_v2.EgressBatchRequest {

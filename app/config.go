@@ -5,7 +5,13 @@ import envstruct "code.cloudfoundry.org/go-envstruct"
 // Config is the configuration for a LogCache.
 type Config struct {
 	LogProviderAddr string `env:"LOGS_PROVIDER_ADDR, required"`
-	TLS             TLS
+
+	EgressAddr string `env:"EGRESS_ADDR"`
+	PProfPort  int    `env:"PPROF_PORT"`
+
+	// StoreSize is the number of envelopes to store.
+	StoreSize int `env:"STORE_SIZE"`
+	TLS       TLS
 }
 
 // TLS is the TLS configuration for a LogCache.
@@ -17,7 +23,11 @@ type TLS struct {
 
 // LoadConfig creates Config object from environment variables
 func LoadConfig() (*Config, error) {
-	c := Config{}
+	c := Config{
+		EgressAddr: ":8080",
+		StoreSize:  10000,
+		PProfPort:  0,
+	}
 
 	if err := envstruct.Load(&c); err != nil {
 		return nil, err
