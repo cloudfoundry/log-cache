@@ -34,7 +34,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	appID := strings.Trim(req.URL.Path, "/")
-	if strings.Contains(appID, "/") {
+	if strings.Contains(appID, "/") || appID == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}

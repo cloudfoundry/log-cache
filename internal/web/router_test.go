@@ -51,6 +51,15 @@ var _ = Describe("Router", func() {
 		Expect(recorder.Body.String()).To(BeEmpty())
 	})
 
+	It("returns a 404 for the root route", func() {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+
+		r.ServeHTTP(recorder, req)
+
+		Expect(recorder.Code).To(Equal(http.StatusNotFound))
+		Expect(recorder.Body.String()).To(BeEmpty())
+	})
+
 	It("returns envelopes for a given source ID", func() {
 		req := httptest.NewRequest(http.MethodGet, "/app-a/", nil)
 

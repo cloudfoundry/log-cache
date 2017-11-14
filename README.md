@@ -8,7 +8,7 @@ System](https://github.com/cloudfoundry/loggregator).
 
 Log Cache implements a restful interface for getting data.
 
-### **GET** /<source-id>
+### **GET** `/<source-id>`
 
 Request:
 ```
