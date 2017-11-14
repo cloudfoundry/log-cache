@@ -1,6 +1,8 @@
 package store_test
 
 import (
+	"time"
+
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/store"
 
@@ -17,15 +19,18 @@ var _ = Describe("Store", func() {
 		s = store.NewStore(5)
 	})
 
-	It("stores given data", func() {
-		e1 := buildEnvelope("a")
-		e2 := buildEnvelope("b")
-		e3 := buildEnvelope("a")
+	It("fetches data based on time and source ID", func() {
+		e1 := buildEnvelope(0, "a")
+		e2 := buildEnvelope(1, "b")
+		e3 := buildEnvelope(2, "a")
+		e4 := buildEnvelope(3, "a")
 
 		s.Put([]*loggregator_v2.Envelope{e1, e2})
-		s.Put([]*loggregator_v2.Envelope{e3})
+		s.Put([]*loggregator_v2.Envelope{e3, e4})
 
-		envelopes := s.Get("a")
+		start := time.Unix(0, 0)
+		end := time.Unix(0, 3)
+		envelopes := s.Get("a", start, end)
 		Expect(envelopes).To(HaveLen(2))
 
 		for _, e := range envelopes {
@@ -34,17 +39,21 @@ var _ = Describe("Store", func() {
 	})
 
 	It("is thread safe", func() {
-		e1 := buildEnvelope("a")
+		e1 := buildEnvelope(0, "a")
 		go func() {
 			s.Put([]*loggregator_v2.Envelope{e1})
 		}()
 
-		Eventually(func() int { return len(s.Get("a")) }).Should(Equal(1))
+		start := time.Unix(0, 0)
+		end := time.Unix(9999, 0)
+
+		Eventually(func() int { return len(s.Get("a", start, end)) }).Should(Equal(1))
 	})
 })
 
-func buildEnvelope(sourceID string) *loggregator_v2.Envelope {
+func buildEnvelope(timestamp int64, sourceID string) *loggregator_v2.Envelope {
 	return &loggregator_v2.Envelope{
-		SourceId: sourceID,
+		Timestamp: timestamp,
+		SourceId:  sourceID,
 	}
 }

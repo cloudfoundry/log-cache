@@ -3,6 +3,7 @@ package store
 import (
 	"container/ring"
 	"sync"
+	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 )
@@ -33,8 +34,9 @@ func (s *Store) Put(envs []*loggregator_v2.Envelope) {
 	}
 }
 
-// Get fetches envelopes from the store based on the source ID.
-func (s *Store) Get(sourceID string) []*loggregator_v2.Envelope {
+// Get fetches envelopes from the store based on the source ID, start and end
+// time. Start is inclusive while end is not: [start..end).
+func (s *Store) Get(sourceID string, start, end time.Time) []*loggregator_v2.Envelope {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -44,8 +46,14 @@ func (s *Store) Get(sourceID string) []*loggregator_v2.Envelope {
 			return
 		}
 
-		e, ok := v.(*loggregator_v2.Envelope)
-		if ok && e.SourceId == sourceID {
+		// We control how data is inserted and therefore can take the risk
+		// that the type is not an Envelope.
+		e := v.(*loggregator_v2.Envelope)
+
+		// Time validation is [start..end)
+		if e.SourceId == sourceID &&
+			e.Timestamp >= start.UnixNano() &&
+			e.Timestamp < end.UnixNano() {
 			res = append(res, e)
 		}
 	})

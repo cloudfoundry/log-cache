@@ -1,9 +1,12 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"github.com/golang/protobuf/jsonpb"
@@ -16,7 +19,7 @@ type Router struct {
 }
 
 // Getter returns data for the given sourceID.
-type Getter func(sourceID string) []*loggregator_v2.Envelope
+type Getter func(sourceID string, start, end time.Time) []*loggregator_v2.Envelope
 
 // NewRouter returns a new Router.
 func NewRouter(g Getter) *Router {
@@ -39,8 +42,14 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	startTime, endTime, err := getTimeRange(req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	var marshaledEnvs []string
-	for _, e := range r.get(appID) {
+	for _, e := range r.get(appID, startTime, endTime) {
 		str, err := r.marshaler.MarshalToString(e)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -53,4 +62,35 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte(
 		fmt.Sprintf(`{"envelopes": [%s]}`, strings.Join(marshaledEnvs, ",")),
 	))
+}
+
+func stringToTime(ts string, d time.Time) (time.Time, error) {
+	if ts == "" {
+		return d, nil
+	}
+
+	intTS, err := strconv.ParseUint(ts, 10, 64)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	return time.Unix(int64(intTS), 0), nil
+}
+
+func getTimeRange(req *http.Request) (time.Time, time.Time, error) {
+	startTime, err := stringToTime(req.URL.Query().Get("starttime"), time.Unix(0, 0))
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+
+	endTime, err := stringToTime(req.URL.Query().Get("endtime"), time.Now())
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+
+	if startTime.After(endTime) {
+		return time.Time{}, time.Time{}, errors.New("start time must be after end time")
+	}
+
+	return startTime, endTime, nil
 }
