@@ -40,7 +40,7 @@ var _ = Describe("Store", func() {
 	})
 
 	DescribeTable("fetches data based on envelope type",
-		func(envelopeType interface{}) {
+		func(envelopeType, envelopeWrapper interface{}) {
 			e1 := buildTypedEnvelope(0, "a", &loggregator_v2.Log{})
 			e2 := buildTypedEnvelope(0, "a", &loggregator_v2.Counter{})
 			e3 := buildTypedEnvelope(0, "a", &loggregator_v2.Gauge{})
@@ -52,17 +52,18 @@ var _ = Describe("Store", func() {
 			end := time.Unix(0, 9999)
 			envelopes := s.Get("a", start, end, envelopeType)
 			Expect(envelopes).To(HaveLen(1))
+			Expect(envelopes[0].Message).To(BeAssignableToTypeOf(envelopeWrapper))
 
 			// No Filter
 			envelopes = s.Get("a", start, end, nil)
 			Expect(envelopes).To(HaveLen(5))
 		},
 
-		Entry("Log", &loggregator_v2.Log{}),
-		Entry("Counter", &loggregator_v2.Counter{}),
-		Entry("Gauge", &loggregator_v2.Gauge{}),
-		Entry("Timer", &loggregator_v2.Timer{}),
-		Entry("Event", &loggregator_v2.Event{}),
+		Entry("Log", &loggregator_v2.Log{}, &loggregator_v2.Envelope_Log{}),
+		Entry("Counter", &loggregator_v2.Counter{}, &loggregator_v2.Envelope_Counter{}),
+		Entry("Gauge", &loggregator_v2.Gauge{}, &loggregator_v2.Envelope_Gauge{}),
+		Entry("Timer", &loggregator_v2.Timer{}, &loggregator_v2.Envelope_Timer{}),
+		Entry("Event", &loggregator_v2.Event{}, &loggregator_v2.Envelope_Event{}),
 	)
 
 	It("is thread safe", func() {

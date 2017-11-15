@@ -79,9 +79,9 @@ func (s *Store) checkEnvelopeType(e *loggregator_v2.Envelope, t EnvelopeType) bo
 	case *loggregator_v2.Log:
 		return e.GetLog() != nil
 	case *loggregator_v2.Counter:
-		return e.GetGauge() != nil
-	case *loggregator_v2.Gauge:
 		return e.GetCounter() != nil
+	case *loggregator_v2.Gauge:
+		return e.GetGauge() != nil
 	case *loggregator_v2.Timer:
 		return e.GetTimer() != nil
 	case *loggregator_v2.Event:
