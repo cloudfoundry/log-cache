@@ -34,9 +34,17 @@ func (s *Store) Put(envs []*loggregator_v2.Envelope) {
 	}
 }
 
+// EnvelopeType is used to filter envelopes based on type.
+type EnvelopeType interface{}
+
 // Get fetches envelopes from the store based on the source ID, start and end
 // time. Start is inclusive while end is not: [start..end).
-func (s *Store) Get(sourceID string, start, end time.Time) []*loggregator_v2.Envelope {
+func (s *Store) Get(
+	sourceID string,
+	start time.Time,
+	end time.Time,
+	envelopeType EnvelopeType,
+) []*loggregator_v2.Envelope {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -53,10 +61,34 @@ func (s *Store) Get(sourceID string, start, end time.Time) []*loggregator_v2.Env
 		// Time validation is [start..end)
 		if e.SourceId == sourceID &&
 			e.Timestamp >= start.UnixNano() &&
-			e.Timestamp < end.UnixNano() {
+			e.Timestamp < end.UnixNano() &&
+			s.checkEnvelopeType(e, envelopeType) {
 			res = append(res, e)
 		}
 	})
 
 	return res
+}
+
+func (s *Store) checkEnvelopeType(e *loggregator_v2.Envelope, t EnvelopeType) bool {
+	if t == nil {
+		return true
+	}
+
+	switch t.(type) {
+	case *loggregator_v2.Log:
+		return e.GetLog() != nil
+	case *loggregator_v2.Counter:
+		return e.GetGauge() != nil
+	case *loggregator_v2.Gauge:
+		return e.GetCounter() != nil
+	case *loggregator_v2.Timer:
+		return e.GetTimer() != nil
+	case *loggregator_v2.Event:
+		return e.GetEvent() != nil
+	default:
+		// This should never happen. This implies the store is being used
+		// poorly.
+		panic("unknown type")
+	}
 }

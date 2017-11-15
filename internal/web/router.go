@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
+	"code.cloudfoundry.org/log-cache/internal/store"
 	"github.com/golang/protobuf/jsonpb"
 )
 
@@ -19,7 +20,12 @@ type Router struct {
 }
 
 // Getter returns data for the given sourceID.
-type Getter func(sourceID string, start, end time.Time) []*loggregator_v2.Envelope
+type Getter func(
+	sourceID string,
+	start time.Time,
+	end time.Time,
+	envelopeType store.EnvelopeType,
+) []*loggregator_v2.Envelope
 
 // NewRouter returns a new Router.
 func NewRouter(g Getter) *Router {
@@ -48,8 +54,14 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	envelopeType, err := stringToEnvelopeType(req.URL.Query().Get("envelopetype"))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	var marshaledEnvs []string
-	for _, e := range r.get(appID, startTime, endTime) {
+	for _, e := range r.get(appID, startTime, endTime, envelopeType) {
 		str, err := r.marshaler.MarshalToString(e)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -62,6 +74,25 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte(
 		fmt.Sprintf(`{"envelopes": [%s]}`, strings.Join(marshaledEnvs, ",")),
 	))
+}
+
+func stringToEnvelopeType(s string) (store.EnvelopeType, error) {
+	switch s {
+	case "":
+		return nil, nil
+	case "log":
+		return &loggregator_v2.Log{}, nil
+	case "counter":
+		return &loggregator_v2.Counter{}, nil
+	case "gauge":
+		return &loggregator_v2.Gauge{}, nil
+	case "timer":
+		return &loggregator_v2.Timer{}, nil
+	case "event":
+		return &loggregator_v2.Event{}, nil
+	default:
+		return nil, errors.New("invalid envelope type")
+	}
 }
 
 func stringToTime(ts string, d time.Time) (time.Time, error) {

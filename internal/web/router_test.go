@@ -6,9 +6,11 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
+	"code.cloudfoundry.org/log-cache/internal/store"
 	"code.cloudfoundry.org/log-cache/internal/web"
 
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 )
 
@@ -18,10 +20,11 @@ var _ = Describe("Router", func() {
 
 		recorder *httptest.ResponseRecorder
 
-		start     time.Time
-		end       time.Time
-		sourceID  string
-		envelopes []*loggregator_v2.Envelope
+		start        time.Time
+		end          time.Time
+		sourceID     string
+		envelopeType store.EnvelopeType
+		envelopes    []*loggregator_v2.Envelope
 	)
 
 	BeforeEach(func() {
@@ -30,10 +33,11 @@ var _ = Describe("Router", func() {
 			buildEnvelope("app-a"),
 			buildEnvelope("app-a"),
 		}
-		r = web.NewRouter(func(s string, st, e time.Time) []*loggregator_v2.Envelope {
+		r = web.NewRouter(func(s string, st, e time.Time, t store.EnvelopeType) []*loggregator_v2.Envelope {
 			sourceID = s
 			start = st
 			end = e
+			envelopeType = t
 			return envelopes
 		})
 	})
@@ -73,6 +77,7 @@ var _ = Describe("Router", func() {
 		Expect(sourceID).To(Equal("app-a"))
 		Expect(start).To(Equal(time.Unix(99, 0)))
 		Expect(end).To(Equal(time.Unix(101, 0)))
+		Expect(envelopeType).To(BeNil())
 
 		Expect(recorder.Code).To(Equal(http.StatusOK))
 		Expect(recorder.Body.String()).To(MatchJSON(`{
@@ -86,6 +91,20 @@ var _ = Describe("Router", func() {
 			]
 		}`))
 	})
+
+	DescribeTable("fetches data based on envelope",
+		func(url string, expectedType store.EnvelopeType) {
+			req := httptest.NewRequest(http.MethodGet, url, nil)
+			r.ServeHTTP(recorder, req)
+			Expect(envelopeType).To(Equal(expectedType))
+		},
+
+		Entry("Log", "/app-a/?envelopetype=log", &loggregator_v2.Log{}),
+		Entry("Counter", "/app-a/?envelopetype=counter", &loggregator_v2.Counter{}),
+		Entry("Gauge", "/app-a/?envelopetype=gauge", &loggregator_v2.Gauge{}),
+		Entry("Timer", "/app-a/?envelopetype=timer", &loggregator_v2.Timer{}),
+		Entry("Event", "/app-a/?envelopetype=event", &loggregator_v2.Event{}),
+	)
 
 	It("defaults start time to 0 and end time to now", func() {
 		req := httptest.NewRequest(http.MethodGet, "/app-a", nil)

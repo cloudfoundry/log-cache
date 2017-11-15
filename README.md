@@ -18,6 +18,9 @@ Query Parameters:
   cache (e.g. `date +%s`). Start time is inclusive. `[starttime..endtime)`
 - **endtime** is UNIX timestamp in seconds. It defaults to current time of the
   cache (e.g. `date +%s`). End time is exclusive. `[starttime..endtime)`
+- **envelopetype** is filter for Envelope Type. The available filters are:
+  `log`, `counter`, `gauge`, `timer`, and `event`. If set, then only those
+  types of envelopes will be emitted.
 
 ```
 curl http://<log-cache-addr>:8080/<source-id>/?starttime=<start time>&endtime=<end time>
