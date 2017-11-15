@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -43,14 +44,37 @@ var _ = Describe("LogCache", func() {
 
 		cache.Start()
 
-		URL := fmt.Sprintf("http://%s/app-a", cache.EgressAddr())
-		resp, err := http.Get(URL)
-		Expect(err).ToNot(HaveOccurred())
+		var (
+			resp *http.Response
+			data []byte
+		)
+		f := func() error {
+			var err error
+			URL := fmt.Sprintf("http://%s/app-a", cache.EgressAddr())
+			resp, err = http.Get(URL)
+			if err != nil {
+				return err
+			}
+
+			data, err = ioutil.ReadAll(resp.Body)
+			if err != nil {
+				return err
+			}
+
+			var jsonData map[string]interface{}
+			if err := json.Unmarshal(data, &jsonData); err != nil {
+				return err
+			}
+
+			if len(jsonData["envelopes"].([]interface{})) != 2 {
+				return fmt.Errorf("expected 2 but actual %d", len(jsonData["envelopes"].([]interface{})))
+			}
+
+			return nil
+		}
+		Eventually(f).Should(BeNil())
 
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-		data, err := ioutil.ReadAll(resp.Body)
-		Expect(err).ToNot(HaveOccurred())
 		Expect(data).To(MatchJSON(`{
 			"envelopes": [
 				{
