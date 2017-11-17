@@ -18,6 +18,7 @@ var (
 	MaxTime   = time.Unix(0, 9223372036854775807)
 	gen       = randEnvGen()
 	sourceIDs = []string{"0", "1", "2", "3", "4"}
+	results   []*loggregator_v2.Envelope
 )
 
 func BenchmarkStoreWrite(b *testing.B) {
@@ -39,9 +40,8 @@ func BenchmarkStoreGetTime5MinRange(b *testing.B) {
 	fiveMinAgo := now.Add(-5 * time.Minute)
 
 	b.ResetTimer()
-
 	for i := 0; i < b.N; i++ {
-		s.Get(sourceIDs[i%len(sourceIDs)], now, fiveMinAgo, nil)
+		results = s.Get(sourceIDs[i%len(sourceIDs)], fiveMinAgo, now, nil)
 	}
 }
 
@@ -55,9 +55,8 @@ func BenchmarkStoreGetLogType(b *testing.B) {
 	logType := &loggregator_v2.Log{}
 
 	b.ResetTimer()
-
 	for i := 0; i < b.N; i++ {
-		s.Get(sourceIDs[i%len(sourceIDs)], MinTime, MaxTime, logType)
+		results = s.Get(sourceIDs[i%len(sourceIDs)], MinTime, MaxTime, logType)
 	}
 }
 
@@ -66,7 +65,7 @@ func randEnvGen() func(size int) []*loggregator_v2.Envelope {
 	fiveMinAgo := time.Now().Add(-5 * time.Minute)
 	for i := 0; i < 10000; i++ {
 		s = append(s, benchBuildLog(
-			fmt.Sprintf("%d", i%5),
+			fmt.Sprintf("%d", i%len(sourceIDs)),
 			fiveMinAgo.Add(time.Duration(i)*time.Millisecond).UnixNano(),
 		))
 	}
