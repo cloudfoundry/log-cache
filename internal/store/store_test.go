@@ -21,16 +21,16 @@ var _ = Describe("Store", func() {
 	})
 
 	It("fetches data based on time and source ID", func() {
-		e1 := buildEnvelope(0, "a")
-		e2 := buildEnvelope(1, "b")
-		e3 := buildEnvelope(2, "a")
-		e4 := buildEnvelope(3, "a")
+		e1 := buildEnvelope(1, "a")
+		e2 := buildEnvelope(2, "b")
+		e3 := buildEnvelope(3, "a")
+		e4 := buildEnvelope(4, "a")
 
 		s.Put([]*loggregator_v2.Envelope{e1, e2})
 		s.Put([]*loggregator_v2.Envelope{e3, e4})
 
 		start := time.Unix(0, 0)
-		end := time.Unix(0, 3)
+		end := time.Unix(0, 4)
 		envelopes := s.Get("a", start, end, nil)
 		Expect(envelopes).To(HaveLen(2))
 
@@ -42,10 +42,10 @@ var _ = Describe("Store", func() {
 	DescribeTable("fetches data based on envelope type",
 		func(envelopeType, envelopeWrapper interface{}) {
 			e1 := buildTypedEnvelope(0, "a", &loggregator_v2.Log{})
-			e2 := buildTypedEnvelope(0, "a", &loggregator_v2.Counter{})
-			e3 := buildTypedEnvelope(0, "a", &loggregator_v2.Gauge{})
-			e4 := buildTypedEnvelope(0, "a", &loggregator_v2.Timer{})
-			e5 := buildTypedEnvelope(0, "a", &loggregator_v2.Event{})
+			e2 := buildTypedEnvelope(1, "a", &loggregator_v2.Counter{})
+			e3 := buildTypedEnvelope(2, "a", &loggregator_v2.Gauge{})
+			e4 := buildTypedEnvelope(3, "a", &loggregator_v2.Timer{})
+			e5 := buildTypedEnvelope(4, "a", &loggregator_v2.Event{})
 			s.Put([]*loggregator_v2.Envelope{e1, e2, e3, e4, e5})
 
 			start := time.Unix(0, 0)
@@ -76,6 +76,25 @@ var _ = Describe("Store", func() {
 		end := time.Unix(9999, 0)
 
 		Eventually(func() int { return len(s.Get("a", start, end, nil)) }).Should(Equal(1))
+	})
+
+	It("truncates older envelopes when max size is reached", func() {
+		e1 := buildTypedEnvelope(0, "a", &loggregator_v2.Log{})
+		e2 := buildTypedEnvelope(1, "a", &loggregator_v2.Counter{})
+		e3 := buildTypedEnvelope(2, "a", &loggregator_v2.Gauge{})
+		e4 := buildTypedEnvelope(3, "a", &loggregator_v2.Timer{})
+		e5 := buildTypedEnvelope(4, "a", &loggregator_v2.Event{})
+		e6 := buildTypedEnvelope(5, "a", &loggregator_v2.Event{})
+		s.Put([]*loggregator_v2.Envelope{e1, e2, e3, e4, e5, e6})
+
+		start := time.Unix(0, 0)
+		end := time.Unix(0, 9999)
+		envelopes := s.Get("a", start, end, nil)
+		Expect(envelopes).To(HaveLen(5))
+
+		for _, e := range envelopes {
+			Expect(e.Timestamp).ToNot(Equal(int64(0)))
+		}
 	})
 })
 

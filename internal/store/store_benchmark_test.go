@@ -30,6 +30,15 @@ func BenchmarkStoreWrite(b *testing.B) {
 	}
 }
 
+func BenchmarkStoreTruncationOnWrite(b *testing.B) {
+	s := store.NewStore(100)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s.Put(gen(10))
+	}
+}
+
 func BenchmarkStoreGetTime5MinRange(b *testing.B) {
 	s := store.NewStore(StoreSize)
 
@@ -57,6 +66,7 @@ func BenchmarkStoreGetLogType(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		results = s.Get(sourceIDs[i%len(sourceIDs)], MinTime, MaxTime, logType)
+		// println(len(results))
 	}
 }
 
