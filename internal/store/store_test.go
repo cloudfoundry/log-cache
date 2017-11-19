@@ -79,21 +79,30 @@ var _ = Describe("Store", func() {
 	})
 
 	It("truncates older envelopes when max size is reached", func() {
-		e1 := buildTypedEnvelope(0, "a", &loggregator_v2.Log{})
+		// e1 should be truncated and sourceID "b" should be forgotten.
+		e1 := buildTypedEnvelope(0, "b", &loggregator_v2.Log{})
+		// e2 should be truncated.
 		e2 := buildTypedEnvelope(1, "a", &loggregator_v2.Counter{})
+
+		// e3-e7 should be available
 		e3 := buildTypedEnvelope(2, "a", &loggregator_v2.Gauge{})
 		e4 := buildTypedEnvelope(3, "a", &loggregator_v2.Timer{})
 		e5 := buildTypedEnvelope(4, "a", &loggregator_v2.Event{})
 		e6 := buildTypedEnvelope(5, "a", &loggregator_v2.Event{})
-		s.Put([]*loggregator_v2.Envelope{e1, e2, e3, e4, e5, e6})
+		e7 := buildTypedEnvelope(6, "a", &loggregator_v2.Event{})
+
+		// e8 should be truncated even though it is late
+		e8 := buildTypedEnvelope(0, "a", &loggregator_v2.Event{})
+
+		s.Put([]*loggregator_v2.Envelope{e1, e2, e3, e4, e5, e6, e7, e8})
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
 		envelopes := s.Get("a", start, end, nil)
 		Expect(envelopes).To(HaveLen(5))
 
-		for _, e := range envelopes {
-			Expect(e.Timestamp).ToNot(Equal(int64(0)))
+		for i, e := range envelopes {
+			Expect(e.Timestamp).To(Equal(int64(i + 2)))
 		}
 	})
 })
