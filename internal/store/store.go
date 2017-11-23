@@ -13,8 +13,9 @@ import (
 // number and drop older data once that threshold is exceeded. All functions
 // are thread safe.
 type Store struct {
-	mu   sync.RWMutex
-	size int
+	mu           sync.RWMutex
+	size         int
+	maxPerSource int
 
 	sourceIDs map[string]*avltree.Tree
 
@@ -28,9 +29,10 @@ type Store struct {
 }
 
 // NewStore creates a new store.
-func NewStore(size int) *Store {
+func NewStore(size, maxPerSource int) *Store {
 	return &Store{
 		size:            size,
+		maxPerSource:    maxPerSource,
 		sourceIDs:       make(map[string]*avltree.Tree),
 		oldestValueTree: newTreeStorage(),
 	}
@@ -62,6 +64,12 @@ func (s *Store) Put(envs []*loggregator_v2.Envelope) {
 
 		preSize := t.Size()
 
+		if preSize >= s.maxPerSource {
+			// This sourceID has reached/exceeded its allowed quota. Truncate the
+			// olest before putting a new envelope in.
+			t.Remove(oldest)
+		}
+
 		t.Put(e.Timestamp, e)
 
 		// Only increment if we didn't overwrite.
@@ -77,6 +85,13 @@ func (s *Store) Put(envs []*loggregator_v2.Envelope) {
 	}
 }
 
+// truncateSourceID looks at a specific sourceID to see if it has exceeded
+// the maxPerSource. If it has, it truncates the oldest envelope.
+func (s *Store) truncateSourceID(soruceID string) {
+}
+
+// truncate removes the oldest envelope from the entire cache. It considers
+// each source-id.
 func (s *Store) truncate() {
 	if s.count <= s.size {
 		return

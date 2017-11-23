@@ -17,7 +17,7 @@ var _ = Describe("Store", func() {
 	)
 
 	BeforeEach(func() {
-		s = store.NewStore(5)
+		s = store.NewStore(5, 5)
 	})
 
 	It("fetches data based on time and source ID", func() {
@@ -79,6 +79,7 @@ var _ = Describe("Store", func() {
 	})
 
 	It("truncates older envelopes when max size is reached", func() {
+		s = store.NewStore(5, 10)
 		// e1 should be truncated and sourceID "b" should be forgotten.
 		e1 := buildTypedEnvelope(0, "b", &loggregator_v2.Log{})
 		// e2 should be truncated.
@@ -104,6 +105,28 @@ var _ = Describe("Store", func() {
 		for i, e := range envelopes {
 			Expect(e.Timestamp).To(Equal(int64(i + 2)))
 		}
+	})
+
+	It("truncates envelopes for a specific source-id if its max size is reached", func() {
+		s = store.NewStore(5, 2)
+		// e1 should not be truncated
+		e1 := buildTypedEnvelope(0, "b", &loggregator_v2.Log{})
+		// e2 should be truncated
+		e2 := buildTypedEnvelope(1, "a", &loggregator_v2.Log{})
+		e3 := buildTypedEnvelope(2, "a", &loggregator_v2.Log{})
+		e4 := buildTypedEnvelope(3, "a", &loggregator_v2.Log{})
+
+		s.Put([]*loggregator_v2.Envelope{e1, e2, e3, e4})
+
+		start := time.Unix(0, 0)
+		end := time.Unix(0, 9999)
+		envelopes := s.Get("a", start, end, nil)
+		Expect(envelopes).To(HaveLen(2))
+		Expect(envelopes[0].Timestamp).To(Equal(int64(2)))
+		Expect(envelopes[1].Timestamp).To(Equal(int64(3)))
+
+		envelopes = s.Get("b", start, end, nil)
+		Expect(envelopes).To(HaveLen(1))
 	})
 })
 

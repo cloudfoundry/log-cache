@@ -20,7 +20,8 @@ type LogCache struct {
 	log        *log.Logger
 	lis        net.Listener
 
-	storeSize int
+	storeSize    int
+	maxPerSource int
 }
 
 // StreamConnector reads envelopes from the the logs provider.
@@ -32,10 +33,11 @@ type StreamConnector interface {
 // NewLogCache creates a new LogCache.
 func NewLogCache(c StreamConnector, opts ...LogCacheOption) *LogCache {
 	cache := &LogCache{
-		connector:  c,
-		egressAddr: ":8080",
-		log:        log.New(ioutil.Discard, "", 0),
-		storeSize:  10000,
+		connector:    c,
+		egressAddr:   ":8080",
+		log:          log.New(ioutil.Discard, "", 0),
+		storeSize:    10000000,
+		maxPerSource: 100000,
 	}
 
 	for _, o := range opts {
@@ -65,10 +67,19 @@ func WithEgressAddr(addr string) LogCacheOption {
 }
 
 // WithStoreSize returns a LogCacheOption that configures the store's
-// memory size as number of envelopes. Defaults to 10000 envelopes.
+// memory size as number of envelopes. Defaults to 1000000 envelopes.
 func WithStoreSize(size int) LogCacheOption {
 	return func(c *LogCache) {
 		c.storeSize = size
+	}
+}
+
+// WithMaxPerSource returns a LogCacheOption that configures the store's
+// memory size as number of envelopes for a specific sourceID. Defaults to
+// 100000 envelopes.
+func WithMaxPerSource(size int) LogCacheOption {
+	return func(c *LogCache) {
+		c.maxPerSource = size
 	}
 }
 
@@ -82,7 +93,7 @@ func (c *LogCache) Start() {
 	c.lis = lis
 	c.log.Printf("listening on %s...", lis.Addr().String())
 
-	store := store.NewStore(c.storeSize)
+	store := store.NewStore(c.storeSize, c.maxPerSource)
 
 	go func() {
 		router := web.NewRouter(store.Get)
