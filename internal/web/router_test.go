@@ -46,33 +46,6 @@ var _ = Describe("Router", func() {
 		}, sm)
 	})
 
-	It("returns a 405 for anything other than a GET", func() {
-		req := httptest.NewRequest(http.MethodDelete, "/", nil)
-
-		r.ServeHTTP(recorder, req)
-
-		Expect(recorder.Code).To(Equal(http.StatusMethodNotAllowed))
-		Expect(recorder.Body.String()).To(BeEmpty())
-	})
-
-	It("returns a 404 for an unsupported route", func() {
-		req := httptest.NewRequest(http.MethodGet, "/app-a/non-existent", nil)
-
-		r.ServeHTTP(recorder, req)
-
-		Expect(recorder.Code).To(Equal(http.StatusNotFound))
-		Expect(recorder.Body.String()).To(BeEmpty())
-	})
-
-	It("returns a 404 for the root route", func() {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-
-		r.ServeHTTP(recorder, req)
-
-		Expect(recorder.Code).To(Equal(http.StatusNotFound))
-		Expect(recorder.Body.String()).To(BeEmpty())
-	})
-
 	It("returns envelopes for a given source ID and time slice", func() {
 		req := httptest.NewRequest(http.MethodGet, "/app-a/?starttime=99&endtime=101&limit=103", nil)
 
@@ -113,61 +86,85 @@ var _ = Describe("Router", func() {
 		Entry("Event", "/app-a/?envelopetype=event", &loggregator_v2.Event{}),
 	)
 
-	It("defaults start time to 0 and end time to now", func() {
+	It("defaults start time to 0, end time to now and limit to 100", func() {
 		req := httptest.NewRequest(http.MethodGet, "/app-a", nil)
 
 		r.ServeHTTP(recorder, req)
 
 		Expect(start).To(Equal(time.Unix(0, 0)))
 		Expect(end.Unix()).To(BeNumerically("~", time.Now().Unix(), 1))
-	})
-
-	It("defaults limit to 100", func() {
-		req := httptest.NewRequest(http.MethodGet, "/app-a", nil)
-
-		r.ServeHTTP(recorder, req)
-
 		Expect(limit).To(Equal(100))
 	})
 
-	It("returns a 400 if the start time is not a positive number", func() {
-		req := httptest.NewRequest(http.MethodGet, "/app-a/?starttime=-99&endtime=101", nil)
+	Describe("unsupported routes/methods", func() {
+		It("returns a 405 for anything other than a GET", func() {
+			req := httptest.NewRequest(http.MethodDelete, "/", nil)
 
-		r.ServeHTTP(recorder, req)
+			r.ServeHTTP(recorder, req)
 
-		Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+			Expect(recorder.Code).To(Equal(http.StatusMethodNotAllowed))
+			Expect(recorder.Body.String()).To(BeEmpty())
+		})
+
+		It("returns a 404 for an unsupported route", func() {
+			req := httptest.NewRequest(http.MethodGet, "/app-a/non-existent", nil)
+
+			r.ServeHTTP(recorder, req)
+
+			Expect(recorder.Code).To(Equal(http.StatusNotFound))
+			Expect(recorder.Body.String()).To(BeEmpty())
+		})
+
+		It("returns a 404 for the root route", func() {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+
+			r.ServeHTTP(recorder, req)
+
+			Expect(recorder.Code).To(Equal(http.StatusNotFound))
+			Expect(recorder.Body.String()).To(BeEmpty())
+		})
 	})
 
-	It("returns a 400 if the end time is not a positive number", func() {
-		req := httptest.NewRequest(http.MethodGet, "/app-a/?endtime=-101", nil)
+	Describe("invalid input", func() {
+		It("returns a 400 if the start time is not a positive number", func() {
+			req := httptest.NewRequest(http.MethodGet, "/app-a/?starttime=-99&endtime=101", nil)
 
-		r.ServeHTTP(recorder, req)
+			r.ServeHTTP(recorder, req)
 
-		Expect(recorder.Code).To(Equal(http.StatusBadRequest))
-	})
+			Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+		})
 
-	It("returns a 400 if end time is before start time", func() {
-		req := httptest.NewRequest(http.MethodGet, "/app-a/?starttime=99&endtime=20", nil)
+		It("returns a 400 if the end time is not a positive number", func() {
+			req := httptest.NewRequest(http.MethodGet, "/app-a/?endtime=-101", nil)
 
-		r.ServeHTTP(recorder, req)
+			r.ServeHTTP(recorder, req)
 
-		Expect(recorder.Code).To(Equal(http.StatusBadRequest))
-	})
+			Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+		})
 
-	It("returns a 400 if limit is not a positive number", func() {
-		req := httptest.NewRequest(http.MethodGet, "/app-a/?limit=-99", nil)
+		It("returns a 400 if end time is before start time", func() {
+			req := httptest.NewRequest(http.MethodGet, "/app-a/?starttime=99&endtime=20", nil)
 
-		r.ServeHTTP(recorder, req)
+			r.ServeHTTP(recorder, req)
 
-		Expect(recorder.Code).To(Equal(http.StatusBadRequest))
-	})
+			Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+		})
 
-	It("returns a 400 if limit is greater than 1000", func() {
-		req := httptest.NewRequest(http.MethodGet, "/app-a/?limit=1001", nil)
+		It("returns a 400 if limit is not a positive number", func() {
+			req := httptest.NewRequest(http.MethodGet, "/app-a/?limit=-99", nil)
 
-		r.ServeHTTP(recorder, req)
+			r.ServeHTTP(recorder, req)
 
-		Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+			Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("returns a 400 if limit is greater than 1000", func() {
+			req := httptest.NewRequest(http.MethodGet, "/app-a/?limit=1001", nil)
+
+			r.ServeHTTP(recorder, req)
+
+			Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+		})
 	})
 })
 
