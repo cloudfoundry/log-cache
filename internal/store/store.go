@@ -66,7 +66,7 @@ func (s *Store) Put(envs []*loggregator_v2.Envelope) {
 
 		if preSize >= s.maxPerSource {
 			// This sourceID has reached/exceeded its allowed quota. Truncate the
-			// olest before putting a new envelope in.
+			// oldest before putting a new envelope in.
 			t.Remove(oldest)
 		}
 
@@ -83,11 +83,6 @@ func (s *Store) Put(envs []*loggregator_v2.Envelope) {
 
 		s.truncate()
 	}
-}
-
-// truncateSourceID looks at a specific sourceID to see if it has exceeded
-// the maxPerSource. If it has, it truncates the oldest envelope.
-func (s *Store) truncateSourceID(soruceID string) {
 }
 
 // truncate removes the oldest envelope from the entire cache. It considers
