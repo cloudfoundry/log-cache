@@ -7,7 +7,7 @@ type Config struct {
 	LogProviderAddr string `env:"LOGS_PROVIDER_ADDR, required"`
 
 	EgressAddr string `env:"EGRESS_ADDR"`
-	PProfPort  int    `env:"PPROF_PORT"`
+	HealthPort int    `env:"HEALTH_PORT"`
 
 	// StoreSize is the number of envelopes to store.
 	StoreSize int `env:"STORE_SIZE"`
@@ -26,7 +26,7 @@ func LoadConfig() (*Config, error) {
 	c := Config{
 		EgressAddr: ":8080",
 		StoreSize:  10000,
-		PProfPort:  0,
+		HealthPort: 0,
 	}
 
 	if err := envstruct.Load(&c); err != nil {

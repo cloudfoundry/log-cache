@@ -13,10 +13,17 @@ import (
 	"github.com/golang/protobuf/jsonpb"
 )
 
+// Metrics is the client used for initializing counter metrics.
+type Metrics interface {
+	//NewCounter initializes a new counter metric.
+	NewCounter(name string) func(delta uint64)
+}
+
 // Router handles http.Requests.
 type Router struct {
 	get       Getter
 	marshaler *jsonpb.Marshaler
+	incEgress func(delta uint64)
 }
 
 // Getter returns data for the given sourceID.
@@ -29,10 +36,11 @@ type Getter func(
 ) []*loggregator_v2.Envelope
 
 // NewRouter returns a new Router.
-func NewRouter(g Getter) *Router {
+func NewRouter(g Getter, m Metrics) *Router {
 	return &Router{
 		get:       g,
 		marshaler: &jsonpb.Marshaler{},
+		incEgress: m.NewCounter("egress"),
 	}
 }
 
@@ -86,6 +94,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte(
 		fmt.Sprintf(`{"envelopes": [%s]}`, strings.Join(marshaledEnvs, ",")),
 	))
+
+	r.incEgress(uint64(len(marshaledEnvs)))
 }
 
 func stringToInt(s string, d int) (int, error) {

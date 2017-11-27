@@ -23,7 +23,7 @@ var (
 )
 
 func BenchmarkStoreWrite(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize)
+	s := store.NewStore(StoreSize, StoreSize, nil)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -32,7 +32,7 @@ func BenchmarkStoreWrite(b *testing.B) {
 }
 
 func BenchmarkStoreTruncationOnWrite(b *testing.B) {
-	s := store.NewStore(100, 100)
+	s := store.NewStore(100, 100, nil)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -41,7 +41,7 @@ func BenchmarkStoreTruncationOnWrite(b *testing.B) {
 }
 
 func BenchmarkStoreWriteParallel(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize)
+	s := store.NewStore(StoreSize, StoreSize, nil)
 
 	b.ResetTimer()
 
@@ -53,7 +53,7 @@ func BenchmarkStoreWriteParallel(b *testing.B) {
 }
 
 func BenchmarkStoreGetTime5MinRange(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize)
+	s := store.NewStore(StoreSize, StoreSize, nil)
 
 	for i := 0; i < StoreSize/10; i++ {
 		s.Put(gen(10))
@@ -68,7 +68,7 @@ func BenchmarkStoreGetTime5MinRange(b *testing.B) {
 }
 
 func BenchmarkStoreGetLogType(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize)
+	s := store.NewStore(StoreSize, StoreSize, nil)
 
 	for i := 0; i < StoreSize/10; i++ {
 		s.Put(gen(10))

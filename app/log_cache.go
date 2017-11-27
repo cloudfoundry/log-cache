@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"expvar"
 	"io/ioutil"
 	"log"
 	"net"
@@ -9,6 +10,7 @@ import (
 
 	loggregator "code.cloudfoundry.org/go-loggregator"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
+	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"code.cloudfoundry.org/log-cache/internal/store"
 	"code.cloudfoundry.org/log-cache/internal/web"
 )
@@ -19,6 +21,7 @@ type LogCache struct {
 	egressAddr string
 	log        *log.Logger
 	lis        net.Listener
+	metricMap  MetricMap
 
 	storeSize    int
 	maxPerSource int
@@ -83,6 +86,20 @@ func WithMaxPerSource(size int) LogCacheOption {
 	}
 }
 
+// MetricMap mirrors expvar.Map.
+type MetricMap interface {
+	// Set is implemented by Map.Set()
+	Set(key string, av expvar.Var)
+}
+
+// WithMetrics returns a LogCacheOption that configures the metrics for the
+// LogCache. It will add metrics to the given map.
+func WithMetrics(m MetricMap) LogCacheOption {
+	return func(c *LogCache) {
+		c.metricMap = m
+	}
+}
+
 // Start starts the LogCache. It has an internal go-routine that it creates
 // and therefore does not block.
 func (c *LogCache) Start() {
@@ -93,18 +110,22 @@ func (c *LogCache) Start() {
 	c.lis = lis
 	c.log.Printf("listening on %s...", lis.Addr().String())
 
-	store := store.NewStore(c.storeSize, c.maxPerSource)
+	metrics := metrics.New(c.metricMap)
+	store := store.NewStore(c.storeSize, c.maxPerSource, metrics)
 
 	go func() {
-		router := web.NewRouter(store.Get)
+		router := web.NewRouter(store.Get, metrics)
 		server := &http.Server{Handler: router}
 		server.Serve(lis)
 	}()
 
 	go func() {
 		rx := c.connector.Stream(context.Background(), &loggregator_v2.EgressBatchRequest{})
+		ingressMetric := metrics.NewCounter("ingress")
 		for {
-			store.Put(rx())
+			envelopes := rx()
+			store.Put(envelopes)
+			ingressMetric(uint64(len(envelopes)))
 		}
 	}()
 }

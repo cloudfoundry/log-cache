@@ -9,6 +9,15 @@ import (
 	"github.com/emirpasic/gods/utils"
 )
 
+// Metrics is the client used for initializing counter and gauge metrics.
+type Metrics interface {
+	//NewCounter initializes a new counter metric.
+	NewCounter(name string) func(delta uint64)
+
+	//NewGauge initializes a new gauge metric.
+	NewGauge(name string) func(value float64)
+}
+
 // Store is an in memory data store for envelopes. It will keep a bounded
 // number and drop older data once that threshold is exceeded. All functions
 // are thread safe.
@@ -26,15 +35,21 @@ type Store struct {
 	// count is incremented each Put. It is used to determine when to prune. When
 	// an envelope is pruned, it is decremented.
 	count int
+
+	// metrics
+	incExpired     func(delta uint64)
+	setCachePeriod func(value float64)
 }
 
 // NewStore creates a new store.
-func NewStore(size, maxPerSource int) *Store {
+func NewStore(size, maxPerSource int, m Metrics) *Store {
 	return &Store{
 		size:            size,
 		maxPerSource:    maxPerSource,
 		sourceIDs:       make(map[string]*avltree.Tree),
 		oldestValueTree: newTreeStorage(),
+		incExpired:      m.NewCounter("expired"),
+		setCachePeriod:  m.NewGauge("cache_period"),
 	}
 }
 
@@ -68,6 +83,7 @@ func (s *Store) Put(envs []*loggregator_v2.Envelope) {
 			// This sourceID has reached/exceeded its allowed quota. Truncate the
 			// oldest before putting a new envelope in.
 			t.Remove(oldest)
+			s.incExpired(1)
 		}
 
 		t.Put(e.Timestamp, e)
@@ -83,6 +99,10 @@ func (s *Store) Put(envs []*loggregator_v2.Envelope) {
 
 		s.truncate()
 	}
+
+	oldestValue, _ := s.oldestValueTree.Left()
+	cachePeriod := (time.Now().UnixNano() - oldestValue) / int64(time.Millisecond)
+	s.setCachePeriod(float64(cachePeriod))
 }
 
 // truncate removes the oldest envelope from the entire cache. It considers
@@ -93,6 +113,7 @@ func (s *Store) truncate() {
 	}
 
 	s.count--
+	s.incExpired(1)
 
 	// dereference the node so that after we remove it, the pointer does not
 	// get updated underneath us.

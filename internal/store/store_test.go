@@ -13,11 +13,13 @@ import (
 
 var _ = Describe("Store", func() {
 	var (
-		s *store.Store
+		s  *store.Store
+		sm *spyMetrics
 	)
 
 	BeforeEach(func() {
-		s = store.NewStore(5, 5)
+		sm = newSpyMetrics()
+		s = store.NewStore(5, 5, sm)
 	})
 
 	It("fetches data based on time and source ID", func() {
@@ -37,6 +39,8 @@ var _ = Describe("Store", func() {
 		for _, e := range envelopes {
 			Expect(e.SourceId).To(Equal("a"))
 		}
+
+		Expect(sm.values["expired"]).To(Equal(0.0))
 	})
 
 	It("returns a maximum number of envelopes", func() {
@@ -94,7 +98,7 @@ var _ = Describe("Store", func() {
 	})
 
 	It("truncates older envelopes when max size is reached", func() {
-		s = store.NewStore(5, 10)
+		s = store.NewStore(5, 10, sm)
 		// e1 should be truncated and sourceID "b" should be forgotten.
 		e1 := buildTypedEnvelope(0, "b", &loggregator_v2.Log{})
 		// e2 should be truncated.
@@ -120,10 +124,12 @@ var _ = Describe("Store", func() {
 		for i, e := range envelopes {
 			Expect(e.Timestamp).To(Equal(int64(i + 2)))
 		}
+
+		Expect(sm.values["expired"]).To(Equal(3.0))
 	})
 
 	It("truncates envelopes for a specific source-id if its max size is reached", func() {
-		s = store.NewStore(5, 2)
+		s = store.NewStore(5, 2, sm)
 		// e1 should not be truncated
 		e1 := buildTypedEnvelope(0, "b", &loggregator_v2.Log{})
 		// e2 should be truncated
@@ -142,6 +148,15 @@ var _ = Describe("Store", func() {
 
 		envelopes = s.Get("b", start, end, nil, 10)
 		Expect(envelopes).To(HaveLen(1))
+
+		Expect(sm.values["expired"]).To(Equal(1.0))
+	})
+
+	It("sets (via metrics) the store's period in milliseconds", func() {
+		e := buildTypedEnvelope(time.Now().Add(-time.Minute).UnixNano(), "b", &loggregator_v2.Log{})
+		s.Put([]*loggregator_v2.Envelope{e})
+
+		Expect(sm.values["cache_period"]).To(BeNumerically("~", float64(time.Minute/time.Millisecond), 1000))
 	})
 })
 
@@ -184,4 +199,26 @@ func buildTypedEnvelope(timestamp int64, sourceID string, t interface{}) *loggre
 	}
 
 	return e
+}
+
+type spyMetrics struct {
+	values map[string]float64
+}
+
+func newSpyMetrics() *spyMetrics {
+	return &spyMetrics{
+		values: make(map[string]float64),
+	}
+}
+
+func (s *spyMetrics) NewCounter(name string) func(delta uint64) {
+	return func(d uint64) {
+		s.values[name] += float64(d)
+	}
+}
+
+func (s *spyMetrics) NewGauge(name string) func(value float64) {
+	return func(v float64) {
+		s.values[name] = v
+	}
 }

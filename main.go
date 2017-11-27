@@ -1,12 +1,12 @@
 package main
 
 import (
+	_ "expvar"
 	"fmt"
 	"log"
-	"os"
-
 	"net/http"
 	_ "net/http/pprof"
+	"os"
 
 	loggregator "code.cloudfoundry.org/go-loggregator"
 	"code.cloudfoundry.org/log-cache/app"
@@ -44,6 +44,6 @@ func main() {
 	)
 	cache.Start()
 
-	// pprof
-	log.Printf("PProf: %s", http.ListenAndServe(fmt.Sprintf("localhost:%d", cfg.PProfPort), nil))
+	// health endpoints (pprof and expvar)
+	log.Printf("Health: %s", http.ListenAndServe(fmt.Sprintf("localhost:%d", cfg.HealthPort), nil))
 }

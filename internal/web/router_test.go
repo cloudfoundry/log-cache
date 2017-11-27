@@ -16,7 +16,8 @@ import (
 
 var _ = Describe("Router", func() {
 	var (
-		r *web.Router
+		r  *web.Router
+		sm *spyMetrics
 
 		recorder *httptest.ResponseRecorder
 
@@ -29,6 +30,7 @@ var _ = Describe("Router", func() {
 	)
 
 	BeforeEach(func() {
+		sm = newSpyMetrics()
 		recorder = httptest.NewRecorder()
 		envelopes = []*loggregator_v2.Envelope{
 			buildEnvelope("app-a"),
@@ -41,7 +43,7 @@ var _ = Describe("Router", func() {
 			envelopeType = t
 			limit = l
 			return envelopes
-		})
+		}, sm)
 	})
 
 	It("returns a 405 for anything other than a GET", func() {
@@ -93,6 +95,8 @@ var _ = Describe("Router", func() {
 				}
 			]
 		}`))
+
+		Expect(sm.values["egress"]).To(Equal(2.0))
 	})
 
 	DescribeTable("fetches data based on envelope",
@@ -170,5 +174,21 @@ var _ = Describe("Router", func() {
 func buildEnvelope(sourceID string) *loggregator_v2.Envelope {
 	return &loggregator_v2.Envelope{
 		SourceId: sourceID,
+	}
+}
+
+type spyMetrics struct {
+	values map[string]float64
+}
+
+func newSpyMetrics() *spyMetrics {
+	return &spyMetrics{
+		values: make(map[string]float64),
+	}
+}
+
+func (s *spyMetrics) NewCounter(name string) func(delta uint64) {
+	return func(d uint64) {
+		s.values[name] += float64(d)
 	}
 }
