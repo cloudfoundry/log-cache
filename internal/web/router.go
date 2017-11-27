@@ -130,7 +130,7 @@ func stringToTime(ts string, d time.Time) (time.Time, error) {
 		return time.Time{}, err
 	}
 
-	return time.Unix(int64(intTS), 0), nil
+	return time.Unix(0, int64(intTS)), nil
 }
 
 func getTimeRange(req *http.Request) (time.Time, time.Time, error) {

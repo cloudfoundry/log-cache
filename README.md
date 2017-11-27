@@ -14,9 +14,9 @@ Log Cache implements a restful interface for getting data.
 
 Query Parameters:
 
-- **starttime** is UNIX timestamp in seconds. It defaults to the start of the
+- **starttime** is UNIX timestamp in nanoseconds. It defaults to the start of the
   cache (e.g. `date +%s`). Start time is inclusive. `[starttime..endtime)`
-- **endtime** is UNIX timestamp in seconds. It defaults to current time of the
+- **endtime** is UNIX timestamp in nanoseconds. It defaults to current time of the
   cache (e.g. `date +%s`). End time is exclusive. `[starttime..endtime)`
 - **envelopetype** is filter for Envelope Type. The available filters are:
   `log`, `counter`, `gauge`, `timer`, and `event`. If set, then only those

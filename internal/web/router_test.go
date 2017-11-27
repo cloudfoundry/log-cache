@@ -77,8 +77,8 @@ var _ = Describe("Router", func() {
 		r.ServeHTTP(recorder, req)
 
 		Expect(sourceID).To(Equal("app-a"))
-		Expect(start).To(Equal(time.Unix(99, 0)))
-		Expect(end).To(Equal(time.Unix(101, 0)))
+		Expect(start).To(Equal(time.Unix(0, 99)))
+		Expect(end).To(Equal(time.Unix(0, 101)))
 		Expect(envelopeType).To(BeNil())
 		Expect(limit).To(Equal(103))
 
