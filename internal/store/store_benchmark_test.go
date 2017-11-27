@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ var (
 )
 
 func BenchmarkStoreWrite(b *testing.B) {
-	s := store.NewStore(StoreSize)
+	s := store.NewStore(StoreSize, StoreSize)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -31,7 +32,7 @@ func BenchmarkStoreWrite(b *testing.B) {
 }
 
 func BenchmarkStoreTruncationOnWrite(b *testing.B) {
-	s := store.NewStore(100)
+	s := store.NewStore(100, 100)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -39,8 +40,20 @@ func BenchmarkStoreTruncationOnWrite(b *testing.B) {
 	}
 }
 
+func BenchmarkStoreWriteParallel(b *testing.B) {
+	s := store.NewStore(StoreSize, StoreSize)
+
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			s.Put(gen(10))
+		}
+	})
+}
+
 func BenchmarkStoreGetTime5MinRange(b *testing.B) {
-	s := store.NewStore(StoreSize)
+	s := store.NewStore(StoreSize, StoreSize)
 
 	for i := 0; i < StoreSize/10; i++ {
 		s.Put(gen(10))
@@ -55,7 +68,7 @@ func BenchmarkStoreGetTime5MinRange(b *testing.B) {
 }
 
 func BenchmarkStoreGetLogType(b *testing.B) {
-	s := store.NewStore(StoreSize)
+	s := store.NewStore(StoreSize, StoreSize)
 
 	for i := 0; i < StoreSize/10; i++ {
 		s.Put(gen(10))
@@ -66,7 +79,6 @@ func BenchmarkStoreGetLogType(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		results = s.Get(sourceIDs[i%len(sourceIDs)], MinTime, MaxTime, logType)
-		// println(len(results))
 	}
 }
 
@@ -90,8 +102,9 @@ func randEnvGen() func(size int) []*loggregator_v2.Envelope {
 
 func benchBuildLog(appID string, ts int64) *loggregator_v2.Envelope {
 	return &loggregator_v2.Envelope{
-		SourceId:  appID,
-		Timestamp: ts,
+		SourceId: appID,
+		// Timestamp: ts,
+		Timestamp: time.Now().Add(time.Duration(rand.Int63n(50)-100) * time.Microsecond).UnixNano(),
 		Message: &loggregator_v2.Envelope_Log{
 			Log: &loggregator_v2.Log{},
 		},
