@@ -21,6 +21,8 @@ Query Parameters:
 - **envelopetype** is filter for Envelope Type. The available filters are:
   `log`, `counter`, `gauge`, `timer`, and `event`. If set, then only those
   types of envelopes will be emitted.
+- **limit** is the maximum number of envelopes to request. The max limit size
+  is 1000 and defaults to 100.
 
 ```
 curl http://<log-cache-addr>:8080/<source-id>/?starttime=<start time>&endtime=<end time>

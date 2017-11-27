@@ -126,6 +126,7 @@ func (s *Store) Get(
 	start time.Time,
 	end time.Time,
 	envelopeType EnvelopeType,
+	limit int,
 ) []*loggregator_v2.Envelope {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -135,52 +136,42 @@ func (s *Store) Get(
 		return nil
 	}
 
-	endNs := end.UnixNano()
-	startNode, _ := t.Ceiling(start.UnixNano())
-
 	var res []*loggregator_v2.Envelope
-	s.treeTraverse(startNode, true, false, func(e *loggregator_v2.Envelope) bool {
-		// Time validation is [start..end)
+	s.treeTraverse(t.Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope) bool {
 		if e.SourceId == sourceID &&
-			e.Timestamp >= start.UnixNano() &&
-			e.Timestamp < end.UnixNano() &&
 			s.checkEnvelopeType(e, envelopeType) {
 			res = append(res, e)
 		}
 
-		return e.Timestamp <= endNs
+		// Return true to stop traversing
+		return len(res) >= limit
 	})
 
 	return res
 }
 
-// treeTraverse walks the tree from left to right starting from the given
-// node. It stops walking when the given function returns false. When invoking
-// it for the first time, skipLeft should be set to false to ensure the
-// starting value is the lowest value.
 func (s *Store) treeTraverse(
 	n *avltree.Node,
-	skipLeft bool,
-	skipParent bool,
-	f func(*loggregator_v2.Envelope) bool,
-) {
+	start int64,
+	end int64,
+	f func(e *loggregator_v2.Envelope) bool,
+) bool {
 	if n == nil {
-		return
+		return false
 	}
 
-	if !skipLeft {
-		s.treeTraverse(n.Children[0], false, true, f)
+	t := n.Key.(int64)
+	if t >= start {
+		if s.treeTraverse(n.Children[0], start, end, f) {
+			return true
+		}
+
+		if t >= end || f(n.Value.(*loggregator_v2.Envelope)) {
+			return true
+		}
 	}
 
-	if !f(n.Value.(*loggregator_v2.Envelope)) {
-		return
-	}
-
-	s.treeTraverse(n.Children[1], false, true, f)
-
-	if !skipParent {
-		s.treeTraverse(n.Parent, true, false, f)
-	}
+	return s.treeTraverse(n.Children[1], start, end, f)
 }
 
 func (s *Store) checkEnvelopeType(e *loggregator_v2.Envelope, t EnvelopeType) bool {

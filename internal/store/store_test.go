@@ -31,12 +31,27 @@ var _ = Describe("Store", func() {
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 4)
-		envelopes := s.Get("a", start, end, nil)
+		envelopes := s.Get("a", start, end, nil, 10)
 		Expect(envelopes).To(HaveLen(2))
 
 		for _, e := range envelopes {
 			Expect(e.SourceId).To(Equal("a"))
 		}
+	})
+
+	It("returns a maximum number of envelopes", func() {
+		e1 := buildEnvelope(1, "a")
+		e2 := buildEnvelope(2, "a")
+		e3 := buildEnvelope(3, "a")
+		e4 := buildEnvelope(4, "a")
+
+		s.Put([]*loggregator_v2.Envelope{e1, e2})
+		s.Put([]*loggregator_v2.Envelope{e3, e4})
+
+		start := time.Unix(0, 0)
+		end := time.Unix(0, 9999)
+		envelopes := s.Get("a", start, end, nil, 3)
+		Expect(envelopes).To(HaveLen(3))
 	})
 
 	DescribeTable("fetches data based on envelope type",
@@ -50,12 +65,12 @@ var _ = Describe("Store", func() {
 
 			start := time.Unix(0, 0)
 			end := time.Unix(0, 9999)
-			envelopes := s.Get("a", start, end, envelopeType)
+			envelopes := s.Get("a", start, end, envelopeType, 5)
 			Expect(envelopes).To(HaveLen(1))
 			Expect(envelopes[0].Message).To(BeAssignableToTypeOf(envelopeWrapper))
 
 			// No Filter
-			envelopes = s.Get("a", start, end, nil)
+			envelopes = s.Get("a", start, end, nil, 10)
 			Expect(envelopes).To(HaveLen(5))
 		},
 
@@ -75,7 +90,7 @@ var _ = Describe("Store", func() {
 		start := time.Unix(0, 0)
 		end := time.Unix(9999, 0)
 
-		Eventually(func() int { return len(s.Get("a", start, end, nil)) }).Should(Equal(1))
+		Eventually(func() int { return len(s.Get("a", start, end, nil, 10)) }).Should(Equal(1))
 	})
 
 	It("truncates older envelopes when max size is reached", func() {
@@ -99,7 +114,7 @@ var _ = Describe("Store", func() {
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
-		envelopes := s.Get("a", start, end, nil)
+		envelopes := s.Get("a", start, end, nil, 10)
 		Expect(envelopes).To(HaveLen(5))
 
 		for i, e := range envelopes {
@@ -120,12 +135,12 @@ var _ = Describe("Store", func() {
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
-		envelopes := s.Get("a", start, end, nil)
+		envelopes := s.Get("a", start, end, nil, 10)
 		Expect(envelopes).To(HaveLen(2))
 		Expect(envelopes[0].Timestamp).To(Equal(int64(2)))
 		Expect(envelopes[1].Timestamp).To(Equal(int64(3)))
 
-		envelopes = s.Get("b", start, end, nil)
+		envelopes = s.Get("b", start, end, nil, 10)
 		Expect(envelopes).To(HaveLen(1))
 	})
 })

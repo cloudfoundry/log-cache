@@ -23,6 +23,7 @@ var _ = Describe("Router", func() {
 		start        time.Time
 		end          time.Time
 		sourceID     string
+		limit        int
 		envelopeType store.EnvelopeType
 		envelopes    []*loggregator_v2.Envelope
 	)
@@ -33,11 +34,12 @@ var _ = Describe("Router", func() {
 			buildEnvelope("app-a"),
 			buildEnvelope("app-a"),
 		}
-		r = web.NewRouter(func(s string, st, e time.Time, t store.EnvelopeType) []*loggregator_v2.Envelope {
+		r = web.NewRouter(func(s string, st, e time.Time, t store.EnvelopeType, l int) []*loggregator_v2.Envelope {
 			sourceID = s
 			start = st
 			end = e
 			envelopeType = t
+			limit = l
 			return envelopes
 		})
 	})
@@ -70,7 +72,7 @@ var _ = Describe("Router", func() {
 	})
 
 	It("returns envelopes for a given source ID and time slice", func() {
-		req := httptest.NewRequest(http.MethodGet, "/app-a/?starttime=99&endtime=101", nil)
+		req := httptest.NewRequest(http.MethodGet, "/app-a/?starttime=99&endtime=101&limit=103", nil)
 
 		r.ServeHTTP(recorder, req)
 
@@ -78,6 +80,7 @@ var _ = Describe("Router", func() {
 		Expect(start).To(Equal(time.Unix(99, 0)))
 		Expect(end).To(Equal(time.Unix(101, 0)))
 		Expect(envelopeType).To(BeNil())
+		Expect(limit).To(Equal(103))
 
 		Expect(recorder.Code).To(Equal(http.StatusOK))
 		Expect(recorder.Body.String()).To(MatchJSON(`{
@@ -115,6 +118,14 @@ var _ = Describe("Router", func() {
 		Expect(end.Unix()).To(BeNumerically("~", time.Now().Unix(), 1))
 	})
 
+	It("defaults limit to 100", func() {
+		req := httptest.NewRequest(http.MethodGet, "/app-a", nil)
+
+		r.ServeHTTP(recorder, req)
+
+		Expect(limit).To(Equal(100))
+	})
+
 	It("returns a 400 if the start time is not a positive number", func() {
 		req := httptest.NewRequest(http.MethodGet, "/app-a/?starttime=-99&endtime=101", nil)
 
@@ -133,6 +144,22 @@ var _ = Describe("Router", func() {
 
 	It("returns a 400 if end time is before start time", func() {
 		req := httptest.NewRequest(http.MethodGet, "/app-a/?starttime=99&endtime=20", nil)
+
+		r.ServeHTTP(recorder, req)
+
+		Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+	})
+
+	It("returns a 400 if limit is not a positive number", func() {
+		req := httptest.NewRequest(http.MethodGet, "/app-a/?limit=-99", nil)
+
+		r.ServeHTTP(recorder, req)
+
+		Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+	})
+
+	It("returns a 400 if limit is greater than 1000", func() {
+		req := httptest.NewRequest(http.MethodGet, "/app-a/?limit=1001", nil)
 
 		r.ServeHTTP(recorder, req)
 

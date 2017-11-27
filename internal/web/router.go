@@ -25,6 +25,7 @@ type Getter func(
 	start time.Time,
 	end time.Time,
 	envelopeType store.EnvelopeType,
+	limit int,
 ) []*loggregator_v2.Envelope
 
 // NewRouter returns a new Router.
@@ -60,8 +61,19 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	limit, err := stringToInt(req.URL.Query().Get("limit"), 100)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if limit > 1000 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	var marshaledEnvs []string
-	for _, e := range r.get(appID, startTime, endTime, envelopeType) {
+	for _, e := range r.get(appID, startTime, endTime, envelopeType, limit) {
 		str, err := r.marshaler.MarshalToString(e)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -74,6 +86,19 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte(
 		fmt.Sprintf(`{"envelopes": [%s]}`, strings.Join(marshaledEnvs, ",")),
 	))
+}
+
+func stringToInt(s string, d int) (int, error) {
+	if s == "" {
+		return d, nil
+	}
+
+	v, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return int(v), nil
 }
 
 func stringToEnvelopeType(s string) (store.EnvelopeType, error) {
