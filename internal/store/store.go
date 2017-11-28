@@ -48,8 +48,8 @@ func NewStore(size, maxPerSource int, m Metrics) *Store {
 		maxPerSource:    maxPerSource,
 		sourceIDs:       make(map[string]*avltree.Tree),
 		oldestValueTree: newTreeStorage(),
-		incExpired:      m.NewCounter("expired"),
-		setCachePeriod:  m.NewGauge("cache_period"),
+		incExpired:      m.NewCounter("Expired"),
+		setCachePeriod:  m.NewGauge("CachePeriod"),
 	}
 }
 

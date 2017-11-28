@@ -40,7 +40,7 @@ func NewRouter(g Getter, m Metrics) *Router {
 	return &Router{
 		get:       g,
 		marshaler: &jsonpb.Marshaler{},
-		incEgress: m.NewCounter("egress"),
+		incEgress: m.NewCounter("Egress"),
 	}
 }
 

@@ -15,7 +15,7 @@ func NewEnvelopeStream(rx Stream, st Store, m MetricClient) *EnvelopeStream {
 	return &EnvelopeStream{
 		rx:           rx,
 		store:        st,
-		incEnvelopes: m.NewCounter("ingress"),
+		incEnvelopes: m.NewCounter("Ingress"),
 	}
 }
 

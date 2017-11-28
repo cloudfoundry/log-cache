@@ -40,7 +40,7 @@ var _ = Describe("Store", func() {
 			Expect(e.SourceId).To(Equal("a"))
 		}
 
-		Expect(sm.values["expired"]).To(Equal(0.0))
+		Expect(sm.values["Expired"]).To(Equal(0.0))
 	})
 
 	It("returns a maximum number of envelopes", func() {
@@ -125,7 +125,7 @@ var _ = Describe("Store", func() {
 			Expect(e.Timestamp).To(Equal(int64(i + 2)))
 		}
 
-		Expect(sm.values["expired"]).To(Equal(3.0))
+		Expect(sm.values["Expired"]).To(Equal(3.0))
 	})
 
 	It("truncates envelopes for a specific source-id if its max size is reached", func() {
@@ -149,14 +149,14 @@ var _ = Describe("Store", func() {
 		envelopes = s.Get("b", start, end, nil, 10)
 		Expect(envelopes).To(HaveLen(1))
 
-		Expect(sm.values["expired"]).To(Equal(1.0))
+		Expect(sm.values["Expired"]).To(Equal(1.0))
 	})
 
 	It("sets (via metrics) the store's period in milliseconds", func() {
 		e := buildTypedEnvelope(time.Now().Add(-time.Minute).UnixNano(), "b", &loggregator_v2.Log{})
 		s.Put([]*loggregator_v2.Envelope{e})
 
-		Expect(sm.values["cache_period"]).To(BeNumerically("~", float64(time.Minute/time.Millisecond), 1000))
+		Expect(sm.values["CachePeriod"]).To(BeNumerically("~", float64(time.Minute/time.Millisecond), 1000))
 	})
 })
 

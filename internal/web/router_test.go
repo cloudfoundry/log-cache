@@ -69,7 +69,7 @@ var _ = Describe("Router", func() {
 			]
 		}`))
 
-		Expect(sm.values["egress"]).To(Equal(2.0))
+		Expect(sm.values["Egress"]).To(Equal(2.0))
 	})
 
 	DescribeTable("fetches data based on envelope",

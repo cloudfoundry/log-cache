@@ -44,7 +44,7 @@ var _ = Describe("EnvelopeStream", func() {
 		Eventually(storedEnvelopes).Should(Receive(Equal(e)))
 
 		// NOTE: This is thread safe due to the storedEnvelopes channel.
-		Expect(spyMetrics.values["ingress"]).To(Equal(uint64(2)))
+		Expect(spyMetrics.values["Ingress"]).To(Equal(uint64(2)))
 	})
 })
 
