@@ -10,6 +10,7 @@ import (
 
 	loggregator "code.cloudfoundry.org/go-loggregator"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
+	"code.cloudfoundry.org/log-cache/internal/ingress"
 	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"code.cloudfoundry.org/log-cache/internal/store"
 	"code.cloudfoundry.org/log-cache/internal/web"
@@ -121,12 +122,8 @@ func (c *LogCache) Start() {
 
 	go func() {
 		rx := c.connector.Stream(context.Background(), &loggregator_v2.EgressBatchRequest{})
-		ingressMetric := metrics.NewCounter("ingress")
-		for {
-			envelopes := rx()
-			store.Put(envelopes)
-			ingressMetric(uint64(len(envelopes)))
-		}
+		es := ingress.NewEnvelopeStream(ingress.Stream(rx), store.Put, metrics)
+		es.Start()
 	}()
 }
 
