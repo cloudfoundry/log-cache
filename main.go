@@ -1,7 +1,7 @@
 package main
 
 import (
-	_ "expvar"
+	"expvar"
 	"fmt"
 	"log"
 	"net/http"
@@ -41,6 +41,7 @@ func main() {
 		app.WithEgressAddr(cfg.EgressAddr),
 		app.WithStoreSize(cfg.StoreSize),
 		app.WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
+		app.WithMetrics(expvar.NewMap("LogCache")),
 	)
 	cache.Start()
 
