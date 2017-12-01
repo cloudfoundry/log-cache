@@ -6,8 +6,9 @@ import envstruct "code.cloudfoundry.org/go-envstruct"
 type Config struct {
 	LogProviderAddr string `env:"LOGS_PROVIDER_ADDR, required"`
 
-	EgressAddr string `env:"EGRESS_ADDR"`
-	HealthPort int    `env:"HEALTH_PORT"`
+	IngressAddr string `env:"INGRESS_ADDR"`
+	EgressAddr  string `env:"EGRESS_ADDR"`
+	HealthPort  int    `env:"HEALTH_PORT"`
 
 	// StoreSize is the number of envelopes to store.
 	StoreSize int `env:"STORE_SIZE"`
