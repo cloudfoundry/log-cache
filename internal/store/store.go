@@ -54,51 +54,48 @@ func NewStore(size, maxPerSource int, m Metrics) *Store {
 }
 
 // Put adds a batch of envelopes into the store.
-func (s *Store) Put(envs []*loggregator_v2.Envelope) {
+func (s *Store) Put(e *loggregator_v2.Envelope) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, e := range envs {
+	t, ok := s.sourceIDs[e.SourceId]
+	if !ok {
+		t = avltree.NewWith(utils.Int64Comparator)
+		s.sourceIDs[e.SourceId] = t
 
-		t, ok := s.sourceIDs[e.SourceId]
-		if !ok {
-			t = avltree.NewWith(utils.Int64Comparator)
-			s.sourceIDs[e.SourceId] = t
-
-			// Store the tree for pruning purposes.
-			s.oldestValueTree.Put(e.Timestamp, t)
-		}
-
-		var (
-			oldest    int64
-			hasOldest bool
-		)
-		if t.Size() > 0 {
-			oldest = t.Left().Key.(int64)
-			hasOldest = true
-		}
-
-		preSize := t.Size()
-
-		if preSize >= s.maxPerSource {
-			// This sourceID has reached/exceeded its allowed quota. Truncate the
-			// oldest before putting a new envelope in.
-			t.Remove(oldest)
-			s.incExpired(1)
-		}
-
-		t.Put(e.Timestamp, e)
-
-		// Only increment if we didn't overwrite.
-		s.count += t.Size() - preSize
-
-		newOldest := t.Left().Key.(int64)
-		if oldest != newOldest && hasOldest {
-			s.oldestValueTree.Remove(oldest, t)
-			s.oldestValueTree.Put(newOldest, t)
-		}
-
-		s.truncate()
+		// Store the tree for pruning purposes.
+		s.oldestValueTree.Put(e.Timestamp, t)
 	}
+
+	var (
+		oldest    int64
+		hasOldest bool
+	)
+	if t.Size() > 0 {
+		oldest = t.Left().Key.(int64)
+		hasOldest = true
+	}
+
+	preSize := t.Size()
+
+	if preSize >= s.maxPerSource {
+		// This sourceID has reached/exceeded its allowed quota. Truncate the
+		// oldest before putting a new envelope in.
+		t.Remove(oldest)
+		s.incExpired(1)
+	}
+
+	t.Put(e.Timestamp, e)
+
+	// Only increment if we didn't overwrite.
+	s.count += t.Size() - preSize
+
+	newOldest := t.Left().Key.(int64)
+	if oldest != newOldest && hasOldest {
+		s.oldestValueTree.Remove(oldest, t)
+		s.oldestValueTree.Put(newOldest, t)
+	}
+
+	s.truncate()
 
 	oldestValue, _ := s.oldestValueTree.Left()
 	cachePeriod := (time.Now().UnixNano() - oldestValue) / int64(time.Millisecond)

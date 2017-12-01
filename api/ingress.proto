@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package logcache;
+
+import "v2/envelope.proto";
+
+// The ingress service is used to write data into the LogCache system.
+service Ingress {
+    // Send is used to emit Envelopes batches into LogCache. The RPC function
+    // will not return until the data has been stored.
+    rpc Send(SendRequest) returns (SendResponse) {}
+}
+
+message SendRequest {
+    loggregator.v2.EnvelopeBatch envelopes = 1;
+}
+
+message SendResponse {}

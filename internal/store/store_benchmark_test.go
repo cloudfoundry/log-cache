@@ -23,40 +23,40 @@ var (
 )
 
 func BenchmarkStoreWrite(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, nil)
+	s := store.NewStore(StoreSize, StoreSize, nopMetrics{})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		s.Put(gen(10))
+		s.Put(gen())
 	}
 }
 
 func BenchmarkStoreTruncationOnWrite(b *testing.B) {
-	s := store.NewStore(100, 100, nil)
+	s := store.NewStore(100, 100, nopMetrics{})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		s.Put(gen(10))
+		s.Put(gen())
 	}
 }
 
 func BenchmarkStoreWriteParallel(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, nil)
+	s := store.NewStore(StoreSize, StoreSize, nopMetrics{})
 
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			s.Put(gen(10))
+			s.Put(gen())
 		}
 	})
 }
 
 func BenchmarkStoreGetTime5MinRange(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, nil)
+	s := store.NewStore(StoreSize, StoreSize, nopMetrics{})
 
 	for i := 0; i < StoreSize/10; i++ {
-		s.Put(gen(10))
+		s.Put(gen())
 	}
 	now := time.Now()
 	fiveMinAgo := now.Add(-5 * time.Minute)
@@ -68,10 +68,10 @@ func BenchmarkStoreGetTime5MinRange(b *testing.B) {
 }
 
 func BenchmarkStoreGetLogType(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, nil)
+	s := store.NewStore(StoreSize, StoreSize, nopMetrics{})
 
 	for i := 0; i < StoreSize/10; i++ {
-		s.Put(gen(10))
+		s.Put(gen())
 	}
 
 	logType := &loggregator_v2.Log{}
@@ -82,7 +82,7 @@ func BenchmarkStoreGetLogType(b *testing.B) {
 	}
 }
 
-func randEnvGen() func(size int) []*loggregator_v2.Envelope {
+func randEnvGen() func() *loggregator_v2.Envelope {
 	var s []*loggregator_v2.Envelope
 	fiveMinAgo := time.Now().Add(-5 * time.Minute)
 	for i := 0; i < 10000; i++ {
@@ -93,10 +93,9 @@ func randEnvGen() func(size int) []*loggregator_v2.Envelope {
 	}
 
 	var i int
-	return func(size int) []*loggregator_v2.Envelope {
+	return func() *loggregator_v2.Envelope {
 		i++
-		idx := i % (len(s) - size)
-		return s[idx : idx+size]
+		return s[i%len(s)]
 	}
 }
 
@@ -109,4 +108,14 @@ func benchBuildLog(appID string, ts int64) *loggregator_v2.Envelope {
 			Log: &loggregator_v2.Log{},
 		},
 	}
+}
+
+type nopMetrics struct{}
+
+func (n nopMetrics) NewCounter(string) func(delta uint64) {
+	return func(uint64) {}
+}
+
+func (n nopMetrics) NewGauge(string) func(value float64) {
+	return func(float64) {}
 }
