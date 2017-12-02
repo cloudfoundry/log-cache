@@ -22,11 +22,11 @@ func NewPubsub(l LookUp) *Pubsub {
 }
 
 // LookUp is used to convert an envelope into the routing index.
-type LookUp func(e *loggregator_v2.Envelope) uint64
+type LookUp func(sourceID string) int
 
 // Publish writes an envelope to any interested subscribers.
 func (s *Pubsub) Publish(e *loggregator_v2.Envelope) {
-	v, ok := s.subscribers.Load(s.lookup(e))
+	v, ok := s.subscribers.Load(s.lookup(e.SourceId))
 	if !ok {
 		panic("Something has gone poorly. This map is populated ahead of time with known values and this should never happen")
 	}
@@ -38,6 +38,6 @@ func (s *Pubsub) Publish(e *loggregator_v2.Envelope) {
 type Subscription func(*loggregator_v2.Envelope)
 
 // Subscribe stores subscriptions and writes corresponding envelopes.
-func (s *Pubsub) Subscribe(routeIndex uint64, sub Subscription) {
+func (s *Pubsub) Subscribe(routeIndex int, sub Subscription) {
 	s.subscribers.Store(routeIndex, sub)
 }

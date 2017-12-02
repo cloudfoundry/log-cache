@@ -12,8 +12,9 @@ import (
 )
 
 type PeerWriter struct {
-	addr string
-	c    logcache.IngressClient
+	addr   string
+	c      logcache.IngressClient
+	egress logcache.EgressClient
 }
 
 func NewPeerWriter(addr string, opts ...grpc.DialOption) *PeerWriter {
@@ -23,8 +24,9 @@ func NewPeerWriter(addr string, opts ...grpc.DialOption) *PeerWriter {
 	}
 
 	return &PeerWriter{
-		addr: addr,
-		c:    logcache.NewIngressClient(conn),
+		addr:   addr,
+		c:      logcache.NewIngressClient(conn),
+		egress: logcache.NewEgressClient(conn),
 	}
 }
 
@@ -37,4 +39,8 @@ func (w *PeerWriter) Write(e *loggregator_v2.Envelope) {
 	if err != nil {
 		log.Printf("failed to write envelope to %s: %s", w.addr, err)
 	}
+}
+
+func (w *PeerWriter) Read(ctx context.Context, in *logcache.ReadRequest, opts ...grpc.CallOption) (*logcache.ReadResponse, error) {
+	return w.egress.Read(ctx, in, opts...)
 }

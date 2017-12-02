@@ -95,7 +95,7 @@ var _ = Describe("LogCache", func() {
 		}`))
 	})
 
-	It("routes data to peers", func() {
+	It("routes envelopes to peers", func() {
 		peer := newSpyLogCache()
 		peerAddr := peer.start()
 
@@ -121,7 +121,7 @@ var _ = Describe("LogCache", func() {
 		Expect(peer.getEnvelopes()[1].Timestamp).To(Equal(int64(3)))
 	})
 
-	It("accepts data from peers", func() {
+	It("accepts envelopes from peers", func() {
 		streamConnector := newSpyStreamConnector()
 		cache := app.NewLogCache(
 			streamConnector,
@@ -180,6 +180,40 @@ var _ = Describe("LogCache", func() {
 			]
 		}`))
 	})
+
+	It("routes query requests to peers", func() {
+		peer := newSpyLogCache()
+		peerAddr := peer.start()
+		peer.readEnvelopes = []*loggregator_v2.Envelope{
+			{Timestamp: 99},
+			{Timestamp: 101},
+		}
+
+		streamConnector := newSpyStreamConnector()
+
+		cache := app.NewLogCache(
+			streamConnector,
+			app.WithEgressAddr("localhost:0"),
+			app.WithClustered(0, []string{"my-addr", peerAddr}, app.ClusterGrpc{
+				DialOptions: []grpc.DialOption{grpc.WithInsecure()},
+			}),
+		)
+
+		cache.Start()
+
+		// source-1 hashes to 15704273932878139171 (route to node 1)
+		URL := fmt.Sprintf("http://%s/source-1?starttime=99&endtime=101&envelopetype=log", cache.EgressAddr())
+		resp, err := http.Get(URL)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+		Eventually(peer.getReadRequests).Should(HaveLen(1))
+		req := peer.getReadRequests()[0]
+		Expect(req.SourceId).To(Equal("source-1"))
+		Expect(req.StartTime).To(Equal(int64(99)))
+		Expect(req.EndTime).To(Equal(int64(101)))
+		Expect(req.EnvelopeType).To(Equal(logcache.EnvelopeTypes_LOG))
+	})
 })
 
 func addEnvelope(timestamp int64, sourceID string, c *spyStreamConnector) {
@@ -229,8 +263,10 @@ func (s *spyStreamConnector) requests() []*loggregator_v2.EgressBatchRequest {
 }
 
 type spyLogCache struct {
-	mu        sync.Mutex
-	envelopes []*loggregator_v2.Envelope
+	mu            sync.Mutex
+	envelopes     []*loggregator_v2.Envelope
+	readRequests  []*logcache.ReadRequest
+	readEnvelopes []*loggregator_v2.Envelope
 }
 
 func newSpyLogCache() *spyLogCache {
@@ -244,6 +280,7 @@ func (s *spyLogCache) start() string {
 	}
 	srv := grpc.NewServer()
 	logcache.RegisterIngressServer(srv, s)
+	logcache.RegisterEgressServer(srv, s)
 	go srv.Serve(lis)
 
 	return lis.Addr().String()
@@ -257,6 +294,14 @@ func (s *spyLogCache) getEnvelopes() []*loggregator_v2.Envelope {
 	return r
 }
 
+func (s *spyLogCache) getReadRequests() []*logcache.ReadRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r := make([]*logcache.ReadRequest, len(s.readRequests))
+	copy(r, s.readRequests)
+	return r
+}
+
 func (s *spyLogCache) Send(ctx context.Context, r *logcache.SendRequest) (*logcache.SendResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -266,4 +311,17 @@ func (s *spyLogCache) Send(ctx context.Context, r *logcache.SendRequest) (*logca
 	}
 
 	return &logcache.SendResponse{}, nil
+}
+
+func (s *spyLogCache) Read(ctx context.Context, r *logcache.ReadRequest) (*logcache.ReadResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.readRequests = append(s.readRequests, r)
+
+	return &logcache.ReadResponse{
+		Envelopes: &loggregator_v2.EnvelopeBatch{
+			Batch: s.readEnvelopes,
+		},
+	}, nil
 }

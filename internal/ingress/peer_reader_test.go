@@ -1,25 +1,28 @@
 package ingress_test
 
 import (
+	"time"
+
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/ingress"
 	"code.cloudfoundry.org/log-cache/internal/rpc/logcache"
+	"code.cloudfoundry.org/log-cache/internal/store"
 	"golang.org/x/net/context"
 
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("PeerReader", func() {
 	var (
-		r         *ingress.PeerReader
-		envelopes []*loggregator_v2.Envelope
+		r                *ingress.PeerReader
+		spyEnvelopeStore *spyEnvelopeStore
 	)
 
 	BeforeEach(func() {
-		r = ingress.NewPeerReader(func(e []*loggregator_v2.Envelope) {
-			envelopes = e
-		})
+		spyEnvelopeStore = newSpyEnvelopeStore()
+		r = ingress.NewPeerReader(spyEnvelopeStore)
 	})
 
 	It("writes the envelope to the store", func() {
@@ -34,8 +37,94 @@ var _ = Describe("PeerReader", func() {
 
 		Expect(resp).ToNot(BeNil())
 		Expect(err).ToNot(HaveOccurred())
-		Expect(envelopes).To(HaveLen(2))
-		Expect(envelopes[0].Timestamp).To(Equal(int64(1)))
-		Expect(envelopes[1].Timestamp).To(Equal(int64(2)))
+		Expect(spyEnvelopeStore.putEnvelopes).To(HaveLen(2))
+		Expect(spyEnvelopeStore.putEnvelopes[0].Timestamp).To(Equal(int64(1)))
+		Expect(spyEnvelopeStore.putEnvelopes[1].Timestamp).To(Equal(int64(2)))
+	})
+
+	It("reads envelopes from the store", func() {
+		spyEnvelopeStore.getEnvelopes = []*loggregator_v2.Envelope{
+			{Timestamp: 1},
+			{Timestamp: 2},
+		}
+		resp, err := r.Read(context.Background(), &logcache.ReadRequest{
+			SourceId:     "some-source",
+			StartTime:    99,
+			EndTime:      100,
+			Limit:        101,
+			EnvelopeType: logcache.EnvelopeTypes_LOG,
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(resp.Envelopes.Batch).To(HaveLen(2))
+		Expect(spyEnvelopeStore.sourceID).To(Equal("some-source"))
+		Expect(spyEnvelopeStore.start.UnixNano()).To(Equal(int64(99)))
+		Expect(spyEnvelopeStore.end.UnixNano()).To(Equal(int64(100)))
+		Expect(spyEnvelopeStore.envelopeType).To(Equal(&loggregator_v2.Log{}))
+		Expect(spyEnvelopeStore.limit).To(Equal(101))
+	})
+
+	DescribeTable("envelope types", func(t logcache.EnvelopeTypes, expected store.EnvelopeType) {
+		_, err := r.Read(context.Background(), &logcache.ReadRequest{
+			SourceId:     "some-source",
+			StartTime:    99,
+			EndTime:      100,
+			Limit:        101,
+			EnvelopeType: t,
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(spyEnvelopeStore.envelopeType).To(Equal(expected))
+	},
+		Entry("log", logcache.EnvelopeTypes_LOG, &loggregator_v2.Log{}),
+		Entry("counter", logcache.EnvelopeTypes_COUNTER, &loggregator_v2.Counter{}),
+		Entry("gauge", logcache.EnvelopeTypes_GAUGE, &loggregator_v2.Gauge{}),
+		Entry("timer", logcache.EnvelopeTypes_TIMER, &loggregator_v2.Timer{}),
+		Entry("event", logcache.EnvelopeTypes_EVENT, &loggregator_v2.Event{}))
+
+	It("does not set the envelope type for an ANY", func() {
+		_, err := r.Read(context.Background(), &logcache.ReadRequest{
+			SourceId:     "some-source",
+			StartTime:    99,
+			EndTime:      100,
+			Limit:        101,
+			EnvelopeType: logcache.EnvelopeTypes_ANY,
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(spyEnvelopeStore.envelopeType).To(BeNil())
 	})
 })
+
+type spyEnvelopeStore struct {
+	putEnvelopes []*loggregator_v2.Envelope
+	getEnvelopes []*loggregator_v2.Envelope
+
+	sourceID     string
+	start        time.Time
+	end          time.Time
+	envelopeType store.EnvelopeType
+	limit        int
+}
+
+func newSpyEnvelopeStore() *spyEnvelopeStore {
+	return &spyEnvelopeStore{}
+}
+
+func (s *spyEnvelopeStore) Put(e *loggregator_v2.Envelope) {
+	s.putEnvelopes = append(s.putEnvelopes, e)
+}
+
+func (s *spyEnvelopeStore) Get(
+	sourceID string,
+	start time.Time,
+	end time.Time,
+	envelopeType store.EnvelopeType,
+	limit int,
+) []*loggregator_v2.Envelope {
+	s.sourceID = sourceID
+	s.start = start
+	s.end = end
+	s.envelopeType = envelopeType
+	s.limit = limit
+
+	return s.getEnvelopes
+}

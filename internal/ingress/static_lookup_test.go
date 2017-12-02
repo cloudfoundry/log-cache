@@ -1,7 +1,6 @@
 package ingress_test
 
 import (
-	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/ingress"
 
 	. "github.com/onsi/ginkgo"
@@ -31,39 +30,39 @@ var _ = Describe("StaticLookup", func() {
 
 		// Range #0
 		hash = 0
-		i := l.Lookup(&loggregator_v2.Envelope{SourceId: "source-a"})
-		Expect(i).To(Equal(uint64(0)))
+		i := l.Lookup("source-a")
+		Expect(i).To(Equal(0))
 
 		hash = 4611686018427387902
-		i = l.Lookup(&loggregator_v2.Envelope{SourceId: "source-a"})
-		Expect(i).To(Equal(uint64(0)))
+		i = l.Lookup("source-a")
+		Expect(i).To(Equal(0))
 
 		// Range #1
 		hash = 4611686018427387903
-		i = l.Lookup(&loggregator_v2.Envelope{SourceId: "source-a"})
-		Expect(i).To(Equal(uint64(1)))
+		i = l.Lookup("source-a")
+		Expect(i).To(Equal(1))
 
 		hash = 9223372036854775805
-		i = l.Lookup(&loggregator_v2.Envelope{SourceId: "source-a"})
-		Expect(i).To(Equal(uint64(1)))
+		i = l.Lookup("source-a")
+		Expect(i).To(Equal(1))
 
 		// Range #2
 		hash = 9223372036854775806
-		i = l.Lookup(&loggregator_v2.Envelope{SourceId: "source-a"})
-		Expect(i).To(Equal(uint64(2)))
+		i = l.Lookup("source-a")
+		Expect(i).To(Equal(2))
 
 		hash = 13835058055282163708
-		i = l.Lookup(&loggregator_v2.Envelope{SourceId: "source-a"})
-		Expect(i).To(Equal(uint64(2)))
+		i = l.Lookup("source-a")
+		Expect(i).To(Equal(2))
 
 		// Range #3
 		hash = 13835058055282163709
-		i = l.Lookup(&loggregator_v2.Envelope{SourceId: "source-a"})
-		Expect(i).To(Equal(uint64(3)))
+		i = l.Lookup("source-a")
+		Expect(i).To(Equal(3))
 
 		hash = 18446744073709551615
-		i = l.Lookup(&loggregator_v2.Envelope{SourceId: "source-a"})
-		Expect(i).To(Equal(uint64(3)))
+		i = l.Lookup("source-a")
+		Expect(i).To(Equal(3))
 
 		Expect(sourceId).To(Equal("source-a"))
 	})

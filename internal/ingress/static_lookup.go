@@ -3,7 +3,6 @@ package ingress
 import (
 	"log"
 
-	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"github.com/emirpasic/gods/trees/avltree"
 	"github.com/emirpasic/gods/utils"
 )
@@ -35,10 +34,10 @@ func NewStaticLookup(numOfRoutes int, hasher func(string) uint64) *StaticLookup 
 	}
 }
 
-// Lookup hashes the SourceId of the given envelope and then returns the index
-// that is in range of the hash.
-func (l *StaticLookup) Lookup(e *loggregator_v2.Envelope) uint64 {
-	h := l.hash(e.SourceId)
+// Lookup hashes the SourceId and then returns the index that is in range of
+// the hash.
+func (l *StaticLookup) Lookup(sourceID string) int {
+	h := l.hash(sourceID)
 	n, _ := l.t.Floor(h)
-	return n.Value.(uint64)
+	return int(n.Value.(uint64))
 }

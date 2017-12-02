@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package logcache;
+
+import "v2/envelope.proto";
+
+// The egress service is used to read data from the LogCache system.
+service Egress {
+    rpc Read(ReadRequest) returns (ReadResponse) {}
+}
+
+message ReadRequest {
+    string source_id = 1;
+    int64 start_time = 2;
+    int64 end_time = 3;
+    int64 limit = 4;
+    EnvelopeTypes envelope_type = 5;
+}
+
+enum EnvelopeTypes {
+    ANY = 0;
+    LOG = 1;
+    COUNTER = 2;
+    GAUGE = 3;
+    TIMER = 4;
+    EVENT = 5;
+}
+
+message ReadResponse {
+    loggregator.v2.EnvelopeBatch envelopes = 1;
+}

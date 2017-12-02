@@ -12,13 +12,13 @@ var _ = Describe("Pubsub", func() {
 	var (
 		r *ingress.Pubsub
 
-		lookupEnvelope *loggregator_v2.Envelope
-		lookupResult   uint64
+		lookupSourceID string
+		lookupResult   int
 	)
 
 	BeforeEach(func() {
-		lookup := func(e *loggregator_v2.Envelope) uint64 {
-			lookupEnvelope = e
+		lookup := func(sourceID string) int {
+			lookupSourceID = sourceID
 			return lookupResult
 		}
 
@@ -40,12 +40,12 @@ var _ = Describe("Pubsub", func() {
 		})
 
 		lookupResult = 1
-		expected := &loggregator_v2.Envelope{Timestamp: 99}
+		expected := &loggregator_v2.Envelope{SourceId: "some-id"}
 		r.Publish(expected)
 
 		Expect(a).To(Equal(0))
 		Expect(b).To(Equal(1))
 		Expect(actual).To(Equal(expected))
-		Expect(lookupEnvelope).To(Equal(expected))
+		Expect(lookupSourceID).To(Equal("some-id"))
 	})
 })

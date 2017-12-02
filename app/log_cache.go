@@ -157,10 +157,10 @@ func (c *LogCache) Start() {
 	metrics := metrics.New(c.metricMap)
 	store := store.NewStore(c.storeSize, c.maxPerSource, metrics)
 
-	envelopeDestination := c.setupRouting(store)
+	envelopeDestination, proxy := c.setupRouting(store)
 
 	go func() {
-		router := web.NewRouter(store.Get, metrics)
+		router := web.NewRouter(proxy.Get, metrics)
 		server := &http.Server{Handler: router}
 		server.Serve(lis)
 	}()
@@ -172,7 +172,7 @@ func (c *LogCache) Start() {
 	}()
 }
 
-func (c *LogCache) setupRouting(store *store.Store) func(batch []*loggregator_v2.Envelope) {
+func (c *LogCache) setupRouting(s *store.Store) (func(batch []*loggregator_v2.Envelope), *store.ProxyStore) {
 	tableECMA := crc64.MakeTable(crc64.ECMA)
 	hasher := func(s string) uint64 {
 		return crc64.Checksum([]byte(s), tableECMA)
@@ -195,26 +195,32 @@ func (c *LogCache) setupRouting(store *store.Store) func(batch []*loggregator_v2
 	c.ingressLis = ingressLis
 
 	go func() {
-		peerReader := ingress.NewPeerReader(envelopeDestination)
+		peerReader := ingress.NewPeerReader(s)
 		srv := grpc.NewServer()
 		logcache.RegisterIngressServer(srv, peerReader)
+		logcache.RegisterEgressServer(srv, peerReader)
 		if err := srv.Serve(ingressLis); err != nil {
 			log.Fatalf("failed to serve gRPC ingress server: %s", err)
 		}
 	}()
 
+	egressClients := make(map[int]logcache.EgressClient)
+
 	// Register peers and current node
 	for i, addr := range c.nodeAddrs {
 		if i == c.nodeIndex {
-			ps.Subscribe(uint64(i), store.Put)
+			ps.Subscribe(i, s.Put)
 			continue
 		}
 
 		writer := egress.NewPeerWriter(addr, c.clusterGrpc.DialOptions...)
-		ps.Subscribe(uint64(i), writer.Write)
+		ps.Subscribe(i, writer.Write)
+		egressClients[i] = writer
 	}
 
-	return envelopeDestination
+	proxy := store.NewProxyStore(s.Get, c.nodeIndex, egressClients, lookup.Lookup)
+
+	return envelopeDestination, proxy
 }
 
 // EgressAddr returns the address that the LogCache is listening on. This is

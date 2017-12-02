@@ -34,11 +34,21 @@ var _ = Describe("PeerWriter", func() {
 		Eventually(spyLogCache.getEnvelopes).Should(HaveLen(1))
 		Expect(spyLogCache.getEnvelopes()[0].Timestamp).To(Equal(int64(1)))
 	})
+
+	It("reads data from the peer LogCache", func() {
+		req := &logcache.ReadRequest{SourceId: "some-id"}
+		w.Read(context.Background(), req)
+
+		Eventually(spyLogCache.getReadRequests).Should(HaveLen(1))
+		Expect(spyLogCache.getReadRequests()[0].SourceId).To(Equal("some-id"))
+	})
 })
 
 type spyLogCache struct {
-	mu        sync.Mutex
-	envelopes []*loggregator_v2.Envelope
+	mu           sync.Mutex
+	envelopes    []*loggregator_v2.Envelope
+	readRequests []*logcache.ReadRequest
+	readResults  []*loggregator_v2.Envelope
 }
 
 func newSpyLogCache() *spyLogCache {
@@ -52,6 +62,7 @@ func (s *spyLogCache) start() string {
 	}
 	srv := grpc.NewServer()
 	logcache.RegisterIngressServer(srv, s)
+	logcache.RegisterEgressServer(srv, s)
 	go srv.Serve(lis)
 
 	return lis.Addr().String()
@@ -65,6 +76,14 @@ func (s *spyLogCache) getEnvelopes() []*loggregator_v2.Envelope {
 	return r
 }
 
+func (s *spyLogCache) getReadRequests() []*logcache.ReadRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r := make([]*logcache.ReadRequest, len(s.readRequests))
+	copy(r, s.readRequests)
+	return r
+}
+
 func (s *spyLogCache) Send(ctx context.Context, r *logcache.SendRequest) (*logcache.SendResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -74,4 +93,17 @@ func (s *spyLogCache) Send(ctx context.Context, r *logcache.SendRequest) (*logca
 	}
 
 	return &logcache.SendResponse{}, nil
+}
+
+func (s *spyLogCache) Read(ctx context.Context, r *logcache.ReadRequest) (*logcache.ReadResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.readRequests = append(s.readRequests, r)
+
+	return &logcache.ReadResponse{
+		Envelopes: &loggregator_v2.EnvelopeBatch{
+			Batch: s.readResults,
+		},
+	}, nil
 }
