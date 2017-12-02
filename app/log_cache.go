@@ -166,7 +166,9 @@ func (c *LogCache) Start() {
 	}()
 
 	go func() {
-		rx := c.connector.Stream(context.Background(), &loggregator_v2.EgressBatchRequest{})
+		rx := c.connector.Stream(context.Background(), &loggregator_v2.EgressBatchRequest{
+			ShardId: "log-cache",
+		})
 		es := ingress.NewEnvelopeStream(ingress.Stream(rx), envelopeDestination, metrics)
 		es.Start()
 	}()
