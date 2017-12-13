@@ -18,7 +18,7 @@ func main() {
 	log.Print("Starting Log Cache...")
 	defer log.Print("Closing Log Cache.")
 
-	cfg, err := app.LoadConfig()
+	cfg, err := LoadConfig()
 	if err != nil {
 		log.Fatalf("invalid configuration: %s", err)
 	}

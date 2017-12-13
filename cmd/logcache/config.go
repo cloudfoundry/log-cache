@@ -1,4 +1,4 @@
-package app
+package main
 
 import envstruct "code.cloudfoundry.org/go-envstruct"
 
