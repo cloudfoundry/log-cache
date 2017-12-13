@@ -1,6 +1,7 @@
 package ingress
 
 import (
+	"fmt"
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
@@ -46,7 +47,22 @@ func (r *PeerReader) Send(ctx context.Context, req *logcache.SendRequest) (*logc
 
 // Read returns data from the store.
 func (r *PeerReader) Read(ctx context.Context, req *logcache.ReadRequest) (*logcache.ReadResponse, error) {
-	// TODO: Request validation
+	if req.StartTime > req.EndTime {
+		return nil, fmt.Errorf("StartTime (%d) must be before EndTime (%d)", req.StartTime, req.EndTime)
+	}
+
+	if req.Limit > 1000 {
+		return nil, fmt.Errorf("Limit (%d) must be 1000 or less", req.Limit)
+	}
+
+	if req.EndTime == 0 {
+		req.EndTime = time.Now().UnixNano()
+	}
+
+	if req.Limit == 0 {
+		req.Limit = 100
+	}
+
 	envs := r.s.Get(
 		req.SourceId,
 		time.Unix(0, req.StartTime),

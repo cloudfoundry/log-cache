@@ -92,6 +92,41 @@ var _ = Describe("PeerReader", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(spyEnvelopeStore.envelopeType).To(BeNil())
 	})
+
+	It("defaults StartTime to 0, EndTime to now, limit to 100 and EnvelopeType to ANY", func() {
+		_, err := r.Read(context.Background(), &logcache.ReadRequest{
+			SourceId: "some-source",
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(spyEnvelopeStore.sourceID).To(Equal("some-source"))
+		Expect(spyEnvelopeStore.start.UnixNano()).To(Equal(int64(0)))
+		Expect(spyEnvelopeStore.end.UnixNano()).To(BeNumerically("~", time.Now().UnixNano(), time.Second))
+		Expect(spyEnvelopeStore.envelopeType).To(BeNil())
+		Expect(spyEnvelopeStore.limit).To(Equal(100))
+	})
+
+	It("returns an error if the end time is before the start time", func() {
+		_, err := r.Read(context.Background(), &logcache.ReadRequest{
+			SourceId:     "some-source",
+			StartTime:    100,
+			EndTime:      99,
+			Limit:        101,
+			EnvelopeType: logcache.EnvelopeTypes_ANY,
+		})
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("returns an error if the limit is greater than 1000", func() {
+		_, err := r.Read(context.Background(), &logcache.ReadRequest{
+			SourceId:     "some-source",
+			StartTime:    99,
+			EndTime:      100,
+			Limit:        1001,
+			EnvelopeType: logcache.EnvelopeTypes_ANY,
+		})
+		Expect(err).To(HaveOccurred())
+	})
 })
 
 type spyEnvelopeStore struct {
