@@ -8,10 +8,10 @@ import (
 	_ "net/http/pprof"
 	"os"
 
+	logcache "code.cloudfoundry.org/log-cache"
 	"google.golang.org/grpc"
 
 	loggregator "code.cloudfoundry.org/go-loggregator"
-	"code.cloudfoundry.org/log-cache"
 )
 
 func main() {
@@ -38,26 +38,20 @@ func main() {
 		loggregator.WithEnvelopeStreamLogger(log.New(os.Stderr, "[LOGGR] ", log.LstdFlags)),
 	)
 
-	opts := []logcache.LogCacheOption{
+	cache := logcache.New(
+		streamConnector,
 		logcache.WithEgressAddr(cfg.EgressAddr),
 		logcache.WithStoreSize(cfg.StoreSize),
 		logcache.WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
 		logcache.WithMetrics(expvar.NewMap("LogCache")),
-	}
-
-	if len(cfg.NodeAddrs) > 1 {
-		opts = append(opts, logcache.WithClustered(cfg.NodeIndex, cfg.NodeAddrs, logcache.ClusterGrpc{
+		logcache.WithClustered(cfg.NodeIndex, cfg.NodeAddrs, logcache.ClusterGrpc{
 			Addr: cfg.IngressAddr,
 			DialOptions: []grpc.DialOption{
 				grpc.WithInsecure(),
 			},
-		}))
-	}
-
-	cache := logcache.New(
-		streamConnector,
-		opts...,
+		}),
 	)
+
 	cache.Start()
 
 	// health endpoints (pprof and expvar)

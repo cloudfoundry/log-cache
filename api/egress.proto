@@ -3,10 +3,15 @@ syntax = "proto3";
 package logcache;
 
 import "v2/envelope.proto";
+import "google/api/annotations.proto";
 
 // The egress service is used to read data from the LogCache system.
 service Egress {
-    rpc Read(ReadRequest) returns (ReadResponse) {}
+    rpc Read(ReadRequest) returns (ReadResponse) {
+     option (google.api.http) = {
+       get: "/v1/read/{source_id}"
+     };
+    }
 }
 
 message ReadRequest {
