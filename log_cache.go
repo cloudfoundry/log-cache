@@ -1,4 +1,4 @@
-package app
+package logcache
 
 import (
 	"context"
@@ -51,7 +51,7 @@ type StreamConnector interface {
 }
 
 // NewLogCache creates a new LogCache.
-func NewLogCache(c StreamConnector, opts ...LogCacheOption) *LogCache {
+func New(c StreamConnector, opts ...LogCacheOption) *LogCache {
 	cache := &LogCache{
 		connector:    c,
 		egressAddr:   ":8080",

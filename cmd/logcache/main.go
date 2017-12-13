@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc"
 
 	loggregator "code.cloudfoundry.org/go-loggregator"
-	"code.cloudfoundry.org/log-cache/app"
+	"code.cloudfoundry.org/log-cache"
 )
 
 func main() {
@@ -38,15 +38,15 @@ func main() {
 		loggregator.WithEnvelopeStreamLogger(log.New(os.Stderr, "[LOGGR] ", log.LstdFlags)),
 	)
 
-	opts := []app.LogCacheOption{
-		app.WithEgressAddr(cfg.EgressAddr),
-		app.WithStoreSize(cfg.StoreSize),
-		app.WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		app.WithMetrics(expvar.NewMap("LogCache")),
+	opts := []logcache.LogCacheOption{
+		logcache.WithEgressAddr(cfg.EgressAddr),
+		logcache.WithStoreSize(cfg.StoreSize),
+		logcache.WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
+		logcache.WithMetrics(expvar.NewMap("LogCache")),
 	}
 
 	if len(cfg.NodeAddrs) > 1 {
-		opts = append(opts, app.WithClustered(cfg.NodeIndex, cfg.NodeAddrs, app.ClusterGrpc{
+		opts = append(opts, logcache.WithClustered(cfg.NodeIndex, cfg.NodeAddrs, logcache.ClusterGrpc{
 			Addr: cfg.IngressAddr,
 			DialOptions: []grpc.DialOption{
 				grpc.WithInsecure(),
@@ -54,7 +54,7 @@ func main() {
 		}))
 	}
 
-	cache := app.NewLogCache(
+	cache := logcache.New(
 		streamConnector,
 		opts...,
 	)

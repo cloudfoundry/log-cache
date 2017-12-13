@@ -1,4 +1,4 @@
-package app_test
+package logcache_test
 
 import (
 	"context"
@@ -14,9 +14,9 @@ import (
 
 	loggregator "code.cloudfoundry.org/go-loggregator"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"code.cloudfoundry.org/log-cache/app"
+	"code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/egress"
-	"code.cloudfoundry.org/log-cache/internal/rpc/logcache"
+	rpc "code.cloudfoundry.org/log-cache/internal/rpc/logcache"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -29,7 +29,7 @@ var _ = Describe("LogCache", func() {
 		addEnvelope(2, "some-source-id", streamConnector)
 		addEnvelope(3, "some-source-id", streamConnector)
 
-		cache := app.NewLogCache(streamConnector)
+		cache := logcache.New(streamConnector)
 
 		cache.Start()
 
@@ -43,9 +43,9 @@ var _ = Describe("LogCache", func() {
 		addEnvelope(2, "app-b", streamConnector)
 		addEnvelope(3, "app-a", streamConnector)
 
-		cache := app.NewLogCache(
+		cache := logcache.New(
 			streamConnector,
-			app.WithEgressAddr("localhost:0"),
+			logcache.WithEgressAddr("localhost:0"),
 		)
 
 		cache.Start()
@@ -107,10 +107,10 @@ var _ = Describe("LogCache", func() {
 		addEnvelope(2, "source-1", streamConnector)
 		addEnvelope(3, "source-1", streamConnector)
 
-		cache := app.NewLogCache(
+		cache := logcache.New(
 			streamConnector,
-			app.WithEgressAddr("localhost:0"),
-			app.WithClustered(0, []string{"my-addr", peerAddr}, app.ClusterGrpc{
+			logcache.WithEgressAddr("localhost:0"),
+			logcache.WithClustered(0, []string{"my-addr", peerAddr}, logcache.ClusterGrpc{
 				DialOptions: []grpc.DialOption{grpc.WithInsecure()},
 			}),
 		)
@@ -123,10 +123,10 @@ var _ = Describe("LogCache", func() {
 
 	It("accepts envelopes from peers", func() {
 		streamConnector := newSpyStreamConnector()
-		cache := app.NewLogCache(
+		cache := logcache.New(
 			streamConnector,
-			app.WithEgressAddr("localhost:0"),
-			app.WithClustered(0, []string{"my-addr", "other-addr"}, app.ClusterGrpc{
+			logcache.WithEgressAddr("localhost:0"),
+			logcache.WithClustered(0, []string{"my-addr", "other-addr"}, logcache.ClusterGrpc{
 				DialOptions: []grpc.DialOption{grpc.WithInsecure()},
 			}),
 		)
@@ -191,10 +191,10 @@ var _ = Describe("LogCache", func() {
 
 		streamConnector := newSpyStreamConnector()
 
-		cache := app.NewLogCache(
+		cache := logcache.New(
 			streamConnector,
-			app.WithEgressAddr("localhost:0"),
-			app.WithClustered(0, []string{"my-addr", peerAddr}, app.ClusterGrpc{
+			logcache.WithEgressAddr("localhost:0"),
+			logcache.WithClustered(0, []string{"my-addr", peerAddr}, logcache.ClusterGrpc{
 				DialOptions: []grpc.DialOption{grpc.WithInsecure()},
 			}),
 		)
@@ -212,7 +212,7 @@ var _ = Describe("LogCache", func() {
 		Expect(req.SourceId).To(Equal("source-1"))
 		Expect(req.StartTime).To(Equal(int64(99)))
 		Expect(req.EndTime).To(Equal(int64(101)))
-		Expect(req.EnvelopeType).To(Equal(logcache.EnvelopeTypes_LOG))
+		Expect(req.EnvelopeType).To(Equal(rpc.EnvelopeTypes_LOG))
 	})
 })
 
@@ -265,7 +265,7 @@ func (s *spyStreamConnector) requests() []*loggregator_v2.EgressBatchRequest {
 type spyLogCache struct {
 	mu            sync.Mutex
 	envelopes     []*loggregator_v2.Envelope
-	readRequests  []*logcache.ReadRequest
+	readRequests  []*rpc.ReadRequest
 	readEnvelopes []*loggregator_v2.Envelope
 }
 
@@ -279,8 +279,8 @@ func (s *spyLogCache) start() string {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	srv := grpc.NewServer()
-	logcache.RegisterIngressServer(srv, s)
-	logcache.RegisterEgressServer(srv, s)
+	rpc.RegisterIngressServer(srv, s)
+	rpc.RegisterEgressServer(srv, s)
 	go srv.Serve(lis)
 
 	return lis.Addr().String()
@@ -294,15 +294,15 @@ func (s *spyLogCache) getEnvelopes() []*loggregator_v2.Envelope {
 	return r
 }
 
-func (s *spyLogCache) getReadRequests() []*logcache.ReadRequest {
+func (s *spyLogCache) getReadRequests() []*rpc.ReadRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	r := make([]*logcache.ReadRequest, len(s.readRequests))
+	r := make([]*rpc.ReadRequest, len(s.readRequests))
 	copy(r, s.readRequests)
 	return r
 }
 
-func (s *spyLogCache) Send(ctx context.Context, r *logcache.SendRequest) (*logcache.SendResponse, error) {
+func (s *spyLogCache) Send(ctx context.Context, r *rpc.SendRequest) (*rpc.SendResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -310,16 +310,16 @@ func (s *spyLogCache) Send(ctx context.Context, r *logcache.SendRequest) (*logca
 		s.envelopes = append(s.envelopes, e)
 	}
 
-	return &logcache.SendResponse{}, nil
+	return &rpc.SendResponse{}, nil
 }
 
-func (s *spyLogCache) Read(ctx context.Context, r *logcache.ReadRequest) (*logcache.ReadResponse, error) {
+func (s *spyLogCache) Read(ctx context.Context, r *rpc.ReadRequest) (*rpc.ReadResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.readRequests = append(s.readRequests, r)
 
-	return &logcache.ReadResponse{
+	return &rpc.ReadResponse{
 		Envelopes: &loggregator_v2.EnvelopeBatch{
 			Batch: s.readEnvelopes,
 		},
