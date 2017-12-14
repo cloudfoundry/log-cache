@@ -8,9 +8,9 @@ import "google/api/annotations.proto";
 // The egress service is used to read data from the LogCache system.
 service Egress {
     rpc Read(ReadRequest) returns (ReadResponse) {
-     option (google.api.http) = {
-       get: "/v1/read/{source_id}"
-     };
+        option (google.api.http) = {
+            get: "/v1/read/{source_id}"
+        };
     }
 }
 

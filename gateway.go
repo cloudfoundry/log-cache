@@ -61,7 +61,7 @@ func WithGatewayBlock() GatewayOption {
 }
 
 // Start starts the gateway to start receiving and forwarding requests. It
-// does not block.
+// does not block unless WithGatewayBlock was set.
 func (g *Gateway) Start() {
 	lis, err := net.Listen("tcp", g.gatewayAddr)
 	if err != nil {
@@ -76,6 +76,12 @@ func (g *Gateway) Start() {
 	}
 
 	go g.listenAndServe()
+}
+
+// Addr returns the address the gateway is listening on. Start must be called
+// first.
+func (g *Gateway) Addr() string {
+	return g.lis.Addr().String()
 }
 
 func (g *Gateway) listenAndServe() {
@@ -96,10 +102,4 @@ func (g *Gateway) listenAndServe() {
 	if err := server.Serve(g.lis); err != nil {
 		g.log.Fatalf("failed to serve HTTP endpoint: %s", err)
 	}
-}
-
-// Addr returns the address the gateway is listening on. Start must be called
-// first.
-func (g *Gateway) Addr() string {
-	return g.lis.Addr().String()
 }
