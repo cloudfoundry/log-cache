@@ -4,33 +4,33 @@ Log Cache
 Log Cache persists data in memory from the [Loggregator
 System](https://github.com/cloudfoundry/loggregator).
 
-## Restful API
+## Restful API via Gateway
 
 Log Cache implements a restful interface for getting data.
 
-### **GET** `/<source-id>`
+### **GET** `/v1/read/<source-id>`
 
 ##### Request
 
 Query Parameters:
 
-- **starttime** is UNIX timestamp in nanoseconds. It defaults to the start of the
+- **start_time** is UNIX timestamp in nanoseconds. It defaults to the start of the
   cache (e.g. `date +%s`). Start time is inclusive. `[starttime..endtime)`
-- **endtime** is UNIX timestamp in nanoseconds. It defaults to current time of the
+- **end_time** is UNIX timestamp in nanoseconds. It defaults to current time of the
   cache (e.g. `date +%s`). End time is exclusive. `[starttime..endtime)`
-- **envelopetype** is filter for Envelope Type. The available filters are:
-  `log`, `counter`, `gauge`, `timer`, and `event`. If set, then only those
+- **envelope_type** is filter for Envelope Type. The available filters are:
+  `LOG`, `COUNTER`, `GAUGE`, `TIMER`, and `EVENT`. If set, then only those
   types of envelopes will be emitted.
 - **limit** is the maximum number of envelopes to request. The max limit size
   is 1000 and defaults to 100.
 
 ```
-curl http://<log-cache-addr>:8080/<source-id>/?starttime=<start time>&endtime=<end time>
+curl http://<log-cache-addr>:8080/v1/read/<source-id>/?start_time=<start time>&end_time=<end time>
 ```
 
 ##### Response Body
 ```
 {
-  "envelopes": [...]
+  "envelopes": {"batch": [...] }
 }
 ```

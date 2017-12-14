@@ -2,12 +2,9 @@ package logcache_test
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
+	"errors"
 	"log"
 	"net"
-	"net/http"
 	"sync"
 
 	"google.golang.org/grpc"
@@ -29,7 +26,7 @@ var _ = Describe("LogCache", func() {
 		addEnvelope(2, "some-source-id", streamConnector)
 		addEnvelope(3, "some-source-id", streamConnector)
 
-		cache := logcache.New(streamConnector)
+		cache := logcache.New(streamConnector, logcache.WithAddr("127.0.0.1:0"))
 
 		cache.Start()
 
@@ -43,56 +40,37 @@ var _ = Describe("LogCache", func() {
 		addEnvelope(2, "app-b", streamConnector)
 		addEnvelope(3, "app-a", streamConnector)
 
-		cache := logcache.New(
-			streamConnector,
-			logcache.WithEgressAddr("localhost:0"),
-		)
+		cache := logcache.New(streamConnector, logcache.WithAddr("127.0.0.1:0"))
 
 		cache.Start()
 
-		var (
-			resp *http.Response
-			data []byte
-		)
+		conn, err := grpc.Dial(cache.Addr(), grpc.WithInsecure())
+		Expect(err).ToNot(HaveOccurred())
+		defer conn.Close()
+		client := rpc.NewEgressClient(conn)
+
+		var es []*loggregator_v2.Envelope
 		f := func() error {
-			var err error
-			URL := fmt.Sprintf("http://%s/app-a", cache.EgressAddr())
-			resp, err = http.Get(URL)
+			resp, err := client.Read(context.Background(), &rpc.ReadRequest{
+				SourceId: "app-a",
+			})
 			if err != nil {
 				return err
 			}
 
-			data, err = ioutil.ReadAll(resp.Body)
-			if err != nil {
-				return err
+			if len(resp.Envelopes.Batch) != 2 {
+				return errors.New("expected 2 envelopes")
 			}
 
-			var jsonData map[string]interface{}
-			if err := json.Unmarshal(data, &jsonData); err != nil {
-				return err
-			}
-
-			if len(jsonData["envelopes"].([]interface{})) != 2 {
-				return fmt.Errorf("expected 2 but actual %d", len(jsonData["envelopes"].([]interface{})))
-			}
-
+			es = resp.Envelopes.Batch
 			return nil
 		}
 		Eventually(f).Should(BeNil())
 
-		Expect(resp.StatusCode).To(Equal(http.StatusOK))
-		Expect(data).To(MatchJSON(`{
-			"envelopes": [
-				{
-					"timestamp": "1",
-					"sourceId": "app-a"
-				},
-				{
-					"timestamp": "3",
-					"sourceId": "app-a"
-				}
-			]
-		}`))
+		Expect(es[0].Timestamp).To(Equal(int64(1)))
+		Expect(es[0].SourceId).To(Equal("app-a"))
+		Expect(es[1].Timestamp).To(Equal(int64(3)))
+		Expect(es[1].SourceId).To(Equal("app-a"))
 	})
 
 	It("routes envelopes to peers", func() {
@@ -109,10 +87,10 @@ var _ = Describe("LogCache", func() {
 
 		cache := logcache.New(
 			streamConnector,
-			logcache.WithEgressAddr("localhost:0"),
-			logcache.WithClustered(0, []string{"my-addr", peerAddr}, logcache.ClusterGrpc{
-				DialOptions: []grpc.DialOption{grpc.WithInsecure()},
-			}),
+			logcache.WithAddr("127.0.0.1:0"),
+			logcache.WithClustered(0, []string{"my-addr", peerAddr},
+				grpc.WithInsecure(),
+			),
 		)
 
 		cache.Start()
@@ -125,60 +103,46 @@ var _ = Describe("LogCache", func() {
 		streamConnector := newSpyStreamConnector()
 		cache := logcache.New(
 			streamConnector,
-			logcache.WithEgressAddr("localhost:0"),
-			logcache.WithClustered(0, []string{"my-addr", "other-addr"}, logcache.ClusterGrpc{
-				DialOptions: []grpc.DialOption{grpc.WithInsecure()},
-			}),
+			logcache.WithAddr("127.0.0.1:0"),
+			logcache.WithClustered(0, []string{"my-addr", "other-addr"},
+				grpc.WithInsecure(),
+			),
 		)
 		cache.Start()
 
 		peerWriter := egress.NewPeerWriter(
-			cache.IngressAddr(),
+			cache.Addr(),
 			grpc.WithInsecure(),
 		)
 
 		// source-0 hashes to 7700738999732113484 (route to node 0)
 		peerWriter.Write(&loggregator_v2.Envelope{SourceId: "source-0", Timestamp: 1})
 
-		var (
-			resp *http.Response
-			data []byte
-		)
+		conn, err := grpc.Dial(cache.Addr(), grpc.WithInsecure())
+		Expect(err).ToNot(HaveOccurred())
+		defer conn.Close()
+		client := rpc.NewEgressClient(conn)
+
+		var es []*loggregator_v2.Envelope
 		f := func() error {
-			var err error
-			URL := fmt.Sprintf("http://%s/source-0", cache.EgressAddr())
-			resp, err = http.Get(URL)
+			resp, err := client.Read(context.Background(), &rpc.ReadRequest{
+				SourceId: "source-0",
+			})
 			if err != nil {
 				return err
 			}
 
-			data, err = ioutil.ReadAll(resp.Body)
-			if err != nil {
-				return err
+			if len(resp.Envelopes.Batch) != 1 {
+				return errors.New("expected 1 envelopes")
 			}
 
-			var jsonData map[string]interface{}
-			if err := json.Unmarshal(data, &jsonData); err != nil {
-				return err
-			}
-
-			if len(jsonData["envelopes"].([]interface{})) != 1 {
-				return fmt.Errorf("expected 1 but actual %d", len(jsonData["envelopes"].([]interface{})))
-			}
-
+			es = resp.Envelopes.Batch
 			return nil
 		}
 		Eventually(f).Should(BeNil())
 
-		Expect(resp.StatusCode).To(Equal(http.StatusOK))
-		Expect(data).To(MatchJSON(`{
-			"envelopes": [
-				{
-					"timestamp": "1",
-					"sourceId": "source-0"
-				}
-			]
-		}`))
+		Expect(es[0].Timestamp).To(Equal(int64(1)))
+		Expect(es[0].SourceId).To(Equal("source-0"))
 	})
 
 	It("routes query requests to peers", func() {
@@ -193,19 +157,28 @@ var _ = Describe("LogCache", func() {
 
 		cache := logcache.New(
 			streamConnector,
-			logcache.WithEgressAddr("localhost:0"),
-			logcache.WithClustered(0, []string{"my-addr", peerAddr}, logcache.ClusterGrpc{
-				DialOptions: []grpc.DialOption{grpc.WithInsecure()},
-			}),
+			logcache.WithAddr("127.0.0.1:0"),
+			logcache.WithClustered(0, []string{"my-addr", peerAddr},
+				grpc.WithInsecure(),
+			),
 		)
 
 		cache.Start()
 
-		// source-1 hashes to 15704273932878139171 (route to node 1)
-		URL := fmt.Sprintf("http://%s/source-1?starttime=99&endtime=101&envelopetype=log", cache.EgressAddr())
-		resp, err := http.Get(URL)
+		conn, err := grpc.Dial(cache.Addr(), grpc.WithInsecure())
 		Expect(err).ToNot(HaveOccurred())
-		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+		defer conn.Close()
+		client := rpc.NewEgressClient(conn)
+
+		// source-1 hashes to 15704273932878139171 (route to node 1)
+		resp, err := client.Read(context.Background(), &rpc.ReadRequest{
+			SourceId:     "source-1",
+			StartTime:    99,
+			EndTime:      101,
+			EnvelopeType: rpc.EnvelopeTypes_LOG,
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resp.Envelopes.Batch).To(HaveLen(2))
 
 		Eventually(peer.getReadRequests).Should(HaveLen(1))
 		req := peer.getReadRequests()[0]

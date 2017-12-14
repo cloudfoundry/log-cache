@@ -18,11 +18,17 @@ var _ = Describe("PeerReader", func() {
 	var (
 		r                *ingress.PeerReader
 		spyEnvelopeStore *spyEnvelopeStore
+		spyMetrics       *spyMetrics
 	)
 
 	BeforeEach(func() {
 		spyEnvelopeStore = newSpyEnvelopeStore()
-		r = ingress.NewPeerReader(spyEnvelopeStore)
+		spyMetrics = newSpyMetrics()
+		r = ingress.NewPeerReader(
+			spyEnvelopeStore.Put,
+			spyEnvelopeStore.Get,
+			spyMetrics,
+		)
 	})
 
 	It("writes the envelope to the store", func() {
@@ -62,6 +68,8 @@ var _ = Describe("PeerReader", func() {
 		Expect(spyEnvelopeStore.end.UnixNano()).To(Equal(int64(100)))
 		Expect(spyEnvelopeStore.envelopeType).To(Equal(&loggregator_v2.Log{}))
 		Expect(spyEnvelopeStore.limit).To(Equal(101))
+
+		Expect(spyMetrics.values["Egress"]).To(Equal(uint64(2)))
 	})
 
 	DescribeTable("envelope types", func(t logcache.EnvelopeTypes, expected store.EnvelopeType) {

@@ -6,9 +6,8 @@ import envstruct "code.cloudfoundry.org/go-envstruct"
 type Config struct {
 	LogProviderAddr string `env:"LOGS_PROVIDER_ADDR, required"`
 
-	IngressAddr string `env:"INGRESS_ADDR"`
-	EgressAddr  string `env:"EGRESS_ADDR"`
-	HealthPort  int    `env:"HEALTH_PORT"`
+	Addr       string `env:"ADDR, required"`
+	HealthPort int    `env:"HEALTH_PORT"`
 
 	// StoreSize is the number of envelopes to store.
 	StoreSize int `env:"STORE_SIZE"`
@@ -38,7 +37,7 @@ type TLS struct {
 // LoadConfig creates Config object from environment variables
 func LoadConfig() (*Config, error) {
 	c := Config{
-		EgressAddr: ":8080",
+		Addr:       ":8080",
 		StoreSize:  10000,
 		HealthPort: 0,
 	}

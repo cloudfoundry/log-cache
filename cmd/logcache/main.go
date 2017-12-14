@@ -40,16 +40,11 @@ func main() {
 
 	cache := logcache.New(
 		streamConnector,
-		logcache.WithEgressAddr(cfg.EgressAddr),
 		logcache.WithStoreSize(cfg.StoreSize),
 		logcache.WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
 		logcache.WithMetrics(expvar.NewMap("LogCache")),
-		logcache.WithClustered(cfg.NodeIndex, cfg.NodeAddrs, logcache.ClusterGrpc{
-			Addr: cfg.IngressAddr,
-			DialOptions: []grpc.DialOption{
-				grpc.WithInsecure(),
-			},
-		}),
+		logcache.WithAddr(cfg.Addr),
+		logcache.WithClustered(cfg.NodeIndex, cfg.NodeAddrs, grpc.WithInsecure()),
 	)
 
 	cache.Start()

@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
-	"net/http"
 
 	"google.golang.org/grpc"
 
@@ -18,23 +17,21 @@ import (
 	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"code.cloudfoundry.org/log-cache/internal/rpc/logcache"
 	"code.cloudfoundry.org/log-cache/internal/store"
-	"code.cloudfoundry.org/log-cache/internal/web"
 )
 
 // LogCache is a in memory cache for Loggregator envelopes.
 type LogCache struct {
-	connector  StreamConnector
-	egressAddr string
-	log        *log.Logger
-	egressLis  net.Listener
-	ingressLis net.Listener
-	metricMap  MetricMap
+	connector StreamConnector
+	log       *log.Logger
+	lis       net.Listener
+	metricMap MetricMap
 
 	storeSize    int
 	maxPerSource int
 
 	// Cluster Properties
-	clusterGrpc ClusterGrpc
+	addr     string
+	dialOpts []grpc.DialOption
 
 	// nodeAddrs are the addresses of all the nodes (including the current
 	// node). The index corresponds with the nodeIndex. It defaults to a
@@ -54,7 +51,6 @@ type StreamConnector interface {
 func New(c StreamConnector, opts ...LogCacheOption) *LogCache {
 	cache := &LogCache{
 		connector:    c,
-		egressAddr:   ":8080",
 		log:          log.New(ioutil.Discard, "", 0),
 		storeSize:    10000000,
 		maxPerSource: 100000,
@@ -62,6 +58,7 @@ func New(c StreamConnector, opts ...LogCacheOption) *LogCache {
 		// Defaults to a single entry. The default does not route data.
 		nodeAddrs: []string{"bogus-address"},
 		nodeIndex: 0,
+		addr:      ":8080",
 	}
 
 	for _, o := range opts {
@@ -82,14 +79,6 @@ func WithLogger(l *log.Logger) LogCacheOption {
 	}
 }
 
-// WithEgressAddr returns a LogCacheOption that configures the LogCache's
-// egress address. It defaults to ":8080".
-func WithEgressAddr(addr string) LogCacheOption {
-	return func(c *LogCache) {
-		c.egressAddr = addr
-	}
-}
-
 // WithStoreSize returns a LogCacheOption that configures the store's
 // memory size as number of envelopes. Defaults to 1000000 envelopes.
 func WithStoreSize(size int) LogCacheOption {
@@ -107,13 +96,12 @@ func WithMaxPerSource(size int) LogCacheOption {
 	}
 }
 
-// ClusterGrpc configures the gRPC for cluster communication.
-type ClusterGrpc struct {
-	// Addr is the address to bind to for incoming messages. Defaults to :0.
-	Addr string
-
-	// DialOptions are used to configure dialers to write to peers.
-	DialOptions []grpc.DialOption
+// WithAddr configures the address to listen for gRPC requests. It defaults to
+// :8080.
+func WithAddr(addr string) LogCacheOption {
+	return func(c *LogCache) {
+		c.addr = addr
+	}
 }
 
 // WithClustered enables the LogCache to route data to peer nodes. It hashes
@@ -122,11 +110,11 @@ type ClusterGrpc struct {
 // index corresponds to the NodeIndex. The current node's address is included.
 // The default is standalone mode where the LogCache will store all the data
 // and forward none of it.
-func WithClustered(nodeIndex int, nodeAddrs []string, g ClusterGrpc) LogCacheOption {
+func WithClustered(nodeIndex int, nodeAddrs []string, opts ...grpc.DialOption) LogCacheOption {
 	return func(c *LogCache) {
 		c.nodeIndex = nodeIndex
 		c.nodeAddrs = nodeAddrs
-		c.clusterGrpc = g
+		c.dialOpts = opts
 	}
 }
 
@@ -147,23 +135,10 @@ func WithMetrics(m MetricMap) LogCacheOption {
 // Start starts the LogCache. It has an internal go-routine that it creates
 // and therefore does not block.
 func (c *LogCache) Start() {
-	lis, err := net.Listen("tcp", c.egressAddr)
-	if err != nil {
-		c.log.Fatalf("failed to listen on addr %s: %s", c.egressAddr, err)
-	}
-	c.egressLis = lis
-	c.log.Printf("listening on %s...", lis.Addr().String())
-
 	metrics := metrics.New(c.metricMap)
 	store := store.NewStore(c.storeSize, c.maxPerSource, metrics)
 
-	envelopeDestination, proxy := c.setupRouting(store)
-
-	go func() {
-		router := web.NewRouter(proxy.Get, metrics)
-		server := &http.Server{Handler: router}
-		server.Serve(lis)
-	}()
+	envelopeDestination := c.setupRouting(store, metrics)
 
 	go func() {
 		rx := c.connector.Stream(context.Background(), &loggregator_v2.EgressBatchRequest{
@@ -174,7 +149,7 @@ func (c *LogCache) Start() {
 	}()
 }
 
-func (c *LogCache) setupRouting(s *store.Store) (func(batch []*loggregator_v2.Envelope), *store.ProxyStore) {
+func (c *LogCache) setupRouting(s *store.Store, m *metrics.Metrics) func(batch []*loggregator_v2.Envelope) {
 	tableECMA := crc64.MakeTable(crc64.ECMA)
 	hasher := func(s string) uint64 {
 		return crc64.Checksum([]byte(s), tableECMA)
@@ -190,21 +165,12 @@ func (c *LogCache) setupRouting(s *store.Store) (func(batch []*loggregator_v2.En
 	}
 
 	// gRPC
-	ingressLis, err := net.Listen("tcp", c.clusterGrpc.Addr)
+	lis, err := net.Listen("tcp", c.addr)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	c.ingressLis = ingressLis
-
-	go func() {
-		peerReader := ingress.NewPeerReader(s)
-		srv := grpc.NewServer()
-		logcache.RegisterIngressServer(srv, peerReader)
-		logcache.RegisterEgressServer(srv, peerReader)
-		if err := srv.Serve(ingressLis); err != nil {
-			log.Fatalf("failed to serve gRPC ingress server: %s", err)
-		}
-	}()
+	c.lis = lis
+	c.log.Printf("listening on %s...", c.Addr())
 
 	egressClients := make(map[int]logcache.EgressClient)
 
@@ -215,25 +181,28 @@ func (c *LogCache) setupRouting(s *store.Store) (func(batch []*loggregator_v2.En
 			continue
 		}
 
-		writer := egress.NewPeerWriter(addr, c.clusterGrpc.DialOptions...)
+		writer := egress.NewPeerWriter(addr, c.dialOpts...)
 		ps.Subscribe(i, writer.Write)
 		egressClients[i] = writer
 	}
 
 	proxy := store.NewProxyStore(s.Get, c.nodeIndex, egressClients, lookup.Lookup)
 
-	return envelopeDestination, proxy
+	go func() {
+		peerReader := ingress.NewPeerReader(ps.Publish, proxy.Get, m)
+		srv := grpc.NewServer()
+		logcache.RegisterIngressServer(srv, peerReader)
+		logcache.RegisterEgressServer(srv, peerReader)
+		if err := srv.Serve(lis); err != nil {
+			log.Fatalf("failed to serve gRPC ingress server: %s", err)
+		}
+	}()
+
+	return envelopeDestination
 }
 
-// EgressAddr returns the address that the LogCache is listening on. This is
-// only valid after Start has been invoked.
-func (c *LogCache) EgressAddr() string {
-	return c.egressLis.Addr().String()
-}
-
-// IngressAddr returns the address that the LogCache is listening on for
-// incoming envelopes. This is only valid after Start has been invoked with
-// clustered mode.
-func (c *LogCache) IngressAddr() string {
-	return c.ingressLis.Addr().String()
+// Addr returns the address that the LogCache is listening on. This is only
+// valid after Start has been invoked.
+func (c *LogCache) Addr() string {
+	return c.lis.Addr().String()
 }
