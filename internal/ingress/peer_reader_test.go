@@ -18,11 +18,17 @@ var _ = Describe("PeerReader", func() {
 	var (
 		r                *ingress.PeerReader
 		spyEnvelopeStore *spyEnvelopeStore
+		spyMetrics       *spyMetrics
 	)
 
 	BeforeEach(func() {
 		spyEnvelopeStore = newSpyEnvelopeStore()
-		r = ingress.NewPeerReader(spyEnvelopeStore)
+		spyMetrics = newSpyMetrics()
+		r = ingress.NewPeerReader(
+			spyEnvelopeStore.Put,
+			spyEnvelopeStore.Get,
+			spyMetrics,
+		)
 	})
 
 	It("writes the envelope to the store", func() {
@@ -62,6 +68,8 @@ var _ = Describe("PeerReader", func() {
 		Expect(spyEnvelopeStore.end.UnixNano()).To(Equal(int64(100)))
 		Expect(spyEnvelopeStore.envelopeType).To(Equal(&loggregator_v2.Log{}))
 		Expect(spyEnvelopeStore.limit).To(Equal(101))
+
+		Expect(spyMetrics.values["Egress"]).To(Equal(uint64(2)))
 	})
 
 	DescribeTable("envelope types", func(t logcache.EnvelopeTypes, expected store.EnvelopeType) {
@@ -91,6 +99,41 @@ var _ = Describe("PeerReader", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(spyEnvelopeStore.envelopeType).To(BeNil())
+	})
+
+	It("defaults StartTime to 0, EndTime to now, limit to 100 and EnvelopeType to ANY", func() {
+		_, err := r.Read(context.Background(), &logcache.ReadRequest{
+			SourceId: "some-source",
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(spyEnvelopeStore.sourceID).To(Equal("some-source"))
+		Expect(spyEnvelopeStore.start.UnixNano()).To(Equal(int64(0)))
+		Expect(spyEnvelopeStore.end.UnixNano()).To(BeNumerically("~", time.Now().UnixNano(), time.Second))
+		Expect(spyEnvelopeStore.envelopeType).To(BeNil())
+		Expect(spyEnvelopeStore.limit).To(Equal(100))
+	})
+
+	It("returns an error if the end time is before the start time", func() {
+		_, err := r.Read(context.Background(), &logcache.ReadRequest{
+			SourceId:     "some-source",
+			StartTime:    100,
+			EndTime:      99,
+			Limit:        101,
+			EnvelopeType: logcache.EnvelopeTypes_ANY,
+		})
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("returns an error if the limit is greater than 1000", func() {
+		_, err := r.Read(context.Background(), &logcache.ReadRequest{
+			SourceId:     "some-source",
+			StartTime:    99,
+			EndTime:      100,
+			Limit:        1001,
+			EnvelopeType: logcache.EnvelopeTypes_ANY,
+		})
+		Expect(err).To(HaveOccurred())
 	})
 })
 

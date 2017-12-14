@@ -8,17 +8,17 @@ import (
 	_ "net/http/pprof"
 	"os"
 
+	logcache "code.cloudfoundry.org/log-cache"
 	"google.golang.org/grpc"
 
 	loggregator "code.cloudfoundry.org/go-loggregator"
-	"code.cloudfoundry.org/log-cache/app"
 )
 
 func main() {
 	log.Print("Starting Log Cache...")
 	defer log.Print("Closing Log Cache.")
 
-	cfg, err := app.LoadConfig()
+	cfg, err := LoadConfig()
 	if err != nil {
 		log.Fatalf("invalid configuration: %s", err)
 	}
@@ -38,26 +38,15 @@ func main() {
 		loggregator.WithEnvelopeStreamLogger(log.New(os.Stderr, "[LOGGR] ", log.LstdFlags)),
 	)
 
-	opts := []app.LogCacheOption{
-		app.WithEgressAddr(cfg.EgressAddr),
-		app.WithStoreSize(cfg.StoreSize),
-		app.WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		app.WithMetrics(expvar.NewMap("LogCache")),
-	}
-
-	if len(cfg.NodeAddrs) > 1 {
-		opts = append(opts, app.WithClustered(cfg.NodeIndex, cfg.NodeAddrs, app.ClusterGrpc{
-			Addr: cfg.IngressAddr,
-			DialOptions: []grpc.DialOption{
-				grpc.WithInsecure(),
-			},
-		}))
-	}
-
-	cache := app.NewLogCache(
+	cache := logcache.New(
 		streamConnector,
-		opts...,
+		logcache.WithStoreSize(cfg.StoreSize),
+		logcache.WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
+		logcache.WithMetrics(expvar.NewMap("LogCache")),
+		logcache.WithAddr(cfg.Addr),
+		logcache.WithClustered(cfg.NodeIndex, cfg.NodeAddrs, grpc.WithInsecure()),
 	)
+
 	cache.Start()
 
 	// health endpoints (pprof and expvar)

@@ -1,6 +1,7 @@
 package ingress
 
 import (
+	"fmt"
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
@@ -12,42 +13,59 @@ import (
 // PeerReader reads envelopes from peers. It implements
 // logcache.IngressServer.
 type PeerReader struct {
-	s EnvelopeStore
+	put       Putter
+	get       Getter
+	egressInc func(delta uint64)
 }
 
-type EnvelopeStore interface {
-	// Put writes envelopes to the store.
-	Put(*loggregator_v2.Envelope)
+// Putter writes envelopes to the store.
+type Putter func(*loggregator_v2.Envelope)
 
-	// Get fetches envelopes based on the given criteria.
-	Get(
-		sourceID string,
-		start time.Time,
-		end time.Time,
-		envelopeType store.EnvelopeType,
-		limit int,
-	) []*loggregator_v2.Envelope
-}
+// Getter fetches envelopes based on the given criteria.
+type Getter func(
+	sourceID string,
+	start time.Time,
+	end time.Time,
+	envelopeType store.EnvelopeType,
+	limit int,
+) []*loggregator_v2.Envelope
 
 // NewPeerReader creates and returns a new PeerReader.
-func NewPeerReader(s EnvelopeStore) *PeerReader {
+func NewPeerReader(p Putter, g Getter, m MetricClient) *PeerReader {
 	return &PeerReader{
-		s: s,
+		put:       p,
+		get:       g,
+		egressInc: m.NewCounter("Egress"),
 	}
 }
 
 // Send takes in data from the peer and submits it to the store.
 func (r *PeerReader) Send(ctx context.Context, req *logcache.SendRequest) (*logcache.SendResponse, error) {
 	for _, e := range req.Envelopes.Batch {
-		r.s.Put(e)
+		r.put(e)
 	}
 	return &logcache.SendResponse{}, nil
 }
 
 // Read returns data from the store.
 func (r *PeerReader) Read(ctx context.Context, req *logcache.ReadRequest) (*logcache.ReadResponse, error) {
-	// TODO: Request validation
-	envs := r.s.Get(
+	if req.StartTime > req.EndTime {
+		return nil, fmt.Errorf("StartTime (%d) must be before EndTime (%d)", req.StartTime, req.EndTime)
+	}
+
+	if req.Limit > 1000 {
+		return nil, fmt.Errorf("Limit (%d) must be 1000 or less", req.Limit)
+	}
+
+	if req.EndTime == 0 {
+		req.EndTime = time.Now().UnixNano()
+	}
+
+	if req.Limit == 0 {
+		req.Limit = 100
+	}
+
+	envs := r.get(
 		req.SourceId,
 		time.Unix(0, req.StartTime),
 		time.Unix(0, req.EndTime),
@@ -59,6 +77,9 @@ func (r *PeerReader) Read(ctx context.Context, req *logcache.ReadRequest) (*logc
 			Batch: envs,
 		},
 	}
+
+	r.egressInc(uint64(len(resp.Envelopes.Batch)))
+
 	return resp, nil
 }
 

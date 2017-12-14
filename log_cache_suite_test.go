@@ -1,4 +1,4 @@
-package app_test
+package logcache_test
 
 import (
 	. "github.com/onsi/ginkgo"
@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestApp(t *testing.T) {
+func TestLogCache(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Log Cache - App Suite")
+	RunSpecs(t, "LogCache Suite")
 }
