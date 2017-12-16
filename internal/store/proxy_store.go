@@ -93,7 +93,6 @@ func (s *ProxyStore) convertEnvelopeType(t EnvelopeType) logcache.EnvelopeTypes 
 	case *loggregator_v2.Event:
 		return logcache.EnvelopeTypes_EVENT
 	default:
-		log.Printf("%T", t)
 		return logcache.EnvelopeTypes_ANY
 	}
 }
