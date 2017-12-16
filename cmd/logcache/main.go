@@ -10,8 +10,6 @@ import (
 
 	logcache "code.cloudfoundry.org/log-cache"
 	"google.golang.org/grpc"
-
-	loggregator "code.cloudfoundry.org/go-loggregator"
 )
 
 func main() {
@@ -23,23 +21,7 @@ func main() {
 		log.Fatalf("invalid configuration: %s", err)
 	}
 
-	tlsCfg, err := loggregator.NewEgressTLSConfig(
-		cfg.TLS.LogProviderCA,
-		cfg.TLS.LogProviderCert,
-		cfg.TLS.LogProviderKey,
-	)
-	if err != nil {
-		log.Fatalf("invalid TLS configuration: %s", err)
-	}
-
-	streamConnector := loggregator.NewEnvelopeStreamConnector(
-		cfg.LogProviderAddr,
-		tlsCfg,
-		loggregator.WithEnvelopeStreamLogger(log.New(os.Stderr, "[LOGGR] ", log.LstdFlags)),
-	)
-
 	cache := logcache.New(
-		streamConnector,
 		logcache.WithStoreSize(cfg.StoreSize),
 		logcache.WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
 		logcache.WithMetrics(expvar.NewMap("LogCache")),

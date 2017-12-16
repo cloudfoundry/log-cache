@@ -4,14 +4,11 @@ import envstruct "code.cloudfoundry.org/go-envstruct"
 
 // Config is the configuration for a LogCache.
 type Config struct {
-	LogProviderAddr string `env:"LOGS_PROVIDER_ADDR, required"`
-
 	Addr       string `env:"ADDR, required"`
 	HealthPort int    `env:"HEALTH_PORT"`
 
 	// StoreSize is the number of envelopes to store.
 	StoreSize int `env:"STORE_SIZE"`
-	TLS       TLS
 
 	// NodeIndex determines what data the node stores. It splits up the
 	// range
@@ -25,13 +22,6 @@ type Config struct {
 	// If NodeAddrs is emptpy or size 1, then data is not routed as it is
 	// assumed that the current node is the only one.
 	NodeAddrs []string `env:"NODE_ADDRS"`
-}
-
-// TLS is the TLS configuration for a LogCache.
-type TLS struct {
-	LogProviderCA   string `env:"LOGS_PROVIDER_CA_FILE_PATH, required"`
-	LogProviderCert string `env:"LOGS_PROVIDER_CERT_FILE_PATH, required"`
-	LogProviderKey  string `env:"LOGS_PROVIDER_KEY_FILE_PATH, required"`
 }
 
 // LoadConfig creates Config object from environment variables

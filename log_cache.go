@@ -1,7 +1,6 @@
 package logcache
 
 import (
-	"context"
 	"expvar"
 	"hash/crc64"
 	"io/ioutil"
@@ -10,8 +9,6 @@ import (
 
 	"google.golang.org/grpc"
 
-	loggregator "code.cloudfoundry.org/go-loggregator"
-	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/egress"
 	"code.cloudfoundry.org/log-cache/internal/ingress"
 	"code.cloudfoundry.org/log-cache/internal/metrics"
@@ -21,7 +18,6 @@ import (
 
 // LogCache is a in memory cache for Loggregator envelopes.
 type LogCache struct {
-	connector StreamConnector
 	log       *log.Logger
 	lis       net.Listener
 	metricMap MetricMap
@@ -41,16 +37,9 @@ type LogCache struct {
 	nodeIndex int
 }
 
-// StreamConnector reads envelopes from the the logs provider.
-type StreamConnector interface {
-	// Stream creates a EnvelopeStream for the given request.
-	Stream(ctx context.Context, req *loggregator_v2.EgressBatchRequest) loggregator.EnvelopeStream
-}
-
 // NewLogCache creates a new LogCache.
-func New(c StreamConnector, opts ...LogCacheOption) *LogCache {
+func New(opts ...LogCacheOption) *LogCache {
 	cache := &LogCache{
-		connector:    c,
 		log:          log.New(ioutil.Discard, "", 0),
 		storeSize:    10000000,
 		maxPerSource: 100000,
@@ -138,18 +127,10 @@ func (c *LogCache) Start() {
 	metrics := metrics.New(c.metricMap)
 	store := store.NewStore(c.storeSize, c.maxPerSource, metrics)
 
-	envelopeDestination := c.setupRouting(store, metrics)
-
-	go func() {
-		rx := c.connector.Stream(context.Background(), &loggregator_v2.EgressBatchRequest{
-			ShardId: "log-cache",
-		})
-		es := ingress.NewEnvelopeStream(ingress.Stream(rx), envelopeDestination, metrics)
-		es.Start()
-	}()
+	c.setupRouting(store, metrics)
 }
 
-func (c *LogCache) setupRouting(s *store.Store, m *metrics.Metrics) func(batch []*loggregator_v2.Envelope) {
+func (c *LogCache) setupRouting(s *store.Store, m *metrics.Metrics) {
 	tableECMA := crc64.MakeTable(crc64.ECMA)
 	hasher := func(s string) uint64 {
 		return crc64.Checksum([]byte(s), tableECMA)
@@ -157,12 +138,6 @@ func (c *LogCache) setupRouting(s *store.Store, m *metrics.Metrics) func(batch [
 
 	lookup := ingress.NewStaticLookup(len(c.nodeAddrs), hasher)
 	ps := ingress.NewPubsub(lookup.Lookup)
-
-	envelopeDestination := func(batch []*loggregator_v2.Envelope) {
-		for _, e := range batch {
-			ps.Publish(e)
-		}
-	}
 
 	// gRPC
 	lis, err := net.Listen("tcp", c.addr)
@@ -197,8 +172,6 @@ func (c *LogCache) setupRouting(s *store.Store, m *metrics.Metrics) func(batch [
 			log.Fatalf("failed to serve gRPC ingress server: %s", err)
 		}
 	}()
-
-	return envelopeDestination
 }
 
 // Addr returns the address that the LogCache is listening on. This is only
