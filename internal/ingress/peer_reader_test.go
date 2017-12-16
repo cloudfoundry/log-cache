@@ -123,6 +123,15 @@ var _ = Describe("PeerReader", func() {
 			EnvelopeType: logcache.EnvelopeTypes_ANY,
 		})
 		Expect(err).To(HaveOccurred())
+
+		// Don't return an error if end is left out
+		_, err = r.Read(context.Background(), &logcache.ReadRequest{
+			SourceId:     "some-source",
+			StartTime:    100,
+			Limit:        101,
+			EnvelopeType: logcache.EnvelopeTypes_ANY,
+		})
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	It("returns an error if the limit is greater than 1000", func() {

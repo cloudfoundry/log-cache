@@ -49,7 +49,7 @@ func (r *PeerReader) Send(ctx context.Context, req *logcache.SendRequest) (*logc
 
 // Read returns data from the store.
 func (r *PeerReader) Read(ctx context.Context, req *logcache.ReadRequest) (*logcache.ReadResponse, error) {
-	if req.StartTime > req.EndTime {
+	if req.EndTime != 0 && req.StartTime > req.EndTime {
 		return nil, fmt.Errorf("StartTime (%d) must be before EndTime (%d)", req.StartTime, req.EndTime)
 	}
 
