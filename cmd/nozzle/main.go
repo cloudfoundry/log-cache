@@ -28,10 +28,14 @@ func main() {
 		log.Fatalf("invalid TLS configuration: %s", err)
 	}
 
+	loggr := log.New(os.Stderr, "[LOGGR] ", log.LstdFlags)
 	streamConnector := loggregator.NewEnvelopeStreamConnector(
 		cfg.LogProviderAddr,
 		tlsCfg,
-		loggregator.WithEnvelopeStreamLogger(log.New(os.Stderr, "[LOGGR] ", log.LstdFlags)),
+		loggregator.WithEnvelopeStreamLogger(loggr),
+		loggregator.WithEnvelopeStreamBuffer(100, func(missed int) {
+			loggr.Printf("dropped %d envelope batches", missed)
+		}),
 	)
 
 	nozzle := logcache.NewNozzle(

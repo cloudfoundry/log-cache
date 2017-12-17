@@ -77,7 +77,7 @@ func (n *Nozzle) Start() {
 	client := logcache.NewIngressClient(conn)
 
 	for {
-		ctx, _ := context.WithTimeout(context.Background(), time.Second)
+		ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
 		_, err := client.Send(ctx, &logcache.SendRequest{
 			Envelopes: &loggregator_v2.EnvelopeBatch{
 				Batch: rx(),
