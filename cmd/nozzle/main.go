@@ -1,11 +1,13 @@
 package main
 
 import (
+	"expvar"
 	"log"
 	_ "net/http/pprof"
 	"os"
 
 	logcache "code.cloudfoundry.org/log-cache"
+	"code.cloudfoundry.org/log-cache/internal/metrics"
 
 	loggregator "code.cloudfoundry.org/go-loggregator"
 )
@@ -33,7 +35,7 @@ func main() {
 		cfg.LogProviderAddr,
 		tlsCfg,
 		loggregator.WithEnvelopeStreamLogger(loggr),
-		loggregator.WithEnvelopeStreamBuffer(100, func(missed int) {
+		loggregator.WithEnvelopeStreamBuffer(10000, func(missed int) {
 			loggr.Printf("dropped %d envelope batches", missed)
 		}),
 	)
@@ -42,6 +44,7 @@ func main() {
 		streamConnector,
 		cfg.LogCacheAddr,
 		logcache.WithNozzleLogger(log.New(os.Stderr, "", log.LstdFlags)),
+		logcache.WithNozzleMetrics(metrics.New(expvar.NewMap("Nozzle"))),
 	)
 
 	nozzle.Start()

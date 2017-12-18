@@ -17,14 +17,18 @@ var _ = Describe("Nozzle", func() {
 		n               *logcache.Nozzle
 		streamConnector *spyStreamConnector
 		logCache        *spyLogCache
+		metricMap       *spyMetrics
 	)
 
 	BeforeEach(func() {
 		streamConnector = newSpyStreamConnector()
+		metricMap = newSpyMetrics()
 		logCache = newSpyLogCache()
 		addr := logCache.start()
 
-		n = logcache.NewNozzle(streamConnector, addr)
+		n = logcache.NewNozzle(streamConnector, addr,
+			logcache.WithNozzleMetrics(metricMap),
+		)
 		go n.Start()
 	})
 
@@ -47,6 +51,16 @@ var _ = Describe("Nozzle", func() {
 		Expect(logCache.getEnvelopes()[0].Timestamp).To(Equal(int64(1)))
 		Expect(logCache.getEnvelopes()[1].Timestamp).To(Equal(int64(2)))
 		Expect(logCache.getEnvelopes()[2].Timestamp).To(Equal(int64(3)))
+	})
+
+	It("writes Ingress, Egress and Err metrics", func() {
+		addEnvelope(1, "some-source-id", streamConnector)
+		addEnvelope(2, "some-source-id", streamConnector)
+		addEnvelope(3, "some-source-id", streamConnector)
+
+		Eventually(metricMap.getter("Ingress")).Should(Equal(uint64(3)))
+		Eventually(metricMap.getter("Ingress")).Should(Equal(uint64(3)))
+		Eventually(metricMap.getter("Err")).Should(Equal(uint64(0)))
 	})
 })
 
@@ -94,4 +108,39 @@ func (s *spyStreamConnector) requests() []*loggregator_v2.EgressBatchRequest {
 	copy(reqs, s.requests_)
 
 	return reqs
+}
+
+type spyMetrics struct {
+	mu sync.Mutex
+	m  map[string]uint64
+}
+
+func newSpyMetrics() *spyMetrics {
+	return &spyMetrics{
+		m: make(map[string]uint64),
+	}
+}
+
+func (s *spyMetrics) NewCounter(key string) func(uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.m[key] = 0
+
+	return func(i uint64) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.m[key] += i
+	}
+}
+
+func (s *spyMetrics) getter(key string) func() uint64 {
+	return func() uint64 {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		value, ok := s.m[key]
+		if !ok {
+			return 99999999999
+		}
+		return value
+	}
 }

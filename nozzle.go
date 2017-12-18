@@ -14,8 +14,9 @@ import (
 
 // Nozzle reads envelopes and writes them to LogCache.
 type Nozzle struct {
-	log *log.Logger
-	s   StreamConnector
+	log     *log.Logger
+	s       StreamConnector
+	metrics Metrics
 
 	// LogCache
 	addr string
@@ -55,6 +56,20 @@ func WithNozzleLogger(l *log.Logger) NozzleOption {
 	}
 }
 
+// Metrics registers Counter metrics.
+type Metrics interface {
+	// NewCounter returns a function to increment for the given metric.
+	NewCounter(name string) func(delta uint64)
+}
+
+// WithNozzleMetrics returns a NozzleOption that configures the metrics for the
+// Nozzle. It will add metrics to the given map.
+func WithNozzleMetrics(m Metrics) NozzleOption {
+	return func(n *Nozzle) {
+		n.metrics = m
+	}
+}
+
 // WithNozzleDialOpts returns a NozzleOption that configures the dial options
 // for dialing the LogCache. It defaults to grpc.WithInsecure().
 func WithNozzleDialOpts(opts ...grpc.DialOption) NozzleOption {
@@ -76,16 +91,27 @@ func (n *Nozzle) Start() {
 	}
 	client := logcache.NewIngressClient(conn)
 
+	ingressInc := n.metrics.NewCounter("Ingress")
+	egressInc := n.metrics.NewCounter("Egress")
+	errInc := n.metrics.NewCounter("Err")
+
 	for {
+		batch := rx()
+		ingressInc(uint64(len(batch)))
+
 		ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
 		_, err := client.Send(ctx, &logcache.SendRequest{
 			Envelopes: &loggregator_v2.EnvelopeBatch{
-				Batch: rx(),
+				Batch: batch,
 			},
 		})
 
 		if err != nil {
 			log.Printf("failed to write envelopes: %s", err)
+			errInc(1)
+			continue
 		}
+
+		egressInc(uint64(len(batch)))
 	}
 }

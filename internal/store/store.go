@@ -39,6 +39,8 @@ type Store struct {
 	// metrics
 	incExpired     func(delta uint64)
 	setCachePeriod func(value float64)
+	incIngress     func(delta uint64)
+	incEgress      func(delta uint64)
 }
 
 // NewStore creates a new store.
@@ -48,13 +50,17 @@ func NewStore(size, maxPerSource int, m Metrics) *Store {
 		maxPerSource:    maxPerSource,
 		sourceIDs:       make(map[string]*avltree.Tree),
 		oldestValueTree: newTreeStorage(),
-		incExpired:      m.NewCounter("Expired"),
-		setCachePeriod:  m.NewGauge("CachePeriod"),
+
+		incExpired:     m.NewCounter("Expired"),
+		setCachePeriod: m.NewGauge("CachePeriod"),
+		incIngress:     m.NewCounter("Ingress"),
+		incEgress:      m.NewCounter("Egress"),
 	}
 }
 
 // Put adds a batch of envelopes into the store.
 func (s *Store) Put(e *loggregator_v2.Envelope) {
+	s.incIngress(1)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t, ok := s.sourceIDs[e.SourceId]
@@ -165,6 +171,7 @@ func (s *Store) Get(
 		return len(res) >= limit
 	})
 
+	s.incEgress(uint64(len(res)))
 	return res
 }
 
