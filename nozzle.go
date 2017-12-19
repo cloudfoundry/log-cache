@@ -32,10 +32,11 @@ type StreamConnector interface {
 // NewNozzle creates a new Nozzle.
 func NewNozzle(c StreamConnector, logCacheAddr string, opts ...NozzleOption) *Nozzle {
 	n := &Nozzle{
-		s:    c,
-		addr: logCacheAddr,
-		opts: []grpc.DialOption{grpc.WithInsecure()},
-		log:  log.New(ioutil.Discard, "", 0),
+		s:       c,
+		addr:    logCacheAddr,
+		opts:    []grpc.DialOption{grpc.WithInsecure()},
+		log:     log.New(ioutil.Discard, "", 0),
+		metrics: nopMetrics{},
 	}
 
 	for _, o := range opts {
@@ -54,12 +55,6 @@ func WithNozzleLogger(l *log.Logger) NozzleOption {
 	return func(n *Nozzle) {
 		n.log = l
 	}
-}
-
-// Metrics registers Counter metrics.
-type Metrics interface {
-	// NewCounter returns a function to increment for the given metric.
-	NewCounter(name string) func(delta uint64)
 }
 
 // WithNozzleMetrics returns a NozzleOption that configures the metrics for the

@@ -133,6 +133,18 @@ func (s *spyMetrics) NewCounter(key string) func(uint64) {
 	}
 }
 
+func (s *spyMetrics) NewGauge(key string) func(float64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.m[key] = 0
+
+	return func(i float64) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.m[key] = uint64(i)
+	}
+}
+
 func (s *spyMetrics) getter(key string) func() uint64 {
 	return func() uint64 {
 		s.mu.Lock()

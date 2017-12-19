@@ -9,6 +9,7 @@ import (
 	"os"
 
 	logcache "code.cloudfoundry.org/log-cache"
+	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"google.golang.org/grpc"
 )
 
@@ -24,7 +25,7 @@ func main() {
 	cache := logcache.New(
 		logcache.WithStoreSize(cfg.StoreSize),
 		logcache.WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		logcache.WithMetrics(expvar.NewMap("LogCache")),
+		logcache.WithMetrics(metrics.New(expvar.NewMap("LogCache"))),
 		logcache.WithAddr(cfg.Addr),
 		logcache.WithClustered(cfg.NodeIndex, cfg.NodeAddrs, grpc.WithInsecure()),
 	)

@@ -13,9 +13,8 @@ import (
 // PeerReader reads envelopes from peers. It implements
 // logcache.IngressServer.
 type PeerReader struct {
-	put       Putter
-	get       Getter
-	egressInc func(delta uint64)
+	put Putter
+	get Getter
 }
 
 // Putter writes envelopes to the store.
@@ -31,11 +30,10 @@ type Getter func(
 ) []*loggregator_v2.Envelope
 
 // NewPeerReader creates and returns a new PeerReader.
-func NewPeerReader(p Putter, g Getter, m MetricClient) *PeerReader {
+func NewPeerReader(p Putter, g Getter) *PeerReader {
 	return &PeerReader{
-		put:       p,
-		get:       g,
-		egressInc: m.NewCounter("Egress"),
+		put: p,
+		get: g,
 	}
 }
 
@@ -77,8 +75,6 @@ func (r *PeerReader) Read(ctx context.Context, req *logcache.ReadRequest) (*logc
 			Batch: envs,
 		},
 	}
-
-	r.egressInc(uint64(len(resp.Envelopes.Batch)))
 
 	return resp, nil
 }

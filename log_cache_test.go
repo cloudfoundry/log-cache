@@ -20,7 +20,11 @@ import (
 
 var _ = Describe("LogCache", func() {
 	It("returns data filtered by source ID in 1 node cluster", func() {
-		cache := logcache.New(logcache.WithAddr("127.0.0.1:0"))
+		spyMetrics := newSpyMetrics()
+		cache := logcache.New(
+			logcache.WithAddr("127.0.0.1:0"),
+			logcache.WithMetrics(spyMetrics),
+		)
 		cache.Start()
 
 		writeEnvelopes(cache.Addr(), []*loggregator_v2.Envelope{
@@ -56,6 +60,9 @@ var _ = Describe("LogCache", func() {
 		Expect(es[0].SourceId).To(Equal("app-a"))
 		Expect(es[1].Timestamp).To(Equal(int64(3)))
 		Expect(es[1].SourceId).To(Equal("app-a"))
+
+		Eventually(spyMetrics.getter("Ingress")).Should(Equal(uint64(3)))
+		Eventually(spyMetrics.getter("Egress")).Should(Equal(uint64(2)))
 	})
 
 	It("routes envelopes to peers", func() {

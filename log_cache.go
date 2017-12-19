@@ -1,7 +1,6 @@
 package logcache
 
 import (
-	"expvar"
 	"hash/crc64"
 	"io/ioutil"
 	"log"
@@ -11,16 +10,15 @@ import (
 
 	"code.cloudfoundry.org/log-cache/internal/egress"
 	"code.cloudfoundry.org/log-cache/internal/ingress"
-	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"code.cloudfoundry.org/log-cache/internal/rpc/logcache"
 	"code.cloudfoundry.org/log-cache/internal/store"
 )
 
 // LogCache is a in memory cache for Loggregator envelopes.
 type LogCache struct {
-	log       *log.Logger
-	lis       net.Listener
-	metricMap MetricMap
+	log     *log.Logger
+	lis     net.Listener
+	metrics Metrics
 
 	storeSize    int
 	maxPerSource int
@@ -41,6 +39,7 @@ type LogCache struct {
 func New(opts ...LogCacheOption) *LogCache {
 	cache := &LogCache{
 		log:          log.New(ioutil.Discard, "", 0),
+		metrics:      nopMetrics{},
 		storeSize:    10000000,
 		maxPerSource: 100000,
 
@@ -107,30 +106,43 @@ func WithClustered(nodeIndex int, nodeAddrs []string, opts ...grpc.DialOption) L
 	}
 }
 
-// MetricMap mirrors expvar.Map.
-type MetricMap interface {
-	// Set is implemented by Map.Set()
-	Set(key string, av expvar.Var)
+// Metrics registers Counter and Gauge metrics.
+type Metrics interface {
+	// NewCounter returns a function to increment for the given metric.
+	NewCounter(name string) func(delta uint64)
+
+	// NewGauge returns a function to set the value for the given metric.
+	NewGauge(name string) func(value float64)
 }
 
 // WithMetrics returns a LogCacheOption that configures the metrics for the
 // LogCache. It will add metrics to the given map.
-func WithMetrics(m MetricMap) LogCacheOption {
+func WithMetrics(m Metrics) LogCacheOption {
 	return func(c *LogCache) {
-		c.metricMap = m
+		c.metrics = m
 	}
+}
+
+// nopMetrics are the default metrics.
+type nopMetrics struct{}
+
+func (m nopMetrics) NewCounter(name string) func(uint64) {
+	return func(uint64) {}
+}
+
+func (m nopMetrics) NewGauge(name string) func(float64) {
+	return func(float64) {}
 }
 
 // Start starts the LogCache. It has an internal go-routine that it creates
 // and therefore does not block.
 func (c *LogCache) Start() {
-	metrics := metrics.New(c.metricMap)
-	store := store.NewStore(c.storeSize, c.maxPerSource, metrics)
+	store := store.NewStore(c.storeSize, c.maxPerSource, c.metrics)
 
-	c.setupRouting(store, metrics)
+	c.setupRouting(store)
 }
 
-func (c *LogCache) setupRouting(s *store.Store, m *metrics.Metrics) {
+func (c *LogCache) setupRouting(s *store.Store) {
 	tableECMA := crc64.MakeTable(crc64.ECMA)
 	hasher := func(s string) uint64 {
 		return crc64.Checksum([]byte(s), tableECMA)
@@ -164,7 +176,7 @@ func (c *LogCache) setupRouting(s *store.Store, m *metrics.Metrics) {
 	proxy := store.NewProxyStore(s.Get, c.nodeIndex, egressClients, lookup.Lookup)
 
 	go func() {
-		peerReader := ingress.NewPeerReader(ps.Publish, proxy.Get, m)
+		peerReader := ingress.NewPeerReader(ps.Publish, proxy.Get)
 		srv := grpc.NewServer()
 		logcache.RegisterIngressServer(srv, peerReader)
 		logcache.RegisterEgressServer(srv, peerReader)
