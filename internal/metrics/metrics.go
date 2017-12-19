@@ -10,8 +10,14 @@ type Metrics struct {
 
 // Map stores the desired metrics.
 type Map interface {
-	// Set adds a new metric to the map.
-	Set(key string, ev expvar.Var)
+	// Add adds a new metric to the map.
+	Add(key string, delta int64)
+
+	// AddFloat adds a new metric to the map.
+	AddFloat(key string, delta float64)
+
+	// Get gets a Var from the Map.
+	Get(key string) expvar.Var
 }
 
 // New returns a new Metrics.
@@ -27,8 +33,8 @@ func (m *Metrics) NewCounter(name string) func(delta uint64) {
 		return func(_ uint64) {}
 	}
 
-	i := expvar.NewInt(name)
-	m.m.Set(name, i)
+	m.m.Add(name, 0)
+	i := m.m.Get(name).(*expvar.Int)
 
 	return func(d uint64) {
 		i.Add(int64(d))
@@ -41,8 +47,8 @@ func (m *Metrics) NewGauge(name string) func(value float64) {
 		return func(_ float64) {}
 	}
 
-	f := expvar.NewFloat(name)
-	m.m.Set(name, f)
+	m.m.AddFloat(name, 0)
+	f := m.m.Get(name).(*expvar.Float)
 
 	return f.Set
 }

@@ -53,8 +53,16 @@ func newSpyMap() *spyMap {
 	}
 }
 
-func (s *spyMap) Set(key string, av expvar.Var) {
-	s.m[key] = av
+func (s *spyMap) Add(key string, delta int64) {
+	s.m[key] = expvar.NewInt(key)
+}
+
+func (s *spyMap) AddFloat(key string, delta float64) {
+	s.m[key] = expvar.NewFloat(key)
+}
+
+func (s *spyMap) Get(key string) expvar.Var {
+	return s.m[key]
 }
 
 func (s *spyMap) getValue(key string) float64 {
