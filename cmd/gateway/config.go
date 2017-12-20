@@ -5,7 +5,7 @@ import envstruct "code.cloudfoundry.org/go-envstruct"
 // Config is the configuration for a LogCache Gateway.
 type Config struct {
 	Addr         string `env:"ADDR, required"`
-	LogCacheAddr string `env:"LOGCACHE_ADDR, required"`
+	LogCacheAddr string `env:"LOG_CACHE_ADDR, required"`
 }
 
 // LoadConfig creates Config object from environment variables
