@@ -7,7 +7,7 @@ import (
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/egress"
-	"code.cloudfoundry.org/log-cache/internal/rpc/logcache"
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 

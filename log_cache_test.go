@@ -12,7 +12,7 @@ import (
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/egress"
-	rpc "code.cloudfoundry.org/log-cache/internal/rpc/logcache"
+	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

@@ -10,7 +10,7 @@ import (
 
 	"code.cloudfoundry.org/log-cache/internal/egress"
 	"code.cloudfoundry.org/log-cache/internal/ingress"
-	"code.cloudfoundry.org/log-cache/internal/rpc/logcache"
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"code.cloudfoundry.org/log-cache/internal/store"
 )
 

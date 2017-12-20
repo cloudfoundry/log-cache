@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"code.cloudfoundry.org/log-cache"
-	rpc "code.cloudfoundry.org/log-cache/internal/rpc/logcache"
+	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

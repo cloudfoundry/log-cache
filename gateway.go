@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	"code.cloudfoundry.org/log-cache/internal/rpc/logcache"
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"google.golang.org/grpc"
 
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
