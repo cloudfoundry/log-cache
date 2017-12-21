@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync"
 	"time"
 
@@ -37,14 +38,16 @@ var _ = Describe("WebHook", func() {
 			reqs = make(chan *http.Request, 100)
 			bodies = make(chan []byte, 100)
 
+			shadowedReqs := reqs
+			shadowedBodies := bodies
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				b, err := ioutil.ReadAll(r.Body)
 				if err != nil {
 					panic(err)
 				}
 
-				reqs <- r
-				bodies <- b
+				shadowedReqs <- r
+				shadowedBodies <- b
 			}))
 
 			r.errs = []error{nil, nil}
@@ -69,6 +72,7 @@ var _ = Describe("WebHook", func() {
 				logcache.WithWebHookErrorHandler(func(e error) {
 					panic(e)
 				}),
+				logcache.WithWebHookFollow(),
 			)
 			go h.Start()
 		})
@@ -77,6 +81,9 @@ var _ = Describe("WebHook", func() {
 			Eventually(r.Starts).ShouldNot(BeEmpty())
 			Expect(time.Since(r.Starts()[0])).To(BeNumerically("~", time.Hour, 3*time.Second))
 			Expect(r.SourceIDs()[0]).To(Equal("some-id"))
+
+			_, ok := r.QueryValues()["end_time"]
+			Expect(ok).To(BeFalse())
 		})
 
 		It("uses the provided template to post", func() {
@@ -88,14 +95,82 @@ var _ = Describe("WebHook", func() {
 		})
 	})
 
+	Context("non-follow mode", func() {
+		BeforeEach(func() {
+			r = newSpyReader()
+
+			reqs = make(chan *http.Request, 100)
+			bodies = make(chan []byte, 100)
+
+			shadowedReqs := reqs
+			shadowedBodies := bodies
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				b, err := ioutil.ReadAll(r.Body)
+				if err != nil {
+					panic(err)
+				}
+
+				shadowedReqs <- r
+				shadowedBodies <- b
+			}))
+
+			r.errs = []error{nil, nil}
+			r.results = [][]*loggregator_v2.Envelope{
+				{buildCounter(int64(time.Second), "some-name", 99), buildCounter(int64(2*time.Second), "some-name", 100), buildGauge(3*int64(time.Second), "some-name", 101)},
+				{buildGauge(3*int64(time.Second), "some-name", 101)},
+			}
+
+			h = logcache.NewWebHook(
+				"some-id",
+				fmt.Sprintf(`
+			{{ if (eq (countEnvelopes .) 1) }}
+				{{post %q nil "Page Me 1"}}
+			{{ else if eq (averageEnvelopes .) 100.0 }}
+				{{post %q nil "Page Me 2"}}
+			{{end}}
+			`, server.URL, server.URL),
+				r.read,
+				logcache.WithWebHookErrorHandler(func(e error) {
+					panic(e)
+				}),
+			)
+			go h.Start()
+		})
+
+		It("reads from about an hour ago, for the given sourceID", func() {
+			Eventually(r.Starts).ShouldNot(BeEmpty())
+			Expect(time.Since(r.Starts()[0])).To(BeNumerically("~", time.Hour, 3*time.Second))
+			Expect(r.SourceIDs()[0]).To(Equal("some-id"))
+
+			_, ok := r.QueryValues()["end_time"]
+			Expect(ok).To(BeTrue())
+		})
+
+		It("posts because of count function", func() {
+			var r *http.Request
+			Eventually(reqs).Should(Receive(&r))
+			Expect(r.Method).To(Equal("POST"))
+			Eventually(bodies).Should(Receive(ContainSubstring("Page Me 1")))
+		})
+
+		It("posts because of average function", func() {
+			var r *http.Request
+			Eventually(reqs).Should(Receive(&r))
+			Expect(r.Method).To(Equal("POST"))
+			Eventually(bodies).Should(Receive(ContainSubstring("Page Me 2")))
+		})
+	})
+
 	Context("with unsuccessful post", func() {
 		BeforeEach(func() {
+			r = newSpyReader()
 			r.errs = []error{nil, nil}
 			r.results = [][]*loggregator_v2.Envelope{
 				{buildCounter(1, "some-name", 99)},
 				{buildGauge(2, "some-name", 101)},
 			}
 
+			shadowedErrs := errs
 			h = logcache.NewWebHook(
 				"some-id",
 				fmt.Sprintf(`
@@ -105,7 +180,7 @@ var _ = Describe("WebHook", func() {
 			`, "http://invalid.url"),
 				r.read,
 				logcache.WithWebHookErrorHandler(func(e error) {
-					errs <- e
+					shadowedErrs <- e
 				}),
 			)
 			go h.Start()
@@ -118,6 +193,7 @@ var _ = Describe("WebHook", func() {
 
 	Context("with non 200 response", func() {
 		BeforeEach(func() {
+			r = newSpyReader()
 			r.errs = []error{nil, nil}
 			r.results = [][]*loggregator_v2.Envelope{
 				{buildCounter(1, "some-name", 99)},
@@ -128,6 +204,7 @@ var _ = Describe("WebHook", func() {
 				w.WriteHeader(500)
 			}))
 
+			shadowedErrs := errs
 			h = logcache.NewWebHook(
 				"some-id",
 				fmt.Sprintf(`
@@ -137,7 +214,7 @@ var _ = Describe("WebHook", func() {
 			`, server.URL),
 				r.read,
 				logcache.WithWebHookErrorHandler(func(e error) {
-					errs <- e
+					shadowedErrs <- e
 				}),
 			)
 			go h.Start()
@@ -148,21 +225,50 @@ var _ = Describe("WebHook", func() {
 		})
 	})
 
-	Context("with failed execute", func() {
+	Context("with failed execute in non-follow mode", func() {
 		BeforeEach(func() {
+			r = newSpyReader()
 			r.errs = []error{nil, nil}
 			r.results = [][]*loggregator_v2.Envelope{
 				{buildCounter(1, "some-name", 99)},
 				{buildGauge(2, "some-name", 101)},
 			}
 
+			shadowedErrs := errs
 			h = logcache.NewWebHook(
 				"some-id",
 				`{{.Invalid}}`,
 				r.read,
 				logcache.WithWebHookErrorHandler(func(e error) {
-					errs <- e
+					shadowedErrs <- e
 				}),
+			)
+			go h.Start()
+		})
+
+		It("invokes error handler with error", func() {
+			Eventually(errs).Should(Receive())
+		})
+	})
+
+	Context("with failed execute in follow mode", func() {
+		BeforeEach(func() {
+			r = newSpyReader()
+			r.errs = []error{nil, nil}
+			r.results = [][]*loggregator_v2.Envelope{
+				{buildCounter(1, "some-name", 99)},
+				{buildGauge(2, "some-name", 101)},
+			}
+
+			shadowedErrs := errs
+			h = logcache.NewWebHook(
+				"some-id",
+				`{{.Invalid}}`,
+				r.read,
+				logcache.WithWebHookErrorHandler(func(e error) {
+					shadowedErrs <- e
+				}),
+				logcache.WithWebHookFollow(),
 			)
 			go h.Start()
 		})
@@ -227,6 +333,29 @@ func (s *spyReader) Starts() []time.Time {
 	starts := make([]time.Time, len(s.starts))
 	copy(starts, s.starts)
 	return starts
+}
+
+func (s *spyReader) Opts() [][]gologcache.ReadOption {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	o := make([][]gologcache.ReadOption, len(s.opts))
+	copy(o, s.opts)
+	return o
+}
+
+func (s *spyReader) QueryValues() url.Values {
+	u := &url.URL{}
+	v := u.Query()
+	o := s.Opts()
+
+	for _, oo := range o {
+		for _, ooo := range oo {
+			ooo(u, v)
+		}
+	}
+
+	return v
 }
 
 func buildCounter(timestamp int64, name string, total uint64) *loggregator_v2.Envelope {

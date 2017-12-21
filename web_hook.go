@@ -26,10 +26,15 @@ type WebHook struct {
 	width      time.Duration
 	interval   time.Duration
 	errHandler func(error)
+	follow     bool
 }
 
 // Reader reads envelopes from LogCache. It will be invoked by Walker several
 // time to traverse the length of the cache.
+//
+// The given template should handle a slice of loggregator V2 envelopes. There
+// are several provided functions to help analyze the envelopes. If in follow
+// mode, the template will be given one envelope instead of a slice.
 type Reader func(
 	ctx context.Context,
 	sourceID string,
@@ -55,6 +60,10 @@ func NewWebHook(
 
 	for _, o := range opts {
 		o(h)
+	}
+
+	if h.follow {
+		h.interval = time.Second
 	}
 
 	var err error
@@ -112,6 +121,23 @@ func NewWebHook(
 		"nsToTime": func(ns int64) time.Time {
 			return time.Unix(0, ns)
 		},
+		"averageEnvelopes": func(es []*loggregator_v2.Envelope) float64 {
+			var total float64
+			for _, e := range es {
+				switch x := e.Message.(type) {
+				case *loggregator_v2.Envelope_Counter:
+					total += float64(x.Counter.Total)
+				case *loggregator_v2.Envelope_Gauge:
+					for _, v := range x.Gauge.Metrics {
+						total += float64(v.GetValue())
+					}
+				}
+			}
+			return total / float64(len(es))
+		},
+		"countEnvelopes": func(e []*loggregator_v2.Envelope) int {
+			return len(e)
+		},
 	})
 
 	t, err = t.Parse(txtTemplate)
@@ -160,21 +186,51 @@ func WithWebHookErrorHandler(f func(error)) WebHookOption {
 	}
 }
 
+// WithWebHookFollow returns a WebHookOption that configures a WebHook to
+// follow a sourceID via polling quickly for smaller windows. If follow is
+// enabled, then any WindowWidth and Interval are ignored.
+// When in follow mode, the given template will only be given a single
+// envelope at a time.
+func WithWebHookFollow() WebHookOption {
+	return func(h *WebHook) {
+		h.follow = true
+	}
+}
+
 // Start starts reading from LogCache and posting data according to the
 // provided template. It blocks indefinately.
 func (h *WebHook) Start() {
 	now := time.Now()
+	opts := []logcache.WalkOption{
+		logcache.WithWalkStartTime(now.Add(-h.width)),
+		logcache.WithWalkBackoff(logcache.NewAlwaysRetryBackoff(h.interval)),
+	}
+
+	visitor := h.followingVisitor
+
+	if !h.follow {
+		opts = append(opts, logcache.WithWalkEndTime(now))
+		visitor = h.visitor
+	}
+
 	logcache.Walk(
 		context.Background(),
 		h.sourceID,
-		h.visitor,
+		visitor,
 		logcache.Reader(h.reader),
-		logcache.WithWalkStartTime(now.Add(-h.width)),
-		logcache.WithWalkBackoff(logcache.NewAlwaysRetryBackoff(time.Second)),
+		opts...,
 	)
 }
 
 func (h *WebHook) visitor(envelopes []*loggregator_v2.Envelope) bool {
+	b := new(bytes.Buffer)
+	if err := h.t.Execute(b, envelopes); err != nil {
+		h.errHandler(err)
+	}
+	return true
+}
+
+func (h *WebHook) followingVisitor(envelopes []*loggregator_v2.Envelope) bool {
 	for _, e := range envelopes {
 		b := new(bytes.Buffer)
 		if err := h.t.Execute(b, e); err != nil {
