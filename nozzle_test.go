@@ -39,6 +39,7 @@ var _ = Describe("Nozzle", func() {
 
 		Eventually(streamConnector.requests).Should(HaveLen(1))
 		Expect(streamConnector.requests()[0].ShardId).To(Equal("log-cache"))
+		Expect(streamConnector.requests()[0].UsePreferredTags).To(BeTrue())
 		Expect(streamConnector.requests()[0].Selectors).To(HaveLen(5))
 
 		Expect(streamConnector.requests()[0].Selectors).To(ConsistOf(

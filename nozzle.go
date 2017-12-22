@@ -111,7 +111,8 @@ func (n *Nozzle) Start() {
 
 func (n *Nozzle) buildBatchReq() *loggregator_v2.EgressBatchRequest {
 	return &loggregator_v2.EgressBatchRequest{
-		ShardId: "log-cache",
+		ShardId:          "log-cache",
+		UsePreferredTags: true,
 		Selectors: []*loggregator_v2.Selector{
 			{
 				Message: &loggregator_v2.Selector_Log{
