@@ -39,6 +39,38 @@ var _ = Describe("Nozzle", func() {
 
 		Eventually(streamConnector.requests).Should(HaveLen(1))
 		Expect(streamConnector.requests()[0].ShardId).To(Equal("log-cache"))
+		Expect(streamConnector.requests()[0].Selectors).To(HaveLen(5))
+
+		Expect(streamConnector.requests()[0].Selectors).To(ConsistOf(
+			[]*loggregator_v2.Selector{
+				{
+					Message: &loggregator_v2.Selector_Log{
+						Log: &loggregator_v2.LogSelector{},
+					},
+				},
+				{
+					Message: &loggregator_v2.Selector_Gauge{
+						Gauge: &loggregator_v2.GaugeSelector{},
+					},
+				},
+				{
+					Message: &loggregator_v2.Selector_Counter{
+						Counter: &loggregator_v2.CounterSelector{},
+					},
+				},
+				{
+					Message: &loggregator_v2.Selector_Timer{
+						Timer: &loggregator_v2.TimerSelector{},
+					},
+				},
+				{
+					Message: &loggregator_v2.Selector_Event{
+						Event: &loggregator_v2.EventSelector{},
+					},
+				},
+			},
+		))
+
 		Eventually(streamConnector.envelopes).Should(HaveLen(0))
 	})
 

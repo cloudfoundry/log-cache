@@ -5,9 +5,9 @@ import (
 	"log"
 	"time"
 
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"code.cloudfoundry.org/go-loggregator"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
@@ -76,9 +76,7 @@ func WithNozzleDialOpts(opts ...grpc.DialOption) NozzleOption {
 // Start starts reading envelopes from the logs provider and writes them to
 // LogCache. It blocks indefinately.
 func (n *Nozzle) Start() {
-	rx := n.s.Stream(context.Background(), &loggregator_v2.EgressBatchRequest{
-		ShardId: "log-cache",
-	})
+	rx := n.s.Stream(context.Background(), n.buildBatchReq())
 
 	conn, err := grpc.Dial(n.addr, n.opts...)
 	if err != nil {
@@ -108,5 +106,38 @@ func (n *Nozzle) Start() {
 		}
 
 		egressInc(uint64(len(batch)))
+	}
+}
+
+func (n *Nozzle) buildBatchReq() *loggregator_v2.EgressBatchRequest {
+	return &loggregator_v2.EgressBatchRequest{
+		ShardId: "log-cache",
+		Selectors: []*loggregator_v2.Selector{
+			{
+				Message: &loggregator_v2.Selector_Log{
+					Log: &loggregator_v2.LogSelector{},
+				},
+			},
+			{
+				Message: &loggregator_v2.Selector_Gauge{
+					Gauge: &loggregator_v2.GaugeSelector{},
+				},
+			},
+			{
+				Message: &loggregator_v2.Selector_Counter{
+					Counter: &loggregator_v2.CounterSelector{},
+				},
+			},
+			{
+				Message: &loggregator_v2.Selector_Timer{
+					Timer: &loggregator_v2.TimerSelector{},
+				},
+			},
+			{
+				Message: &loggregator_v2.Selector_Event{
+					Event: &loggregator_v2.EventSelector{},
+				},
+			},
+		},
 	}
 }
