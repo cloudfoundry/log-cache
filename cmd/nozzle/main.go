@@ -2,10 +2,13 @@ package main
 
 import (
 	"expvar"
+	"fmt"
 	"log"
+	"net/http"
 	_ "net/http/pprof"
 	"os"
 
+	envstruct "code.cloudfoundry.org/go-envstruct"
 	logcache "code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/metrics"
 
@@ -20,6 +23,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("invalid configuration: %s", err)
 	}
+
+	envstruct.WriteReport(cfg)
 
 	tlsCfg, err := loggregator.NewEgressTLSConfig(
 		cfg.TLS.LogProviderCA,
@@ -47,5 +52,8 @@ func main() {
 		logcache.WithNozzleMetrics(metrics.New(expvar.NewMap("Nozzle"))),
 	)
 
-	nozzle.Start()
+	go nozzle.Start()
+
+	// health endpoints (pprof and expvar)
+	log.Printf("Health: %s", http.ListenAndServe(fmt.Sprintf("localhost:%d", cfg.HealthPort), nil))
 }

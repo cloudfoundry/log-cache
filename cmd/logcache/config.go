@@ -29,7 +29,7 @@ func LoadConfig() (*Config, error) {
 	c := Config{
 		Addr:       ":8080",
 		StoreSize:  10000,
-		HealthPort: 0,
+		HealthPort: 6060,
 	}
 
 	if err := envstruct.Load(&c); err != nil {

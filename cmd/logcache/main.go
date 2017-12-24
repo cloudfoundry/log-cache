@@ -8,6 +8,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 
+	"code.cloudfoundry.org/go-envstruct"
 	logcache "code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"google.golang.org/grpc"
@@ -21,6 +22,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("invalid configuration: %s", err)
 	}
+
+	envstruct.WriteReport(cfg)
 
 	cache := logcache.New(
 		logcache.WithStoreSize(cfg.StoreSize),

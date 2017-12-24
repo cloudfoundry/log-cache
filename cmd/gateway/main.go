@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	envstruct "code.cloudfoundry.org/go-envstruct"
 	"code.cloudfoundry.org/log-cache"
 )
 
@@ -15,6 +16,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("invalid configuration: %s", err)
 	}
+
+	envstruct.WriteReport(cfg)
 
 	gateway := logcache.NewGateway(cfg.LogCacheAddr, cfg.Addr,
 		logcache.WithGatewayLogger(log.New(os.Stderr, "[GATEWAY] ", log.LstdFlags)),
