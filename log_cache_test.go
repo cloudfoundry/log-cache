@@ -9,10 +9,10 @@ import (
 
 	"google.golang.org/grpc"
 
+	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/egress"
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -137,7 +137,7 @@ var _ = Describe("LogCache", func() {
 	It("routes query requests to peers", func() {
 		peer := newSpyLogCache()
 		peerAddr := peer.start()
-		peer.readEnvelopes = []*loggregator_v2.Envelope{
+		peer.readEnvelopes["source-1"] = []*loggregator_v2.Envelope{
 			{Timestamp: 99},
 			{Timestamp: 101},
 		}
@@ -204,11 +204,13 @@ type spyLogCache struct {
 	mu            sync.Mutex
 	envelopes     []*loggregator_v2.Envelope
 	readRequests  []*rpc.ReadRequest
-	readEnvelopes []*loggregator_v2.Envelope
+	readEnvelopes map[string][]*loggregator_v2.Envelope
 }
 
 func newSpyLogCache() *spyLogCache {
-	return &spyLogCache{}
+	return &spyLogCache{
+		readEnvelopes: make(map[string][]*loggregator_v2.Envelope),
+	}
 }
 
 func (s *spyLogCache) start() string {
@@ -259,7 +261,7 @@ func (s *spyLogCache) Read(ctx context.Context, r *rpc.ReadRequest) (*rpc.ReadRe
 
 	return &rpc.ReadResponse{
 		Envelopes: &loggregator_v2.EnvelopeBatch{
-			Batch: s.readEnvelopes,
+			Batch: s.readEnvelopes[r.GetSourceId()],
 		},
 	}, nil
 }
