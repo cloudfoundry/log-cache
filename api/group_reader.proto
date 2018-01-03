@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package logcache;
+
+import "google/api/annotations.proto";
+import "v2/envelope.proto";
+
+// The GroupReader service is used to read data from the LogCache system via
+// groups of source IDs.
+service GroupReader {
+    rpc AddToGroup(AddToGroupRequest) returns (AddToGroupResponse) {
+        option (google.api.http) = {
+            patch: "/v1/group/{name}/{source_id}"
+        };
+    }
+
+    rpc RemoveFromGroup(RemoveFromGroupRequest) returns (RemoveFromGroupResponse) {
+        option (google.api.http) = {
+            delete: "/v1/group/{name}/{source_id}"
+        };
+    }
+
+    rpc Read(GroupReadRequest) returns (GroupReadResponse) {
+        option (google.api.http) = {
+            get: "/v1/group/read/{name}"
+        };
+    }
+
+    rpc Group(GroupRequest) returns (GroupResponse) {
+        option (google.api.http) = {
+            get: "/v1/group/{name}"
+        };
+    }
+}
+
+message AddToGroupRequest {
+    string name = 1;
+    string source_id = 2;
+}
+
+message AddToGroupResponse {
+}
+
+message RemoveFromGroupRequest {
+    string name = 1;
+    string source_id = 2;
+}
+
+message RemoveFromGroupResponse {
+}
+
+message GroupReadRequest {
+    string name = 1;
+}
+
+message GroupReadResponse {
+    loggregator.v2.EnvelopeBatch envelopes = 1;
+}
+
+message GroupRequest {
+    string name = 1;
+}
+
+message GroupResponse {
+    repeated string source_ids = 1;
+}
+
