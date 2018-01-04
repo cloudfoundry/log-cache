@@ -26,7 +26,7 @@ type Store struct {
 	size         int
 	maxPerSource int
 
-	sourceIDs map[string]*avltree.Tree
+	indexes map[string]*avltree.Tree
 
 	// oldestValueTree stores each tree's oldest value for pruning. As data is
 	// added and needs to be pruned, it is done so from here.
@@ -48,7 +48,7 @@ func NewStore(size, maxPerSource int, m Metrics) *Store {
 	return &Store{
 		size:            size,
 		maxPerSource:    maxPerSource,
-		sourceIDs:       make(map[string]*avltree.Tree),
+		indexes:         make(map[string]*avltree.Tree),
 		oldestValueTree: newTreeStorage(),
 
 		incExpired:     m.NewCounter("Expired"),
@@ -59,14 +59,14 @@ func NewStore(size, maxPerSource int, m Metrics) *Store {
 }
 
 // Put adds a batch of envelopes into the store.
-func (s *Store) Put(e *loggregator_v2.Envelope) {
+func (s *Store) Put(e *loggregator_v2.Envelope, index string) {
 	s.incIngress(1)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	t, ok := s.sourceIDs[e.SourceId]
+	t, ok := s.indexes[index]
 	if !ok {
 		t = avltree.NewWith(utils.Int64Comparator)
-		s.sourceIDs[e.SourceId] = t
+		s.indexes[index] = t
 
 		// Store the tree for pruning purposes.
 		s.oldestValueTree.Put(e.Timestamp, t)
@@ -84,13 +84,13 @@ func (s *Store) Put(e *loggregator_v2.Envelope) {
 	preSize := t.Size()
 
 	if preSize >= s.maxPerSource {
-		// This sourceID has reached/exceeded its allowed quota. Truncate the
+		// This index has reached/exceeded its allowed quota. Truncate the
 		// oldest before putting a new envelope in.
 		t.Remove(oldest)
 		s.incExpired(1)
 	}
 
-	t.Put(e.Timestamp, e)
+	t.Put(e.Timestamp, envelopeWrapper{e: e, index: index})
 
 	// Only increment if we didn't overwrite.
 	s.count += t.Size() - preSize
@@ -126,13 +126,13 @@ func (s *Store) truncate() {
 	// Truncate the oldest envelope.
 	left := oldTree.Left()
 
-	sourceID := left.Value.(*loggregator_v2.Envelope).SourceId
+	index := left.Value.(envelopeWrapper).index
 
 	oldTree.Remove(key)
 
 	if oldTree.Size() == 0 {
-		// Remove the sourceID completely.
-		delete(s.sourceIDs, sourceID)
+		// Remove the index completely.
+		delete(s.indexes, index)
 		return
 	}
 
@@ -146,7 +146,7 @@ type EnvelopeType interface{}
 // Get fetches envelopes from the store based on the source ID, start and end
 // time. Start is inclusive while end is not: [start..end).
 func (s *Store) Get(
-	sourceID string,
+	index string,
 	start time.Time,
 	end time.Time,
 	envelopeType EnvelopeType,
@@ -155,14 +155,14 @@ func (s *Store) Get(
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	t, ok := s.sourceIDs[sourceID]
+	t, ok := s.indexes[index]
 	if !ok {
 		return nil
 	}
 
 	var res []*loggregator_v2.Envelope
-	s.treeTraverse(t.Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope) bool {
-		if e.SourceId == sourceID &&
+	s.treeTraverse(t.Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope, idx string) bool {
+		if idx == index &&
 			s.checkEnvelopeType(e, envelopeType) {
 			res = append(res, e)
 		}
@@ -179,7 +179,7 @@ func (s *Store) treeTraverse(
 	n *avltree.Node,
 	start int64,
 	end int64,
-	f func(e *loggregator_v2.Envelope) bool,
+	f func(e *loggregator_v2.Envelope, index string) bool,
 ) bool {
 	if n == nil {
 		return false
@@ -191,7 +191,9 @@ func (s *Store) treeTraverse(
 			return true
 		}
 
-		if t >= end || f(n.Value.(*loggregator_v2.Envelope)) {
+		w := n.Value.(envelopeWrapper)
+
+		if t >= end || f(w.e, w.index) {
 			return true
 		}
 	}
@@ -267,4 +269,9 @@ func (s *treeStorage) Remove(key int64, t *avltree.Tree) {
 func (s *treeStorage) Left() (int64, *avltree.Tree) {
 	l := s.t.Left()
 	return l.Key.(int64), l.Value.([]*avltree.Tree)[0]
+}
+
+type envelopeWrapper struct {
+	e     *loggregator_v2.Envelope
+	index string
 }

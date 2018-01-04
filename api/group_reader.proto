@@ -4,6 +4,7 @@ package logcache;
 
 import "google/api/annotations.proto";
 import "v2/envelope.proto";
+import "egress.proto";
 
 // The GroupReader service is used to read data from the LogCache system via
 // groups of source IDs.
@@ -51,6 +52,10 @@ message RemoveFromGroupResponse {
 
 message GroupReadRequest {
     string name = 1;
+    int64 start_time = 2;
+    int64 end_time = 3;
+    int64 limit = 4;
+    EnvelopeTypes envelope_type = 5;
 }
 
 message GroupReadResponse {

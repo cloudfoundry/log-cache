@@ -28,10 +28,10 @@ var _ = Describe("Store", func() {
 		e3 := buildEnvelope(3, "a")
 		e4 := buildEnvelope(4, "a")
 
-		s.Put(e1)
-		s.Put(e2)
-		s.Put(e3)
-		s.Put(e4)
+		s.Put(e1, e1.GetSourceId())
+		s.Put(e2, e2.GetSourceId())
+		s.Put(e3, e3.GetSourceId())
+		s.Put(e4, e4.GetSourceId())
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 4)
@@ -51,10 +51,10 @@ var _ = Describe("Store", func() {
 		e3 := buildEnvelope(3, "a")
 		e4 := buildEnvelope(4, "a")
 
-		s.Put(e1)
-		s.Put(e2)
-		s.Put(e3)
-		s.Put(e4)
+		s.Put(e1, e1.GetSourceId())
+		s.Put(e2, e2.GetSourceId())
+		s.Put(e3, e3.GetSourceId())
+		s.Put(e4, e4.GetSourceId())
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
@@ -70,11 +70,11 @@ var _ = Describe("Store", func() {
 			e4 := buildTypedEnvelope(3, "a", &loggregator_v2.Timer{})
 			e5 := buildTypedEnvelope(4, "a", &loggregator_v2.Event{})
 
-			s.Put(e1)
-			s.Put(e2)
-			s.Put(e3)
-			s.Put(e4)
-			s.Put(e5)
+			s.Put(e1, e1.GetSourceId())
+			s.Put(e2, e2.GetSourceId())
+			s.Put(e3, e3.GetSourceId())
+			s.Put(e4, e4.GetSourceId())
+			s.Put(e5, e5.GetSourceId())
 
 			start := time.Unix(0, 0)
 			end := time.Unix(0, 9999)
@@ -97,7 +97,7 @@ var _ = Describe("Store", func() {
 	It("is thread safe", func() {
 		e1 := buildEnvelope(0, "a")
 		go func() {
-			s.Put(e1)
+			s.Put(e1, e1.GetSourceId())
 		}()
 
 		start := time.Unix(0, 0)
@@ -123,14 +123,14 @@ var _ = Describe("Store", func() {
 		// e8 should be truncated even though it is late
 		e8 := buildTypedEnvelope(0, "a", &loggregator_v2.Event{})
 
-		s.Put(e1)
-		s.Put(e2)
-		s.Put(e3)
-		s.Put(e4)
-		s.Put(e5)
-		s.Put(e6)
-		s.Put(e7)
-		s.Put(e8)
+		s.Put(e1, e1.GetSourceId())
+		s.Put(e2, e2.GetSourceId())
+		s.Put(e3, e3.GetSourceId())
+		s.Put(e4, e4.GetSourceId())
+		s.Put(e5, e5.GetSourceId())
+		s.Put(e6, e6.GetSourceId())
+		s.Put(e7, e7.GetSourceId())
+		s.Put(e8, e8.GetSourceId())
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
@@ -153,10 +153,10 @@ var _ = Describe("Store", func() {
 		e3 := buildTypedEnvelope(2, "a", &loggregator_v2.Log{})
 		e4 := buildTypedEnvelope(3, "a", &loggregator_v2.Log{})
 
-		s.Put(e1)
-		s.Put(e2)
-		s.Put(e3)
-		s.Put(e4)
+		s.Put(e1, e1.GetSourceId())
+		s.Put(e2, e2.GetSourceId())
+		s.Put(e3, e3.GetSourceId())
+		s.Put(e4, e4.GetSourceId())
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
@@ -173,9 +173,21 @@ var _ = Describe("Store", func() {
 
 	It("sets (via metrics) the store's period in milliseconds", func() {
 		e := buildTypedEnvelope(time.Now().Add(-time.Minute).UnixNano(), "b", &loggregator_v2.Log{})
-		s.Put(e)
+		s.Put(e, e.GetSourceId())
 
 		Expect(sm.values["CachePeriod"]).To(BeNumerically("~", float64(time.Minute/time.Millisecond), 1000))
+	})
+
+	It("uses the given index", func() {
+		s = store.NewStore(5, 2, sm)
+		e := buildTypedEnvelope(0, "a", &loggregator_v2.Log{})
+		s.Put(e, "some-id")
+
+		start := time.Unix(0, 0)
+		end := time.Unix(0, 9999)
+
+		envelopes := s.Get("some-id", start, end, nil, 10)
+		Expect(envelopes).To(HaveLen(1))
 	})
 })
 

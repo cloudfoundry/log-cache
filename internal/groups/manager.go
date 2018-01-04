@@ -3,40 +3,45 @@ package groups
 import (
 	"context"
 	"fmt"
-	"io"
 	"sync"
+	"time"
 
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
+	"code.cloudfoundry.org/log-cache/internal/store"
 	"google.golang.org/grpc"
 )
 
 // Manager manages groups. It implements logcache.GroupReader.
 type Manager struct {
 	mu sync.RWMutex
-	m  map[string]groupInfo
-	s  func() DataStorage
+	m  map[string][]string
+	s  DataStorage
 }
 
 // DataStorage is used to store data for a given group.
 type DataStorage interface {
-	io.Closer
-
-	// Next reads the next envelope batch from storage. This is a destructive
-	// method that prunes data. Meaning the data can only be fetched once.
-	Next() []*loggregator_v2.Envelope
+	// Get fetches envelopes from the store based on the source ID, start and
+	// end time. Start is inclusive while end is not: [start..end).
+	Get(
+		name string,
+		start time.Time,
+		end time.Time,
+		envelopeType store.EnvelopeType,
+		limit int,
+	) []*loggregator_v2.Envelope
 
 	// Add starts fetching data for the given sourceID.
-	Add(sourceID string)
+	Add(name, sourceID string)
 
 	// Remove stops fetching data for the given sourceID.
-	Remove(sourceID string)
+	Remove(name, sourceID string)
 }
 
 // NewManager creates a new Manager to manage groups.
-func NewManager(s func() DataStorage) *Manager {
+func NewManager(s DataStorage) *Manager {
 	return &Manager{
-		m: make(map[string]groupInfo),
+		m: make(map[string][]string),
 		s: s,
 	}
 }
@@ -47,14 +52,8 @@ func (m *Manager) AddToGroup(ctx context.Context, r *logcache.AddToGroupRequest,
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	s, ok := m.m[r.Name]
-	if !ok {
-		s.s = m.s()
-	}
-	s.sourceIDs = append(s.sourceIDs, r.SourceId)
-	s.s.Add(r.SourceId)
-
-	m.m[r.Name] = s
+	m.m[r.Name] = append(m.m[r.Name], r.SourceId)
+	m.s.Add(r.Name, r.SourceId)
 
 	return &logcache.AddToGroupResponse{}, nil
 }
@@ -71,17 +70,15 @@ func (m *Manager) RemoveFromGroup(ctx context.Context, r *logcache.RemoveFromGro
 		return &logcache.RemoveFromGroupResponse{}, nil
 	}
 
-	for i, x := range a.sourceIDs {
+	for i, x := range a {
 		if x == r.SourceId {
-			a.sourceIDs = append(a.sourceIDs[:i], a.sourceIDs[i+1:]...)
-			a.s.Remove(r.SourceId)
+			m.m[r.Name] = append(a[:i], a[i+1:]...)
+			m.s.Remove(r.Name, r.SourceId)
 			break
 		}
 	}
-	m.m[r.Name] = a
 
-	if len(a.sourceIDs) == 0 {
-		a.s.Close()
+	if len(m.m[r.Name]) == 0 {
 		delete(m.m, r.Name)
 	}
 	return &logcache.RemoveFromGroupResponse{}, nil
@@ -91,12 +88,16 @@ func (m *Manager) Read(ctx context.Context, r *logcache.GroupReadRequest, _ ...g
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	g, ok := m.m[r.Name]
+	_, ok := m.m[r.Name]
 	if !ok {
 		return nil, fmt.Errorf("unknown group name: %s", r.GetName())
 	}
 
-	batch := g.s.Next()
+	if r.GetEndTime() == 0 {
+		r.EndTime = time.Now().UnixNano()
+	}
+
+	batch := m.s.Get(r.GetName(), time.Unix(0, r.GetStartTime()), time.Unix(0, r.GetEndTime()), nil, 100)
 
 	return &logcache.GroupReadResponse{
 		Envelopes: &loggregator_v2.EnvelopeBatch{
@@ -112,11 +113,6 @@ func (m *Manager) Group(ctx context.Context, r *logcache.GroupRequest, _ ...grpc
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return &logcache.GroupResponse{
-		SourceIds: m.m[r.Name].sourceIDs,
+		SourceIds: m.m[r.Name],
 	}, nil
-}
-
-type groupInfo struct {
-	sourceIDs []string
-	s         DataStorage
 }

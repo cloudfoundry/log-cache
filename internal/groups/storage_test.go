@@ -2,7 +2,6 @@ package groups_test
 
 import (
 	"log"
-	"math/rand"
 	"sort"
 	"sync"
 	"time"
@@ -16,32 +15,39 @@ import (
 
 var _ = Describe("Storage", func() {
 	var (
-		s         *groups.Storage
-		spyReader *spyReader
+		s          *groups.Storage
+		spyMetrics *spyMetrics
+		spyReader  *spyReader
 	)
 
 	BeforeEach(func() {
+		spyMetrics = newSpyMetrics()
 		spyReader = newSpyReader()
-		s = groups.NewStorage(5, 100*time.Millisecond, spyReader.Read, log.New(GinkgoWriter, "", 0))
+		s = groups.NewStorage(5, spyReader.Read, spyMetrics, log.New(GinkgoWriter, "", 0))
 	})
 
 	It("returns data sorted by timestamp", func() {
-		s.Add("a")
-		s.Add("b")
+		s.Add("some-name", "a")
+		s.Add("some-name", "b")
 
 		spyReader.addEnvelopes("a", []*loggregator_v2.Envelope{
-			{Timestamp: rand.Int63(), SourceId: "a"},
+			{Timestamp: 99, SourceId: "a"},
+			{Timestamp: 101, SourceId: "a"},
+			{Timestamp: 103, SourceId: "a"},
 		})
 
 		spyReader.addEnvelopes("b", []*loggregator_v2.Envelope{
-			{Timestamp: rand.Int63(), SourceId: "b"},
+			{Timestamp: 100, SourceId: "b"},
+			{Timestamp: 102, SourceId: "b"},
+			{Timestamp: 104, SourceId: "b"},
 		})
 
 		var ts []int64
 
 		Eventually(func() []string {
 			var r []string
-			for _, e := range s.Next() {
+			// [100, 104)
+			for _, e := range s.Get("some-name", time.Unix(0, 100), time.Unix(0, 104), nil, 100) {
 				r = append(r, e.GetSourceId())
 				ts = append(ts, e.GetTimestamp())
 			}
@@ -49,31 +55,25 @@ var _ = Describe("Storage", func() {
 		}).Should(And(ContainElement("a"), ContainElement("b")))
 
 		Expect(sort.IsSorted(int64s(ts))).To(BeTrue())
+
+		// [100, 104)
+		Expect(ts).To(HaveLen(4))
 	})
 
 	It("removes producer", func() {
-		s.Add("a")
-		s.Remove("a")
+		s.Add("some-name", "a")
+		s.Remove("some-name", "a")
 
 		spyReader.addEnvelopes("a", []*loggregator_v2.Envelope{
-			{Timestamp: rand.Int63(), SourceId: "a"},
+			{Timestamp: 99, SourceId: "a"},
 		})
 
-		Eventually(s.Next).Should(BeEmpty())
-		Consistently(s.Next).Should(BeEmpty())
-	})
+		f := func() []*loggregator_v2.Envelope {
+			return s.Get("some-name", time.Unix(0, 100), time.Unix(0, 101), nil, 100)
+		}()
 
-	It("does not return any envelopes after being closed", func() {
-		s.Add("a")
-		s.Add("b")
-		s.Close()
-
-		spyReader.addEnvelopes("a", []*loggregator_v2.Envelope{
-			{Timestamp: rand.Int63(), SourceId: "a"},
-		})
-
-		Eventually(s.Next).Should(BeEmpty())
-		Consistently(s.Next).Should(BeEmpty())
+		Eventually(f).Should(BeEmpty())
+		Consistently(f).Should(BeEmpty())
 	})
 })
 
@@ -134,4 +134,26 @@ func (i int64s) Swap(a, b int) {
 	tmp := i[a]
 	i[a] = i[b]
 	i[b] = tmp
+}
+
+type spyMetrics struct {
+	values map[string]float64
+}
+
+func newSpyMetrics() *spyMetrics {
+	return &spyMetrics{
+		values: make(map[string]float64),
+	}
+}
+
+func (s *spyMetrics) NewCounter(name string) func(delta uint64) {
+	return func(d uint64) {
+		s.values[name] += float64(d)
+	}
+}
+
+func (s *spyMetrics) NewGauge(name string) func(value float64) {
+	return func(v float64) {
+		s.values[name] = v
+	}
 }

@@ -27,7 +27,8 @@ func BenchmarkStoreWrite(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		s.Put(gen())
+		e := gen()
+		s.Put(e, e.GetSourceId())
 	}
 }
 
@@ -36,7 +37,8 @@ func BenchmarkStoreTruncationOnWrite(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		s.Put(gen())
+		e := gen()
+		s.Put(e, e.GetSourceId())
 	}
 }
 
@@ -47,7 +49,8 @@ func BenchmarkStoreWriteParallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			s.Put(gen())
+			e := gen()
+			s.Put(e, e.GetSourceId())
 		}
 	})
 }
@@ -56,7 +59,8 @@ func BenchmarkStoreGetTime5MinRange(b *testing.B) {
 	s := store.NewStore(StoreSize, StoreSize, nopMetrics{})
 
 	for i := 0; i < StoreSize/10; i++ {
-		s.Put(gen())
+		e := gen()
+		s.Put(e, e.GetSourceId())
 	}
 	now := time.Now()
 	fiveMinAgo := now.Add(-5 * time.Minute)
@@ -71,7 +75,8 @@ func BenchmarkStoreGetLogType(b *testing.B) {
 	s := store.NewStore(StoreSize, StoreSize, nopMetrics{})
 
 	for i := 0; i < StoreSize/10; i++ {
-		s.Put(gen())
+		e := gen()
+		s.Put(e, e.GetSourceId())
 	}
 
 	logType := &loggregator_v2.Log{}
