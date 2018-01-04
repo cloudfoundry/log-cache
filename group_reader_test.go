@@ -38,6 +38,7 @@ var _ = Describe("GroupReader", func() {
 
 	It("reads data from a group of sourceIDs", func() {
 		spyLogCache.readEnvelopes["source-0"] = []*loggregator_v2.Envelope{
+			{Timestamp: 98},
 			{Timestamp: 99},
 			{Timestamp: 101},
 		}
@@ -45,6 +46,7 @@ var _ = Describe("GroupReader", func() {
 		spyLogCache.readEnvelopes["source-1"] = []*loggregator_v2.Envelope{
 			{Timestamp: 100},
 			{Timestamp: 102},
+			{Timestamp: 103},
 		}
 
 		_, err := c.AddToGroup(context.Background(), &rpc.AddToGroupRequest{
@@ -61,7 +63,11 @@ var _ = Describe("GroupReader", func() {
 
 		Eventually(func() []int64 {
 			resp, err := c.Read(context.Background(), &rpc.GroupReadRequest{
-				"some-name-a",
+				Name: "some-name-a",
+
+				// [99,103)
+				StartTime: 99,
+				EndTime:   103,
 			})
 			Expect(err).ToNot(HaveOccurred())
 
@@ -71,12 +77,7 @@ var _ = Describe("GroupReader", func() {
 			}
 
 			return result
-		}).Should(And(
-			ContainElement(int64(99)),
-			ContainElement(int64(100)),
-			ContainElement(int64(101)),
-			ContainElement(int64(102)),
-		))
+		}).Should(Equal([]int64{99, 100, 101, 102}))
 	})
 
 	It("keeps track of groups", func() {

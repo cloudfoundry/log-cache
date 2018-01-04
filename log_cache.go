@@ -8,9 +8,10 @@ import (
 
 	"google.golang.org/grpc"
 
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/egress"
 	"code.cloudfoundry.org/log-cache/internal/ingress"
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"code.cloudfoundry.org/log-cache/internal/store"
 )
 
@@ -164,7 +165,9 @@ func (c *LogCache) setupRouting(s *store.Store) {
 	// Register peers and current node
 	for i, addr := range c.nodeAddrs {
 		if i == c.nodeIndex {
-			ps.Subscribe(i, s.Put)
+			ps.Subscribe(i, func(e *loggregator_v2.Envelope) {
+				s.Put(e, e.GetSourceId())
+			})
 			continue
 		}
 

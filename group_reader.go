@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
-	"time"
 
 	"code.cloudfoundry.org/go-log-cache"
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
@@ -17,10 +16,11 @@ import (
 // GroupReader gathers data for several source IDs to allow a consumer to read
 // from many different source IDs much like it would read from one.
 type GroupReader struct {
-	addr   string
-	lis    net.Listener
-	log    *log.Logger
-	client *logcache.Client
+	addr    string
+	lis     net.Listener
+	log     *log.Logger
+	client  *logcache.Client
+	metrics Metrics
 
 	nodeAddrs []string
 	nodeIndex int
@@ -29,15 +29,22 @@ type GroupReader struct {
 // NewGroupReader creates a new GroupReader. NodeAddrs has the hostport of
 // every node in the cluster (including its own). The nodeIndex is the address
 // of the current node.
-func NewGroupReader(logCacheAddr string, nodeAddrs []string, nodeIndex int) *GroupReader {
-	return &GroupReader{
-		addr:   nodeAddrs[nodeIndex],
-		log:    log.New(ioutil.Discard, "", 0),
-		client: logcache.NewClient(logCacheAddr, logcache.WithViaGRPC(grpc.WithInsecure())),
+func NewGroupReader(logCacheAddr string, nodeAddrs []string, nodeIndex int, opts ...GroupReaderOption) *GroupReader {
+	r := &GroupReader{
+		addr:    nodeAddrs[nodeIndex],
+		log:     log.New(ioutil.Discard, "", 0),
+		client:  logcache.NewClient(logCacheAddr, logcache.WithViaGRPC(grpc.WithInsecure())),
+		metrics: nopMetrics{},
 
 		nodeAddrs: nodeAddrs,
 		nodeIndex: nodeIndex,
 	}
+
+	for _, o := range opts {
+		o(r)
+	}
+
+	return r
 }
 
 // GroupReaderOption configures a GroupReader.
@@ -48,6 +55,14 @@ type GroupReaderOption func(*GroupReader)
 func WithGroupReaderLogger(l *log.Logger) GroupReaderOption {
 	return func(r *GroupReader) {
 		r.log = l
+	}
+}
+
+// WithGroupReaderMetrics returns a GroupReaderOption that configures the
+// metrics for the GroupReader. It will add metrics to the given map.
+func WithGroupReaderMetrics(m Metrics) GroupReaderOption {
+	return func(r *GroupReader) {
+		r.metrics = m
 	}
 }
 
@@ -80,9 +95,7 @@ func (g *GroupReader) reverseProxy() rpc.GroupReaderServer {
 	var gs []rpc.GroupReaderClient
 	for i, a := range g.nodeAddrs {
 		if i == g.nodeIndex {
-			gs = append(gs, groups.NewManager(func() groups.DataStorage {
-				return groups.NewStorage(1000, 250*time.Millisecond, g.client.Read, g.log)
-			}))
+			gs = append(gs, groups.NewManager(groups.NewStorage(1000, g.client.Read, g.metrics, g.log)))
 			continue
 		}
 

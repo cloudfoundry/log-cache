@@ -35,7 +35,7 @@ func (s *Pubsub) Publish(e *loggregator_v2.Envelope) {
 
 // Subscription is used in Subscribe. It is written to for each coresponding
 // envelope.
-type Subscription func(*loggregator_v2.Envelope)
+type Subscription func(e *loggregator_v2.Envelope)
 
 // Subscribe stores subscriptions and writes corresponding envelopes.
 func (s *Pubsub) Subscribe(routeIndex int, sub Subscription) {
