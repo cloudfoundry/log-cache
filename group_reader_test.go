@@ -227,6 +227,16 @@ func (s *spyGroupReader) Read(c context.Context, r *rpc.GroupReadRequest) (*rpc.
 	}, nil
 }
 
+func (s *spyGroupReader) getReadRequests() []*rpc.GroupReadRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	r := make([]*rpc.GroupReadRequest, len(s.readReqs))
+	copy(r, s.readReqs)
+
+	return r
+}
+
 func (s *spyGroupReader) RemoveFromGroup(context.Context, *rpc.RemoveFromGroupRequest) (*rpc.RemoveFromGroupResponse, error) {
 	panic("not implemented")
 }

@@ -16,8 +16,11 @@ import (
 
 // Gateway provides a RESTful API into LogCache's gRPC API.
 type Gateway struct {
-	log          *log.Logger
-	logCacheAddr string
+	log *log.Logger
+
+	logCacheAddr    string
+	groupReaderAddr string
+
 	gatewayAddr  string
 	lis          net.Listener
 	blockOnStart bool
@@ -26,11 +29,14 @@ type Gateway struct {
 // NewGateway creates a new Gateway. It will listen on the gatewayAddr and
 // submit requests via gRPC to the LogCache on logCacheAddr. Start() must be
 // invoked before using the Gateway.
-func NewGateway(logCacheAddr, gatewayAddr string, opts ...GatewayOption) *Gateway {
+func NewGateway(logCacheAddr, groupReaderAddr, gatewayAddr string, opts ...GatewayOption) *Gateway {
 	g := &Gateway{
-		log:          log.New(ioutil.Discard, "", 0),
-		logCacheAddr: logCacheAddr,
-		gatewayAddr:  gatewayAddr,
+		log: log.New(ioutil.Discard, "", 0),
+
+		logCacheAddr:    logCacheAddr,
+		groupReaderAddr: groupReaderAddr,
+
+		gatewayAddr: gatewayAddr,
 	}
 
 	for _, o := range opts {
@@ -95,7 +101,17 @@ func (g *Gateway) listenAndServe() {
 		opts,
 	)
 	if err != nil {
-		g.log.Fatalf("failed to register handler: %s", err)
+		g.log.Fatalf("failed to register LogCache handler: %s", err)
+	}
+
+	err = logcache.RegisterGroupReaderHandlerFromEndpoint(
+		context.Background(),
+		mux,
+		g.groupReaderAddr,
+		opts,
+	)
+	if err != nil {
+		g.log.Fatalf("failed to register GroupReader handler: %s", err)
 	}
 
 	server := &http.Server{Handler: mux}

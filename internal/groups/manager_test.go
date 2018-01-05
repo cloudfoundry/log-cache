@@ -132,6 +132,29 @@ var _ = Describe("Manager", func() {
 		Expect(err).To(HaveOccurred())
 	})
 
+	It("rejects invalid group names and source IDs", func() {
+		By("rejecting empty names")
+		_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+			Name:     "",
+			SourceId: "1",
+		})
+		Expect(err).To(HaveOccurred())
+
+		By("rejecting name 'read'")
+		_, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+			Name:     "read",
+			SourceId: "1",
+		})
+		Expect(err).To(HaveOccurred())
+
+		By("rejecting empty source IDs")
+		_, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+			Name:     "a",
+			SourceId: "",
+		})
+		Expect(err).To(HaveOccurred())
+	})
+
 	It("survives the race detector", func() {
 		var wg sync.WaitGroup
 		defer wg.Wait()
