@@ -11,7 +11,7 @@ import "egress.proto";
 service GroupReader {
     rpc AddToGroup(AddToGroupRequest) returns (AddToGroupResponse) {
         option (google.api.http) = {
-            patch: "/v1/group/{name}/{source_id}"
+            put: "/v1/group/{name}/{source_id}"
         };
     }
 
@@ -23,13 +23,13 @@ service GroupReader {
 
     rpc Read(GroupReadRequest) returns (GroupReadResponse) {
         option (google.api.http) = {
-            get: "/v1/group/read/{name}"
+            get: "/v1/group/{name}"
         };
     }
 
     rpc Group(GroupRequest) returns (GroupResponse) {
         option (google.api.http) = {
-            get: "/v1/group/{name}"
+            get: "/v1/group/{name}/meta"
         };
     }
 }

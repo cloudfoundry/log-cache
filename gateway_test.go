@@ -51,7 +51,7 @@ var _ = Describe("Gateway", func() {
 	})
 
 	It("upgrades HTTP requests for GroupReader into gRPC requests", func() {
-		path := "v1/group/read/some-name?start_time=99&end_time=101&limit=103&envelope_type=LOG"
+		path := "v1/group/some-name?start_time=99&end_time=101&limit=103&envelope_type=LOG"
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 		resp, err := http.Get(URL)
 		Expect(err).ToNot(HaveOccurred())
