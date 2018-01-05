@@ -19,7 +19,7 @@ func main() {
 
 	envstruct.WriteReport(cfg)
 
-	gateway := logcache.NewGateway(cfg.LogCacheAddr, cfg.Addr,
+	gateway := logcache.NewGateway(cfg.LogCacheAddr, cfg.GroupReaderAddr, cfg.Addr,
 		logcache.WithGatewayLogger(log.New(os.Stderr, "[GATEWAY] ", log.LstdFlags)),
 		logcache.WithGatewayBlock(),
 	)

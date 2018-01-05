@@ -24,6 +24,10 @@ func main() {
 
 	envstruct.WriteReport(cfg)
 
+	// GroupReader uses the slice to figure out its address. We want to bind
+	// to the given one.
+	cfg.NodeAddrs[cfg.NodeIndex] = cfg.Addr
+
 	reader := logcache.NewGroupReader(cfg.LogCacheAddr, cfg.NodeAddrs, cfg.NodeIndex,
 		logcache.WithGroupReaderLogger(log.New(os.Stderr, "[GROUP-READER] ", log.LstdFlags)),
 		logcache.WithGroupReaderMetrics(metrics.New(expvar.NewMap("GroupReader"))),

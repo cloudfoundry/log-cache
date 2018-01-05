@@ -2,6 +2,7 @@ package groups
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -49,6 +50,14 @@ func NewManager(s DataStorage) *Manager {
 // AddToGroup creates the given group if it does not exist or adds the
 // sourceID if it does.
 func (m *Manager) AddToGroup(ctx context.Context, r *logcache.AddToGroupRequest, _ ...grpc.CallOption) (*logcache.AddToGroupResponse, error) {
+	if r.GetName() == "" || r.GetSourceId() == "" {
+		return nil, errors.New("name and source_id fields are required")
+	}
+
+	if r.GetName() == "read" {
+		return nil, errors.New("name 'read' is reserved")
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
