@@ -2,8 +2,6 @@ package groups
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -11,6 +9,7 @@ import (
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/store"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 )
 
 // Manager manages groups. It implements logcache.GroupReader.
@@ -51,11 +50,11 @@ func NewManager(s DataStorage) *Manager {
 // sourceID if it does.
 func (m *Manager) AddToGroup(ctx context.Context, r *logcache.AddToGroupRequest, _ ...grpc.CallOption) (*logcache.AddToGroupResponse, error) {
 	if r.GetName() == "" || r.GetSourceId() == "" {
-		return nil, errors.New("name and source_id fields are required")
+		return nil, grpc.Errorf(codes.InvalidArgument, "name and source_id fields are required")
 	}
 
-	if r.GetName() == "read" {
-		return nil, errors.New("name 'read' is reserved")
+	if len(r.GetName()) > 128 || len(r.GetSourceId()) > 128 {
+		return nil, grpc.Errorf(codes.InvalidArgument, "name and source_id fields can only be 128 bytes long")
 	}
 
 	m.mu.Lock()
@@ -99,7 +98,7 @@ func (m *Manager) Read(ctx context.Context, r *logcache.GroupReadRequest, _ ...g
 
 	_, ok := m.m[r.Name]
 	if !ok {
-		return nil, fmt.Errorf("unknown group name: %s", r.GetName())
+		return nil, grpc.Errorf(codes.NotFound, "unknown group name: %s", r.GetName())
 	}
 
 	if r.GetEndTime() == 0 {

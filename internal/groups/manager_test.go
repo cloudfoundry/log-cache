@@ -2,6 +2,7 @@ package groups_test
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -9,6 +10,8 @@ import (
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/groups"
 	"code.cloudfoundry.org/log-cache/internal/store"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -130,29 +133,37 @@ var _ = Describe("Manager", func() {
 			Name: "unknown-name",
 		})
 		Expect(err).To(HaveOccurred())
+		Expect(grpc.Code(err)).To(Equal(codes.NotFound))
 	})
 
-	It("rejects invalid group names and source IDs", func() {
-		By("rejecting empty names")
+	It("rejects empty group names and source IDs or either that are too long", func() {
 		_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
 			Name:     "",
 			SourceId: "1",
 		})
 		Expect(err).To(HaveOccurred())
+		Expect(grpc.Code(err)).To(Equal(codes.InvalidArgument))
 
-		By("rejecting name 'read'")
 		_, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
-			Name:     "read",
+			Name:     strings.Repeat("x", 129),
 			SourceId: "1",
 		})
 		Expect(err).To(HaveOccurred())
+		Expect(grpc.Code(err)).To(Equal(codes.InvalidArgument))
 
-		By("rejecting empty source IDs")
 		_, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
 			Name:     "a",
 			SourceId: "",
 		})
 		Expect(err).To(HaveOccurred())
+		Expect(grpc.Code(err)).To(Equal(codes.InvalidArgument))
+
+		_, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+			Name:     "a",
+			SourceId: strings.Repeat("x", 129),
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(grpc.Code(err)).To(Equal(codes.InvalidArgument))
 	})
 
 	It("survives the race detector", func() {
