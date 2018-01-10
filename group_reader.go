@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"time"
 
 	"code.cloudfoundry.org/go-log-cache"
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
@@ -95,7 +96,8 @@ func (g *GroupReader) reverseProxy() rpc.GroupReaderServer {
 	var gs []rpc.GroupReaderClient
 	for i, a := range g.nodeAddrs {
 		if i == g.nodeIndex {
-			gs = append(gs, groups.NewManager(groups.NewStorage(1000, g.client.Read, g.metrics, g.log)))
+			s := groups.NewStorage(1000, g.client.Read, time.Second, g.metrics, g.log)
+			gs = append(gs, groups.NewManager(s, time.Minute))
 			continue
 		}
 

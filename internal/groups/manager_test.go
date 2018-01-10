@@ -25,7 +25,7 @@ var _ = Describe("Manager", func() {
 
 	BeforeEach(func() {
 		spyDataStorage = newSpyDataStorage()
-		m = groups.NewManager(spyDataStorage)
+		m = groups.NewManager(spyDataStorage, time.Hour)
 	})
 
 	It("keeps track of source IDs for groups", func() {
@@ -79,6 +79,84 @@ var _ = Describe("Manager", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(rr).ToNot(BeNil())
+	})
+
+	It("keeps track of requester IDs for a group", func() {
+		_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+			Name:     "a",
+			SourceId: "1",
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		_, err = m.Read(context.Background(), &logcache.GroupReadRequest{
+			Name:           "a",
+			RequesterId:    1,
+			FilterTemplate: "{{.}}",
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		// Do RequestId 1 twice to ensure it is only reported once.
+		_, err = m.Read(context.Background(), &logcache.GroupReadRequest{
+			Name:           "a",
+			RequesterId:    1,
+			FilterTemplate: "{{.}}",
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		_, err = m.Read(context.Background(), &logcache.GroupReadRequest{
+			Name:           "a",
+			RequesterId:    2,
+			FilterTemplate: "{{.}}",
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		resp, err := m.Group(context.Background(), &logcache.GroupRequest{
+			Name: "a",
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resp.RequesterIds).To(ConsistOf(uint64(1), uint64(2)))
+
+		Expect(spyDataStorage.addReqNames).To(ContainElement("a"))
+		Expect(spyDataStorage.addReqIDs).To(ConsistOf(uint64(1), (uint64(2))))
+
+		Expect(spyDataStorage.getRequestIDs).To(ContainElement(uint64(1)))
+		Expect(spyDataStorage.getRequestIDs).To(ContainElement(uint64(2)))
+	})
+
+	It("expires requester IDs after a given time", func() {
+		m = groups.NewManager(spyDataStorage, 10*time.Millisecond)
+
+		_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+			Name:     "a",
+			SourceId: "1",
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		_, err = m.Read(context.Background(), &logcache.GroupReadRequest{
+			Name:           "a",
+			RequesterId:    1,
+			FilterTemplate: "{{.}}",
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		f := func() []uint64 {
+			_, err = m.Read(context.Background(), &logcache.GroupReadRequest{
+				Name:           "a",
+				RequesterId:    2,
+				FilterTemplate: "{{.}}",
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			resp, err := m.Group(context.Background(), &logcache.GroupRequest{
+				Name: "a",
+			})
+			Expect(err).ToNot(HaveOccurred())
+			return resp.RequesterIds
+		}
+		Eventually(f).Should(ConsistOf(uint64(2)))
+
+		Expect(spyDataStorage.removeReqNames).To(ConsistOf("a"))
+		Expect(spyDataStorage.removeReqIDs).To(ConsistOf(uint64(1)))
 	})
 
 	It("reads from a known group", func() {
@@ -200,10 +278,17 @@ var _ = Describe("Manager", func() {
 })
 
 type spyDataStorage struct {
-	adds        []string
-	addNames    []string
+	adds     []string
+	addNames []string
+
 	removes     []string
 	removeNames []string
+
+	addReqNames []string
+	addReqIDs   []uint64
+
+	removeReqNames []string
+	removeReqIDs   []uint64
 
 	getNames         []string
 	getStarts        []int64
@@ -211,6 +296,7 @@ type spyDataStorage struct {
 	getLimits        []int
 	getEnvelopeTypes []store.EnvelopeType
 	getResult        []*loggregator_v2.Envelope
+	getRequestIDs    []uint64
 }
 
 func newSpyDataStorage() *spyDataStorage {
@@ -223,12 +309,14 @@ func (s *spyDataStorage) Get(
 	end time.Time,
 	envelopeType store.EnvelopeType,
 	limit int,
+	requesterID uint64,
 ) []*loggregator_v2.Envelope {
 	s.getNames = append(s.getNames, name)
 	s.getStarts = append(s.getStarts, start.UnixNano())
 	s.getEnds = append(s.getEnds, end.UnixNano())
 	s.getLimits = append(s.getLimits, limit)
 	s.getEnvelopeTypes = append(s.getEnvelopeTypes, envelopeType)
+	s.getRequestIDs = append(s.getRequestIDs, requesterID)
 
 	return s.getResult
 }
@@ -238,7 +326,17 @@ func (s *spyDataStorage) Add(name, sourceID string) {
 	s.adds = append(s.adds, sourceID)
 }
 
+func (s *spyDataStorage) AddRequester(name string, requesterID uint64) {
+	s.addReqNames = append(s.addReqNames, name)
+	s.addReqIDs = append(s.addReqIDs, requesterID)
+}
+
 func (s *spyDataStorage) Remove(name, sourceID string) {
 	s.removeNames = append(s.removeNames, name)
 	s.removes = append(s.removes, sourceID)
+}
+
+func (s *spyDataStorage) RemoveRequester(name string, requesterID uint64) {
+	s.removeReqNames = append(s.removeReqNames, name)
+	s.removeReqIDs = append(s.removeReqIDs, requesterID)
 }
