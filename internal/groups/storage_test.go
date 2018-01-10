@@ -1,6 +1,7 @@
 package groups_test
 
 import (
+	"context"
 	"log"
 	"sort"
 	"sync"
@@ -164,7 +165,12 @@ func (s *spyReader) addEnvelopes(sourceID string, es []*loggregator_v2.Envelope)
 	s.results[sourceID] = append(s.results[sourceID], es)
 }
 
-func (s *spyReader) Read(sourceID string, start time.Time, opts ...gologcache.ReadOption) ([]*loggregator_v2.Envelope, error) {
+func (s *spyReader) Read(
+	_ context.Context,
+	sourceID string,
+	start time.Time,
+	opts ...gologcache.ReadOption,
+) ([]*loggregator_v2.Envelope, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sourceIDs = append(s.sourceIDs, sourceID)

@@ -89,24 +89,21 @@ var _ = Describe("Manager", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = m.Read(context.Background(), &logcache.GroupReadRequest{
-			Name:           "a",
-			RequesterId:    1,
-			FilterTemplate: "{{.}}",
+			Name:        "a",
+			RequesterId: 1,
 		})
 		Expect(err).ToNot(HaveOccurred())
 
 		// Do RequestId 1 twice to ensure it is only reported once.
 		_, err = m.Read(context.Background(), &logcache.GroupReadRequest{
-			Name:           "a",
-			RequesterId:    1,
-			FilterTemplate: "{{.}}",
+			Name:        "a",
+			RequesterId: 1,
 		})
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = m.Read(context.Background(), &logcache.GroupReadRequest{
-			Name:           "a",
-			RequesterId:    2,
-			FilterTemplate: "{{.}}",
+			Name:        "a",
+			RequesterId: 2,
 		})
 		Expect(err).ToNot(HaveOccurred())
 
@@ -133,17 +130,15 @@ var _ = Describe("Manager", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = m.Read(context.Background(), &logcache.GroupReadRequest{
-			Name:           "a",
-			RequesterId:    1,
-			FilterTemplate: "{{.}}",
+			Name:        "a",
+			RequesterId: 1,
 		})
 		Expect(err).ToNot(HaveOccurred())
 
 		f := func() []uint64 {
 			_, err = m.Read(context.Background(), &logcache.GroupReadRequest{
-				Name:           "a",
-				RequesterId:    2,
-				FilterTemplate: "{{.}}",
+				Name:        "a",
+				RequesterId: 2,
 			})
 			Expect(err).ToNot(HaveOccurred())
 

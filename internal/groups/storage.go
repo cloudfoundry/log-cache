@@ -32,6 +32,7 @@ type Storage struct {
 
 // Reader reads envelopes from LogCache.
 type Reader func(
+	ctx context.Context,
 	sourceID string,
 	start time.Time,
 	opts ...gologcache.ReadOption,
@@ -227,17 +228,19 @@ func (a *aggregator) Add(ctx context.Context, worker interface{}, task interface
 	req.sourceIDs = append(req.sourceIDs, sourceID)
 
 	req.agg.AddProducer(sourceID, streamaggregator.ProducerFunc(func(ctx context.Context, request interface{}, c chan<- interface{}) {
-		gologcache.Walk(sourceID, func(e []*loggregator_v2.Envelope) bool {
-			for _, ee := range e {
-				select {
-				case c <- ee:
-				case <-ctx.Done():
-					return false
+		gologcache.Walk(ctx, sourceID,
+			func(e []*loggregator_v2.Envelope) bool {
+				for _, ee := range e {
+					select {
+					case c <- ee:
+					case <-ctx.Done():
+						return false
+					}
 				}
-			}
 
-			return true
-		}, gologcache.Reader(a.r),
+				return true
+			},
+			gologcache.Reader(a.r),
 			gologcache.WithWalkBackoff(gologcache.NewAlwaysRetryBackoff(a.backoff)),
 		)
 	}))
