@@ -80,6 +80,77 @@ var _ = Describe("GroupReader", func() {
 		}).Should(Equal([]int64{99, 100, 101, 102}))
 	})
 
+	It("shards data from a group of sourceIDs", func() {
+		spyLogCache.readEnvelopes["source-0"] = []*loggregator_v2.Envelope{
+			{Timestamp: 98},
+			{Timestamp: 99},
+			{Timestamp: 101},
+		}
+
+		spyLogCache.readEnvelopes["source-1"] = []*loggregator_v2.Envelope{
+			{Timestamp: 100},
+			{Timestamp: 102},
+			{Timestamp: 103},
+		}
+
+		_, err := c.AddToGroup(context.Background(), &rpc.AddToGroupRequest{
+			Name:     "some-name-a",
+			SourceId: "source-0",
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		_, err = c.AddToGroup(context.Background(), &rpc.AddToGroupRequest{
+			Name:     "some-name-a",
+			SourceId: "source-1",
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		var wg sync.WaitGroup
+		defer wg.Wait()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer GinkgoRecover()
+			Eventually(func() []int64 {
+				resp, err := c.Read(context.Background(), &rpc.GroupReadRequest{
+					Name:        "some-name-a",
+					RequesterId: 1,
+
+					// [99,103)
+					StartTime: 99,
+					EndTime:   103,
+				})
+				Expect(err).ToNot(HaveOccurred())
+
+				var result []int64
+				for _, e := range resp.Envelopes.Batch {
+					result = append(result, e.GetTimestamp())
+				}
+
+				return result
+			}).Should(Or(Equal([]int64{99, 101}), Equal([]int64{100, 102})))
+		}()
+
+		Eventually(func() []int64 {
+			resp, err := c.Read(context.Background(), &rpc.GroupReadRequest{
+				Name:        "some-name-a",
+				RequesterId: 0,
+
+				// [99,103)
+				StartTime: 99,
+				EndTime:   103,
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			var result []int64
+			for _, e := range resp.Envelopes.Batch {
+				result = append(result, e.GetTimestamp())
+			}
+
+			return result
+		}).Should(Or(Equal([]int64{99, 101}), Equal([]int64{100, 102})))
+	})
+
 	It("keeps track of groups", func() {
 		_, err := c.AddToGroup(context.Background(), &rpc.AddToGroupRequest{
 			Name:     "some-name-a",

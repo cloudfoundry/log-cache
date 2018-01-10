@@ -52,10 +52,12 @@ message RemoveFromGroupResponse {
 
 message GroupReadRequest {
     string name = 1;
-    int64 start_time = 2;
-    int64 end_time = 3;
-    int64 limit = 4;
-    EnvelopeTypes envelope_type = 5;
+    uint64 requester_id = 2;
+
+    int64 start_time = 3;
+    int64 end_time = 4;
+    int64 limit = 5;
+    EnvelopeTypes envelope_type = 6;
 }
 
 message GroupReadResponse {
@@ -68,5 +70,6 @@ message GroupRequest {
 
 message GroupResponse {
     repeated string source_ids = 1;
+    repeated uint64 requester_ids = 2;
 }
 
