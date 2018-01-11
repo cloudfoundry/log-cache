@@ -137,9 +137,11 @@ var _ = Describe("LogCache", func() {
 	It("routes query requests to peers", func() {
 		peer := newSpyLogCache()
 		peerAddr := peer.start()
-		peer.readEnvelopes["source-1"] = []*loggregator_v2.Envelope{
-			{Timestamp: 99},
-			{Timestamp: 101},
+		peer.readEnvelopes["source-1"] = func() []*loggregator_v2.Envelope {
+			return []*loggregator_v2.Envelope{
+				{Timestamp: 99},
+				{Timestamp: 101},
+			}
 		}
 
 		cache := logcache.New(
@@ -204,12 +206,12 @@ type spyLogCache struct {
 	mu            sync.Mutex
 	envelopes     []*loggregator_v2.Envelope
 	readRequests  []*rpc.ReadRequest
-	readEnvelopes map[string][]*loggregator_v2.Envelope
+	readEnvelopes map[string]func() []*loggregator_v2.Envelope
 }
 
 func newSpyLogCache() *spyLogCache {
 	return &spyLogCache{
-		readEnvelopes: make(map[string][]*loggregator_v2.Envelope),
+		readEnvelopes: make(map[string]func() []*loggregator_v2.Envelope),
 	}
 }
 
@@ -259,9 +261,16 @@ func (s *spyLogCache) Read(ctx context.Context, r *rpc.ReadRequest) (*rpc.ReadRe
 
 	s.readRequests = append(s.readRequests, r)
 
+	b := s.readEnvelopes[r.GetSourceId()]
+
+	var batch []*loggregator_v2.Envelope
+	if b != nil {
+		batch = b()
+	}
+
 	return &rpc.ReadResponse{
 		Envelopes: &loggregator_v2.EnvelopeBatch{
-			Batch: s.readEnvelopes[r.GetSourceId()],
+			Batch: batch,
 		},
 	}, nil
 }

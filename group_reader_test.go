@@ -37,16 +37,20 @@ var _ = Describe("GroupReader", func() {
 	})
 
 	It("reads data from a group of sourceIDs", func() {
-		spyLogCache.readEnvelopes["source-0"] = []*loggregator_v2.Envelope{
-			{Timestamp: 98},
-			{Timestamp: 99},
-			{Timestamp: 101},
+		spyLogCache.readEnvelopes["source-0"] = func() []*loggregator_v2.Envelope {
+			return []*loggregator_v2.Envelope{
+				{Timestamp: 98},
+				{Timestamp: 99},
+				{Timestamp: 101},
+			}
 		}
 
-		spyLogCache.readEnvelopes["source-1"] = []*loggregator_v2.Envelope{
-			{Timestamp: 100},
-			{Timestamp: 102},
-			{Timestamp: 103},
+		spyLogCache.readEnvelopes["source-1"] = func() []*loggregator_v2.Envelope {
+			return []*loggregator_v2.Envelope{
+				{Timestamp: 100},
+				{Timestamp: 102},
+				{Timestamp: 103},
+			}
 		}
 
 		_, err := c.AddToGroup(context.Background(), &rpc.AddToGroupRequest{
@@ -81,16 +85,22 @@ var _ = Describe("GroupReader", func() {
 	})
 
 	It("shards data from a group of sourceIDs", func() {
-		spyLogCache.readEnvelopes["source-0"] = []*loggregator_v2.Envelope{
-			{Timestamp: 98},
-			{Timestamp: 99},
-			{Timestamp: 101},
+
+		i := int64(99)
+		j := int64(100)
+
+		spyLogCache.readEnvelopes["source-0"] = func() []*loggregator_v2.Envelope {
+			i += 2
+			return []*loggregator_v2.Envelope{
+				{Timestamp: i},
+			}
 		}
 
-		spyLogCache.readEnvelopes["source-1"] = []*loggregator_v2.Envelope{
-			{Timestamp: 100},
-			{Timestamp: 102},
-			{Timestamp: 103},
+		spyLogCache.readEnvelopes["source-1"] = func() []*loggregator_v2.Envelope {
+			j += 2
+			return []*loggregator_v2.Envelope{
+				{Timestamp: j},
+			}
 		}
 
 		_, err := c.AddToGroup(context.Background(), &rpc.AddToGroupRequest{
@@ -115,40 +125,40 @@ var _ = Describe("GroupReader", func() {
 				resp, err := c.Read(context.Background(), &rpc.GroupReadRequest{
 					Name:        "some-name-a",
 					RequesterId: 1,
-
-					// [99,103)
-					StartTime: 99,
-					EndTime:   103,
 				})
 				Expect(err).ToNot(HaveOccurred())
 
 				var result []int64
 				for _, e := range resp.Envelopes.Batch {
-					result = append(result, e.GetTimestamp())
+					result = append(result, e.GetTimestamp()%2)
 				}
 
 				return result
-			}).Should(Or(Equal([]int64{99, 101}), Equal([]int64{100, 102})))
+			}, 3).Should(Or(
+				// Should only be odd or only be even
+				And(ContainElement(int64(0)), Not(ContainElement(int64(1)))),
+				And(Not(ContainElement(int64(0))), ContainElement(int64(1))),
+			))
 		}()
 
 		Eventually(func() []int64 {
 			resp, err := c.Read(context.Background(), &rpc.GroupReadRequest{
 				Name:        "some-name-a",
 				RequesterId: 0,
-
-				// [99,103)
-				StartTime: 99,
-				EndTime:   103,
 			})
 			Expect(err).ToNot(HaveOccurred())
 
 			var result []int64
 			for _, e := range resp.Envelopes.Batch {
-				result = append(result, e.GetTimestamp())
+				result = append(result, e.GetTimestamp()%2)
 			}
 
 			return result
-		}).Should(Or(Equal([]int64{99, 101}), Equal([]int64{100, 102})))
+		}, 3).Should(Or(
+			// Should only be odd or only be even
+			And(ContainElement(int64(0)), Not(ContainElement(int64(1)))),
+			And(Not(ContainElement(int64(0))), ContainElement(int64(1))),
+		))
 	})
 
 	It("keeps track of groups", func() {
