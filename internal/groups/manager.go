@@ -163,7 +163,7 @@ func (m *Manager) Group(ctx context.Context, r *logcache.GroupRequest, _ ...grpc
 	a := m.m[r.Name]
 
 	var reqIds []uint64
-	for k, _ := range a.requesterIDs {
+	for k := range a.requesterIDs {
 		reqIds = append(reqIds, k)
 	}
 

@@ -32,7 +32,7 @@ type MetricClient interface {
 }
 
 // Start reads from the stream and writes to the given store. It blocks
-// indefinately.
+// indefinitely.
 func (s *EnvelopeStream) Start() {
 	for {
 		e := s.rx()

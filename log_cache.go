@@ -17,9 +17,10 @@ import (
 
 // LogCache is a in memory cache for Loggregator envelopes.
 type LogCache struct {
-	log     *log.Logger
-	lis     net.Listener
-	metrics Metrics
+	log        *log.Logger
+	lis        net.Listener
+	serverOpts []grpc.ServerOption
+	metrics    Metrics
 
 	storeSize    int
 	maxPerSource int
@@ -90,6 +91,14 @@ func WithMaxPerSource(size int) LogCacheOption {
 func WithAddr(addr string) LogCacheOption {
 	return func(c *LogCache) {
 		c.addr = addr
+	}
+}
+
+// WithServerOpts configures the gRPC server options. It defaults to an
+// empty list
+func WithServerOpts(opts ...grpc.ServerOption) LogCacheOption {
+	return func(c *LogCache) {
+		c.serverOpts = opts
 	}
 }
 
@@ -180,7 +189,7 @@ func (c *LogCache) setupRouting(s *store.Store) {
 
 	go func() {
 		peerReader := ingress.NewPeerReader(ps.Publish, proxy.Get)
-		srv := grpc.NewServer()
+		srv := grpc.NewServer(c.serverOpts...)
 		logcache.RegisterIngressServer(srv, peerReader)
 		logcache.RegisterEgressServer(srv, peerReader)
 		if err := srv.Serve(lis); err != nil {

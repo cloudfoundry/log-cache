@@ -8,8 +8,8 @@ import (
 
 	"code.cloudfoundry.org/go-batching"
 	"code.cloudfoundry.org/go-diodes"
-	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"google.golang.org/grpc"
 )
 

@@ -1,11 +1,16 @@
 package main
 
-import envstruct "code.cloudfoundry.org/go-envstruct"
+import (
+	envstruct "code.cloudfoundry.org/go-envstruct"
+	"code.cloudfoundry.org/log-cache/internal/tls"
+)
 
 // Config is the configuration for a LogCache Gateway.
 type Config struct {
-	Addr            string `env:"ADDR, required"`
-	LogCacheAddr    string `env:"LOG_CACHE_ADDR, required"`
+	Addr         string `env:"ADDR, required"`
+	LogCacheAddr string `env:"LOG_CACHE_ADDR, required"`
+	TLS          tls.TLS
+
 	GroupReaderAddr string `env:"GROUP_READER_ADDR, required"`
 }
 

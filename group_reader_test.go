@@ -1,6 +1,7 @@
 package logcache_test
 
 import (
+	"crypto/tls"
 	"net"
 	"sync"
 
@@ -9,6 +10,7 @@ import (
 	"code.cloudfoundry.org/log-cache"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -24,16 +26,34 @@ var _ = Describe("GroupReader", func() {
 	)
 
 	BeforeEach(func() {
-		spy = newSpyGroupReader()
+		tlsConfig, err := newTLSConfig(
+			Cert("log-cache-ca.crt"),
+			Cert("log-cache.crt"),
+			Cert("log-cache.key"),
+			"log-cache",
+		)
+		Expect(err).ToNot(HaveOccurred())
+
+		spy = newSpyGroupReader(tlsConfig)
 		spyAddr := spy.start()
 
-		spyLogCache = newSpyLogCache()
+		spyLogCache = newSpyLogCache(tlsConfig)
 		logCacheAddr := spyLogCache.start()
 
-		g = logcache.NewGroupReader(logCacheAddr, []string{"127.0.0.1:0", spyAddr}, 0)
+		g = logcache.NewGroupReader(
+			logCacheAddr,
+			[]string{"127.0.0.1:0", spyAddr},
+			0,
+			logcache.WithGroupReaderServerOpts(
+				grpc.Creds(credentials.NewTLS(tlsConfig)),
+			),
+			logcache.WithGroupReaderDialOpts(
+				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+			),
+		)
 		g.Start()
 
-		c = newGroupReaderClient(g.Addr())
+		c = newGroupReaderClient(g.Addr(), tlsConfig)
 	})
 
 	It("reads data from a group of sourceIDs", func() {
@@ -240,8 +260,11 @@ var _ = Describe("GroupReader", func() {
 	})
 })
 
-func newGroupReaderClient(addr string) rpc.GroupReaderClient {
-	conn, err := grpc.Dial(addr, grpc.WithInsecure())
+func newGroupReaderClient(addr string, tlsConfig *tls.Config) rpc.GroupReaderClient {
+	conn, err := grpc.Dial(
+		addr,
+		grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -250,13 +273,14 @@ func newGroupReaderClient(addr string) rpc.GroupReaderClient {
 }
 
 type spyGroupReader struct {
-	mu       sync.Mutex
-	addReqs  []*rpc.AddToGroupRequest
-	readReqs []*rpc.GroupReadRequest
+	mu        sync.Mutex
+	addReqs   []*rpc.AddToGroupRequest
+	readReqs  []*rpc.GroupReadRequest
+	tlsConfig *tls.Config
 }
 
-func newSpyGroupReader() *spyGroupReader {
-	return &spyGroupReader{}
+func newSpyGroupReader(tlsConfig *tls.Config) *spyGroupReader {
+	return &spyGroupReader{tlsConfig: tlsConfig}
 }
 
 func (s *spyGroupReader) start() string {
@@ -266,7 +290,7 @@ func (s *spyGroupReader) start() string {
 	}
 
 	go func() {
-		srv := grpc.NewServer()
+		srv := grpc.NewServer(grpc.Creds(credentials.NewTLS(s.tlsConfig)))
 
 		rpc.RegisterGroupReaderServer(srv, s)
 		if err := srv.Serve(lis); err != nil {

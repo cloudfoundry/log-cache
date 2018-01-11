@@ -1,12 +1,15 @@
 package logcache_test
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -16,14 +19,24 @@ var _ = Describe("ExpvarForwarder", func() {
 	var (
 		r *logcache.ExpvarForwarder
 
-		addr     string
-		server1  *httptest.Server
-		server2  *httptest.Server
-		server3  *httptest.Server
-		logCache *spyLogCache
+		addr      string
+		server1   *httptest.Server
+		server2   *httptest.Server
+		server3   *httptest.Server
+		logCache  *spyLogCache
+		tlsConfig *tls.Config
 	)
 
 	BeforeEach(func() {
+		var err error
+		tlsConfig, err = newTLSConfig(
+			Cert("log-cache-ca.crt"),
+			Cert("log-cache.crt"),
+			Cert("log-cache.key"),
+			"log-cache",
+		)
+		Expect(err).ToNot(HaveOccurred())
+
 		server1 = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(`
 			{
@@ -56,7 +69,7 @@ var _ = Describe("ExpvarForwarder", func() {
 			}`))
 		}))
 
-		logCache = newSpyLogCache()
+		logCache = newSpyLogCache(tlsConfig)
 		addr = logCache.start()
 
 		r = logcache.NewExpvarForwarder(addr,
@@ -76,6 +89,7 @@ var _ = Describe("ExpvarForwarder", func() {
 				"{{.LogCache.Egress}}",
 				map[string]string{"a": "some-value"},
 			),
+			logcache.WithExpvarDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
 		)
 
 		go r.Start()

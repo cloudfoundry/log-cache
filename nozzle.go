@@ -74,7 +74,7 @@ func WithNozzleDialOpts(opts ...grpc.DialOption) NozzleOption {
 }
 
 // Start starts reading envelopes from the logs provider and writes them to
-// LogCache. It blocks indefinately.
+// LogCache. It blocks indefinitely.
 func (n *Nozzle) Start() {
 	rx := n.s.Stream(context.Background(), n.buildBatchReq())
 

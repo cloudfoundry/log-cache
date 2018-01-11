@@ -30,7 +30,14 @@ func main() {
 		logcache.WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
 		logcache.WithMetrics(metrics.New(expvar.NewMap("LogCache"))),
 		logcache.WithAddr(cfg.Addr),
-		logcache.WithClustered(cfg.NodeIndex, cfg.NodeAddrs, grpc.WithInsecure()),
+		logcache.WithClustered(
+			cfg.NodeIndex,
+			cfg.NodeAddrs,
+			grpc.WithTransportCredentials(
+				cfg.TLS.Credentials("log-cache"),
+			),
+		),
+		logcache.WithServerOpts(grpc.Creds(cfg.TLS.Credentials("log-cache"))),
 	)
 
 	cache.Start()

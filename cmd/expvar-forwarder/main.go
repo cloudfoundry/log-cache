@@ -6,6 +6,7 @@ import (
 	"os"
 
 	logcache "code.cloudfoundry.org/log-cache"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -19,6 +20,7 @@ func main() {
 
 	opts := []logcache.ExpvarForwarderOption{
 		logcache.WithExpvarLogger(log.New(os.Stderr, "", log.LstdFlags)),
+		logcache.WithExpvarDialOpts(grpc.WithTransportCredentials(cfg.LogCacheTLS.Credentials("log-cache"))),
 	}
 
 	for _, c := range cfg.Counters.Descriptions {

@@ -6,8 +6,8 @@ import (
 
 	"golang.org/x/net/context"
 
-	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 )
 
 // ProxyStore finds what store has the desired data to read from.

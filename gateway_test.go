@@ -6,6 +6,8 @@ import (
 
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"code.cloudfoundry.org/log-cache"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -20,16 +22,30 @@ var _ = Describe("Gateway", func() {
 	)
 
 	BeforeEach(func() {
-		spyLogCache = newSpyLogCache()
+		tlsConfig, err := newTLSConfig(
+			Cert("log-cache-ca.crt"),
+			Cert("log-cache.crt"),
+			Cert("log-cache.key"),
+			"log-cache",
+		)
+		Expect(err).ToNot(HaveOccurred())
+
+		spyLogCache = newSpyLogCache(tlsConfig)
 		logCacheAddr := spyLogCache.start()
 
-		spyGroupReader = newSpyGroupReader()
+		spyGroupReader = newSpyGroupReader(tlsConfig)
 		groupReaderAddr := spyGroupReader.start()
 
 		gw = logcache.NewGateway(
 			logCacheAddr,
 			groupReaderAddr,
 			"127.0.0.1:0",
+			logcache.WithGatewayLogCacheDialOpts(
+				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+			),
+			logcache.WithGatewayGroupReaderDialOpts(
+				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+			),
 		)
 		gw.Start()
 	})

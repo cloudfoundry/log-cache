@@ -1,11 +1,15 @@
 package main
 
-import envstruct "code.cloudfoundry.org/go-envstruct"
+import (
+	envstruct "code.cloudfoundry.org/go-envstruct"
+	"code.cloudfoundry.org/log-cache/internal/tls"
+)
 
 // Config is the configuration for a LogCache.
 type Config struct {
 	Addr       string `env:"ADDR, required"`
-	HealthPort int    `env:"HEALTH_PORT"`
+	TLS        tls.TLS
+	HealthPort int `env:"HEALTH_PORT"`
 
 	// StoreSize is the number of envelopes to store.
 	StoreSize int `env:"STORE_SIZE"`

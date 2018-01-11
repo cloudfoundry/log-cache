@@ -5,6 +5,7 @@ import (
 	"time"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
+	"code.cloudfoundry.org/log-cache/internal/tls"
 )
 
 // Config is the configuration for a LogCache.
@@ -13,6 +14,8 @@ type Config struct {
 	Interval     time.Duration       `env:"INTERVAL"`
 	Counters     CounterDescriptions `env:"COUNTERS_JSON"`
 	Gauges       GaugeDescriptions   `env:"GAUGES_JSON"`
+
+	LogCacheTLS tls.TLS
 }
 
 type CounterDescription struct {

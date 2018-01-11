@@ -11,6 +11,7 @@ import (
 	envstruct "code.cloudfoundry.org/go-envstruct"
 	"code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/metrics"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -31,6 +32,14 @@ func main() {
 	reader := logcache.NewGroupReader(cfg.LogCacheAddr, cfg.NodeAddrs, cfg.NodeIndex,
 		logcache.WithGroupReaderLogger(log.New(os.Stderr, "[GROUP-READER] ", log.LstdFlags)),
 		logcache.WithGroupReaderMetrics(metrics.New(expvar.NewMap("GroupReader"))),
+		logcache.WithGroupReaderServerOpts(
+			grpc.Creds(cfg.LogCacheTLS.Credentials("log-cache-group-reader")),
+		),
+		logcache.WithGroupReaderDialOpts(
+			grpc.WithTransportCredentials(
+				cfg.LogCacheTLS.Credentials("log-cache"),
+			),
+		),
 	)
 
 	reader.Start()

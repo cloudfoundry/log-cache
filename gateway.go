@@ -21,9 +21,11 @@ type Gateway struct {
 	logCacheAddr    string
 	groupReaderAddr string
 
-	gatewayAddr  string
-	lis          net.Listener
-	blockOnStart bool
+	gatewayAddr         string
+	lis                 net.Listener
+	blockOnStart        bool
+	logCacheDialOpts    []grpc.DialOption
+	groupReaderDialOpts []grpc.DialOption
 }
 
 // NewGateway creates a new Gateway. It will listen on the gatewayAddr and
@@ -66,6 +68,22 @@ func WithGatewayBlock() GatewayOption {
 	}
 }
 
+// WithGatewayLogCacheDialOpts returns a GatewayOption that sets grpc.DialOptions on the
+// log-cache dial
+func WithGatewayLogCacheDialOpts(opts ...grpc.DialOption) GatewayOption {
+	return func(g *Gateway) {
+		g.logCacheDialOpts = opts
+	}
+}
+
+// WithGatewayGroupReaderDialOpts returns a GatewayOption that sets grpc.DialOptions on the
+// log-cache group reader dial
+func WithGatewayGroupReaderDialOpts(opts ...grpc.DialOption) GatewayOption {
+	return func(g *Gateway) {
+		g.groupReaderDialOpts = opts
+	}
+}
+
 // Start starts the gateway to start receiving and forwarding requests. It
 // does not block unless WithGatewayBlock was set.
 func (g *Gateway) Start() {
@@ -92,13 +110,12 @@ func (g *Gateway) Addr() string {
 
 func (g *Gateway) listenAndServe() {
 	mux := runtime.NewServeMux()
-	opts := []grpc.DialOption{grpc.WithInsecure()}
 
 	err := logcache.RegisterEgressHandlerFromEndpoint(
 		context.Background(),
 		mux,
 		g.logCacheAddr,
-		opts,
+		g.logCacheDialOpts,
 	)
 	if err != nil {
 		g.log.Fatalf("failed to register LogCache handler: %s", err)
@@ -108,7 +125,7 @@ func (g *Gateway) listenAndServe() {
 		context.Background(),
 		mux,
 		g.groupReaderAddr,
-		opts,
+		g.groupReaderDialOpts,
 	)
 	if err != nil {
 		g.log.Fatalf("failed to register GroupReader handler: %s", err)

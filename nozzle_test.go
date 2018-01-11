@@ -7,6 +7,8 @@ import (
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache"
 	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -21,13 +23,21 @@ var _ = Describe("Nozzle", func() {
 	)
 
 	BeforeEach(func() {
+		tlsConfig, err := newTLSConfig(
+			Cert("log-cache-ca.crt"),
+			Cert("log-cache.crt"),
+			Cert("log-cache.key"),
+			"log-cache",
+		)
+		Expect(err).ToNot(HaveOccurred())
 		streamConnector = newSpyStreamConnector()
 		metricMap = newSpyMetrics()
-		logCache = newSpyLogCache()
+		logCache = newSpyLogCache(tlsConfig)
 		addr := logCache.start()
 
 		n = logcache.NewNozzle(streamConnector, addr,
 			logcache.WithNozzleMetrics(metricMap),
+			logcache.WithNozzleDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
 		)
 		go n.Start()
 	})

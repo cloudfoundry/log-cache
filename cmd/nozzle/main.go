@@ -11,6 +11,7 @@ import (
 	envstruct "code.cloudfoundry.org/go-envstruct"
 	logcache "code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/metrics"
+	"google.golang.org/grpc"
 
 	loggregator "code.cloudfoundry.org/go-loggregator"
 )
@@ -27,12 +28,12 @@ func main() {
 	envstruct.WriteReport(cfg)
 
 	tlsCfg, err := loggregator.NewEgressTLSConfig(
-		cfg.TLS.LogProviderCA,
-		cfg.TLS.LogProviderCert,
-		cfg.TLS.LogProviderKey,
+		cfg.LogsProviderTLS.LogProviderCA,
+		cfg.LogsProviderTLS.LogProviderCert,
+		cfg.LogsProviderTLS.LogProviderKey,
 	)
 	if err != nil {
-		log.Fatalf("invalid TLS configuration: %s", err)
+		log.Fatalf("invalid LogsProviderTLS configuration: %s", err)
 	}
 
 	loggr := log.New(os.Stderr, "[LOGGR] ", log.LstdFlags)
@@ -50,6 +51,11 @@ func main() {
 		cfg.LogCacheAddr,
 		logcache.WithNozzleLogger(log.New(os.Stderr, "", log.LstdFlags)),
 		logcache.WithNozzleMetrics(metrics.New(expvar.NewMap("Nozzle"))),
+		logcache.WithNozzleDialOpts(
+			grpc.WithTransportCredentials(
+				cfg.LogCacheTLS.Credentials("log-cache"),
+			),
+		),
 	)
 
 	go nozzle.Start()

@@ -6,6 +6,7 @@ import (
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
 	"code.cloudfoundry.org/log-cache"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -22,6 +23,12 @@ func main() {
 	gateway := logcache.NewGateway(cfg.LogCacheAddr, cfg.GroupReaderAddr, cfg.Addr,
 		logcache.WithGatewayLogger(log.New(os.Stderr, "[GATEWAY] ", log.LstdFlags)),
 		logcache.WithGatewayBlock(),
+		logcache.WithGatewayLogCacheDialOpts(
+			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
+		),
+		logcache.WithGatewayGroupReaderDialOpts(
+			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache-group-reader")),
+		),
 	)
 
 	gateway.Start()

@@ -2,12 +2,16 @@ package logcache_test
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
+	"io/ioutil"
 	"log"
 	"net"
 	"sync"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
@@ -19,11 +23,29 @@ import (
 )
 
 var _ = Describe("LogCache", func() {
+	var (
+		tlsConfig *tls.Config
+	)
+
+	BeforeEach(func() {
+		var err error
+		tlsConfig, err = newTLSConfig(
+			Cert("log-cache-ca.crt"),
+			Cert("log-cache.crt"),
+			Cert("log-cache.key"),
+			"log-cache",
+		)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
 	It("returns data filtered by source ID in 1 node cluster", func() {
 		spyMetrics := newSpyMetrics()
 		cache := logcache.New(
 			logcache.WithAddr("127.0.0.1:0"),
 			logcache.WithMetrics(spyMetrics),
+			logcache.WithServerOpts(
+				grpc.Creds(credentials.NewTLS(tlsConfig)),
+			),
 		)
 		cache.Start()
 
@@ -33,7 +55,9 @@ var _ = Describe("LogCache", func() {
 			{Timestamp: 3, SourceId: "app-a"},
 		})
 
-		conn, err := grpc.Dial(cache.Addr(), grpc.WithInsecure())
+		conn, err := grpc.Dial(cache.Addr(),
+			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+		)
 		Expect(err).ToNot(HaveOccurred())
 		defer conn.Close()
 		client := rpc.NewEgressClient(conn)
@@ -66,13 +90,16 @@ var _ = Describe("LogCache", func() {
 	})
 
 	It("routes envelopes to peers", func() {
-		peer := newSpyLogCache()
+		peer := newSpyLogCache(tlsConfig)
 		peerAddr := peer.start()
 
 		cache := logcache.New(
 			logcache.WithAddr("127.0.0.1:0"),
 			logcache.WithClustered(0, []string{"my-addr", peerAddr},
-				grpc.WithInsecure(),
+				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+			),
+			logcache.WithServerOpts(
+				grpc.Creds(credentials.NewTLS(tlsConfig)),
 			),
 		)
 		cache.Start()
@@ -94,20 +121,25 @@ var _ = Describe("LogCache", func() {
 		cache := logcache.New(
 			logcache.WithAddr("127.0.0.1:0"),
 			logcache.WithClustered(0, []string{"my-addr", "other-addr"},
-				grpc.WithInsecure(),
+				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+			),
+			logcache.WithServerOpts(
+				grpc.Creds(credentials.NewTLS(tlsConfig)),
 			),
 		)
 		cache.Start()
 
 		peerWriter := egress.NewPeerWriter(
 			cache.Addr(),
-			grpc.WithInsecure(),
+			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 		)
 
 		// source-0 hashes to 7700738999732113484 (route to node 0)
 		peerWriter.Write(&loggregator_v2.Envelope{SourceId: "source-0", Timestamp: 1})
 
-		conn, err := grpc.Dial(cache.Addr(), grpc.WithInsecure())
+		conn, err := grpc.Dial(cache.Addr(),
+			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+		)
 		Expect(err).ToNot(HaveOccurred())
 		defer conn.Close()
 		client := rpc.NewEgressClient(conn)
@@ -135,7 +167,7 @@ var _ = Describe("LogCache", func() {
 	})
 
 	It("routes query requests to peers", func() {
-		peer := newSpyLogCache()
+		peer := newSpyLogCache(tlsConfig)
 		peerAddr := peer.start()
 		peer.readEnvelopes["source-1"] = func() []*loggregator_v2.Envelope {
 			return []*loggregator_v2.Envelope{
@@ -147,13 +179,18 @@ var _ = Describe("LogCache", func() {
 		cache := logcache.New(
 			logcache.WithAddr("127.0.0.1:0"),
 			logcache.WithClustered(0, []string{"my-addr", peerAddr},
-				grpc.WithInsecure(),
+				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+			),
+			logcache.WithServerOpts(
+				grpc.Creds(credentials.NewTLS(tlsConfig)),
 			),
 		)
 
 		cache.Start()
 
-		conn, err := grpc.Dial(cache.Addr(), grpc.WithInsecure())
+		conn, err := grpc.Dial(cache.Addr(),
+			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+		)
 		Expect(err).ToNot(HaveOccurred())
 		defer conn.Close()
 		client := rpc.NewEgressClient(conn)
@@ -178,7 +215,18 @@ var _ = Describe("LogCache", func() {
 })
 
 func writeEnvelopes(addr string, es []*loggregator_v2.Envelope) {
-	conn, err := grpc.Dial(addr, grpc.WithInsecure())
+	tlsConfig, err := newTLSConfig(
+		Cert("log-cache-ca.crt"),
+		Cert("log-cache.crt"),
+		Cert("log-cache.key"),
+		"log-cache",
+	)
+	if err != nil {
+		panic(err)
+	}
+	conn, err := grpc.Dial(addr,
+		grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -207,11 +255,13 @@ type spyLogCache struct {
 	envelopes     []*loggregator_v2.Envelope
 	readRequests  []*rpc.ReadRequest
 	readEnvelopes map[string]func() []*loggregator_v2.Envelope
+	tlsConfig     *tls.Config
 }
 
-func newSpyLogCache() *spyLogCache {
+func newSpyLogCache(tlsConfig *tls.Config) *spyLogCache {
 	return &spyLogCache{
 		readEnvelopes: make(map[string]func() []*loggregator_v2.Envelope),
+		tlsConfig:     tlsConfig,
 	}
 }
 
@@ -220,7 +270,10 @@ func (s *spyLogCache) start() string {
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	srv := grpc.NewServer()
+
+	srv := grpc.NewServer(
+		grpc.Creds(credentials.NewTLS(s.tlsConfig)),
+	)
 	rpc.RegisterIngressServer(srv, s)
 	rpc.RegisterEgressServer(srv, s)
 	go srv.Serve(lis)
@@ -273,4 +326,31 @@ func (s *spyLogCache) Read(ctx context.Context, r *rpc.ReadRequest) (*rpc.ReadRe
 			Batch: batch,
 		},
 	}, nil
+}
+
+func newTLSConfig(caPath, certPath, keyPath, cn string) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	tlsConfig := &tls.Config{
+		ServerName:         cn,
+		Certificates:       []tls.Certificate{cert},
+		InsecureSkipVerify: false,
+	}
+
+	caCertBytes, err := ioutil.ReadFile(caPath)
+	if err != nil {
+		return nil, err
+	}
+
+	caCertPool := x509.NewCertPool()
+	if ok := caCertPool.AppendCertsFromPEM(caCertBytes); !ok {
+		return nil, errors.New("cannot parse ca cert")
+	}
+
+	tlsConfig.RootCAs = caCertPool
+
+	return tlsConfig, nil
 }

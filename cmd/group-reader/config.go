@@ -1,12 +1,16 @@
 package main
 
-import envstruct "code.cloudfoundry.org/go-envstruct"
+import (
+	envstruct "code.cloudfoundry.org/go-envstruct"
+	"code.cloudfoundry.org/log-cache/internal/tls"
+)
 
 // Config is the configuration for a LogCache GroupReader.
 type Config struct {
 	Addr         string `env:"ADDR, required"`
 	LogCacheAddr string `env:"LOG_CACHE_ADDR, required"`
-	HealthPort   int    `env:"HEALTH_PORT"`
+	LogCacheTLS  tls.TLS
+	HealthPort   int `env:"HEALTH_PORT"`
 
 	// NodeIndex determines what data the node stores. It splits up the range
 	// of 0 - 18446744073709551615 evenly. If a group name falls out of range

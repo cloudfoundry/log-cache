@@ -25,6 +25,9 @@ type GroupReader struct {
 
 	nodeAddrs []string
 	nodeIndex int
+
+	serverOpts []grpc.ServerOption
+	dialOpts   []grpc.DialOption
 }
 
 // NewGroupReader creates a new GroupReader. NodeAddrs has the hostport of
@@ -34,7 +37,6 @@ func NewGroupReader(logCacheAddr string, nodeAddrs []string, nodeIndex int, opts
 	r := &GroupReader{
 		addr:    nodeAddrs[nodeIndex],
 		log:     log.New(ioutil.Discard, "", 0),
-		client:  logcache.NewClient(logCacheAddr, logcache.WithViaGRPC(grpc.WithInsecure())),
 		metrics: nopMetrics{},
 
 		nodeAddrs: nodeAddrs,
@@ -44,6 +46,8 @@ func NewGroupReader(logCacheAddr string, nodeAddrs []string, nodeIndex int, opts
 	for _, o := range opts {
 		o(r)
 	}
+
+	r.client = logcache.NewClient(logCacheAddr, logcache.WithViaGRPC(r.dialOpts...))
 
 	return r
 }
@@ -67,6 +71,22 @@ func WithGroupReaderMetrics(m Metrics) GroupReaderOption {
 	}
 }
 
+// WithGroupReaderServerOpts returns a GroupReaderOption that sets
+// grpc.ServerOptions for the GroupReader server.
+func WithGroupReaderServerOpts(opts ...grpc.ServerOption) GroupReaderOption {
+	return func(g *GroupReader) {
+		g.serverOpts = opts
+	}
+}
+
+// WithGroupReaderDialOpts returns a GroupReaderOption that sets
+// grpc.DialOptions for the GroupReader client.
+func WithGroupReaderDialOpts(opts ...grpc.DialOption) GroupReaderOption {
+	return func(g *GroupReader) {
+		g.dialOpts = opts
+	}
+}
+
 // Start starts servicing for group requests. It does not block.
 func (g *GroupReader) Start() {
 	lis, err := net.Listen("tcp", g.addr)
@@ -76,7 +96,7 @@ func (g *GroupReader) Start() {
 	g.lis = lis
 
 	go func() {
-		s := grpc.NewServer()
+		s := grpc.NewServer(g.serverOpts...)
 
 		rp := g.reverseProxy()
 
@@ -101,7 +121,7 @@ func (g *GroupReader) reverseProxy() rpc.GroupReaderServer {
 			continue
 		}
 
-		conn, err := grpc.Dial(a, grpc.WithInsecure())
+		conn, err := grpc.Dial(a, g.dialOpts...)
 		if err != nil {
 			log.Fatalf("failed to dial %s: %s", a, err)
 		}
