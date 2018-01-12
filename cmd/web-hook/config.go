@@ -5,12 +5,14 @@ import (
 	"strings"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
+	"code.cloudfoundry.org/log-cache/internal/tls"
 )
 
 // Config is the configuration for a LogCache Gateway.
 type Config struct {
 	LogCacheAddr string `env:"LOG_CACHE_ADDR, required"`
 	HealthPort   int    `env:"HEALTH_PORT"`
+	TLS          tls.TLS
 
 	// Encoded as SourceID=TemplatePath
 	TemplatePaths []templateInfo `env:"TEMPLATE_PATHS"`

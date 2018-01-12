@@ -11,6 +11,7 @@ import (
 	"code.cloudfoundry.org/go-envstruct"
 	gologcache "code.cloudfoundry.org/go-log-cache"
 	"code.cloudfoundry.org/log-cache"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -24,7 +25,12 @@ func main() {
 
 	envstruct.WriteReport(cfg)
 
-	client := gologcache.NewClient(cfg.LogCacheAddr)
+	client := gologcache.NewClient(
+		cfg.LogCacheAddr,
+		gologcache.WithViaGRPC(
+			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
+		),
+	)
 
 	for _, t := range cfg.TemplatePaths {
 		go startTemplate(t.SourceID, t.TemplatePath, false, client)
