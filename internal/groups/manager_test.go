@@ -37,6 +37,14 @@ var _ = Describe("Manager", func() {
 		Expect(r).ToNot(BeNil())
 		Expect(spyDataStorage.addNames).To(ContainElement("a"))
 
+		// Add sourceID 1 twice to ensure it is only reported once
+		r, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+			Name:     "a",
+			SourceId: "1",
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(r).ToNot(BeNil())
+
 		r, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
 			Name:     "a",
 			SourceId: "2",

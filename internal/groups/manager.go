@@ -74,6 +74,13 @@ func (m *Manager) AddToGroup(ctx context.Context, r *logcache.AddToGroupRequest,
 		gi.requesterIDs = make(map[uint64]time.Time)
 	}
 
+	// Ensure that sourceID is not already tracked.
+	for _, ID := range gi.sourceIDs {
+		if ID == r.SourceId {
+			return &logcache.AddToGroupResponse{}, nil
+		}
+	}
+
 	gi.sourceIDs = append(gi.sourceIDs, r.SourceId)
 	m.m[r.Name] = gi
 	m.s.Add(r.Name, r.SourceId)
