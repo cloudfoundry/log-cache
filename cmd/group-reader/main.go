@@ -33,7 +33,7 @@ func main() {
 		logcache.WithGroupReaderLogger(log.New(os.Stderr, "[GROUP-READER] ", log.LstdFlags)),
 		logcache.WithGroupReaderMetrics(metrics.New(expvar.NewMap("GroupReader"))),
 		logcache.WithGroupReaderServerOpts(
-			grpc.Creds(cfg.LogCacheTLS.Credentials("log-cache-group-reader")),
+			grpc.Creds(cfg.LogCacheTLS.Credentials("log-cache")),
 		),
 		logcache.WithGroupReaderDialOpts(
 			grpc.WithTransportCredentials(

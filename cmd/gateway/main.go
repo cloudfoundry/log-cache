@@ -27,7 +27,7 @@ func main() {
 			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
 		),
 		logcache.WithGatewayGroupReaderDialOpts(
-			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache-group-reader")),
+			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
 		),
 	)
 
