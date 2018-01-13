@@ -1,7 +1,7 @@
 package main
 
 import (
-	"errors"
+	"fmt"
 	"strings"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
@@ -44,14 +44,18 @@ type templateInfo struct {
 // UnmarshalEnv implaments envstruct.Unmarshaller. It expects the data to be
 // of the form: SourceID=TemplatePath
 func (i *templateInfo) UnmarshalEnv(s string) error {
+	if s == "" {
+		return nil
+	}
+
 	r := strings.Split(s, "=")
 	if len(r) != 2 {
-		return errors.New("s is not of valid form. (SourceID=TemplatePath)")
+		return fmt.Errorf("%s is not of valid form. (SourceID-1;SourceID-2=TemplatePath)", s)
 	}
 
 	sourceIDs := r[0]
 
-	i.SourceIDs = strings.Split(sourceIDs, ",")
+	i.SourceIDs = strings.Split(sourceIDs, ";")
 	i.TemplatePath = r[1]
 	return nil
 }

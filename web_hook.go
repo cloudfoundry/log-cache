@@ -98,8 +98,6 @@ func NewWebHook(
 				return 0
 			}
 
-			h.log.Printf("successfully posted data: %s", string(d))
-
 			return resp.StatusCode
 		},
 
