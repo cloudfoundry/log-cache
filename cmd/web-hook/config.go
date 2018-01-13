@@ -14,6 +14,8 @@ type Config struct {
 	HealthPort   int    `env:"HEALTH_PORT"`
 	TLS          tls.TLS
 
+	GroupPrefix string `env:"GROUP_PREFIX"`
+
 	// Encoded as SourceID=TemplatePath
 	TemplatePaths []templateInfo `env:"TEMPLATE_PATHS"`
 
@@ -35,7 +37,7 @@ func LoadConfig() (*Config, error) {
 }
 
 type templateInfo struct {
-	SourceID     string
+	SourceIDs    []string
 	TemplatePath string
 }
 
@@ -47,7 +49,9 @@ func (i *templateInfo) UnmarshalEnv(s string) error {
 		return errors.New("s is not of valid form. (SourceID=TemplatePath)")
 	}
 
-	i.SourceID = r[0]
+	sourceIDs := r[0]
+
+	i.SourceIDs = strings.Split(sourceIDs, ",")
 	i.TemplatePath = r[1]
 	return nil
 }

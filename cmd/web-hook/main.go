@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
+	"encoding/base64"
 	"fmt"
+	"hash/fnv"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"time"
@@ -18,6 +22,8 @@ func main() {
 	log.Print("Starting LogCache WebHook...")
 	defer log.Print("Closing LogCache WebHook.")
 
+	rand.Seed(time.Now().UnixNano())
+
 	cfg, err := LoadConfig()
 	if err != nil {
 		log.Fatalf("invalid configuration: %s", err)
@@ -25,7 +31,7 @@ func main() {
 
 	envstruct.WriteReport(cfg)
 
-	client := gologcache.NewClient(
+	client := gologcache.NewGroupReaderClient(
 		cfg.LogCacheAddr,
 		gologcache.WithViaGRPC(
 			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
@@ -33,26 +39,26 @@ func main() {
 	)
 
 	for _, t := range cfg.TemplatePaths {
-		go startTemplate(t.SourceID, t.TemplatePath, false, client)
+		go startTemplate(t, cfg.GroupPrefix, false, client)
 	}
 
 	for _, t := range cfg.FollowTemplatePaths {
-		go startTemplate(t.SourceID, t.TemplatePath, true, client)
+		go startTemplate(t, cfg.GroupPrefix, true, client)
 	}
 
 	// health endpoint pprof
 	log.Printf("Health: %s", http.ListenAndServe(fmt.Sprintf("localhost:%d", cfg.HealthPort), nil))
 }
 
-func startTemplate(sourceID, path string, follow bool, client *gologcache.Client) {
-	templateFs, err := os.Open(path)
+func startTemplate(info templateInfo, groupPrefix string, follow bool, client *gologcache.GroupReaderClient) {
+	templateFs, err := os.Open(info.TemplatePath)
 	if err != nil {
-		log.Fatalf("failed to open template %s: %s", path, err)
+		log.Fatalf("failed to open template %s: %s", info.TemplatePath, err)
 	}
 
 	template, err := ioutil.ReadAll(templateFs)
 	if err != nil {
-		log.Fatalf("failed to read template %s: %s", path, err)
+		log.Fatalf("failed to read template %s: %s", info.TemplatePath, err)
 	}
 
 	loggr := log.New(os.Stderr, "[WEBHOOK] ", log.LstdFlags)
@@ -69,12 +75,37 @@ func startTemplate(sourceID, path string, follow bool, client *gologcache.Client
 		opts = append(opts, logcache.WithWebHookFollow())
 	}
 
+	// Manage the group
+	groupName := encodeGroupName(groupPrefix, info)
+	go func() {
+		for range time.Tick(time.Minute) {
+			for _, ID := range info.SourceIDs {
+				ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+				if err := client.AddToGroup(ctx, groupName, ID); err != nil {
+					loggr.Printf("error while adding source ID %s to group: %s", ID, err)
+				}
+			}
+		}
+	}()
+
+	reader := client.BuildReader(rand.Uint64())
+
 	webHook := logcache.NewWebHook(
-		sourceID,
+		groupName,
 		string(template),
-		client.Read,
+		logcache.Reader(reader),
 		opts...,
 	)
 
 	webHook.Start()
+}
+
+func encodeGroupName(prefix string, info templateInfo) string {
+	f := fnv.New64()
+	for _, s := range info.SourceIDs {
+		f.Write([]byte(s))
+	}
+	f.Write([]byte(info.TemplatePath))
+
+	return fmt.Sprintf("%s-%s", prefix, base64.StdEncoding.EncodeToString(f.Sum(nil)))
 }
