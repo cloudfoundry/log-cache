@@ -4,11 +4,19 @@ Log Cache
 Log Cache persists data in memory from the [Loggregator
 System](https://github.com/cloudfoundry/loggregator).
 
+## Usage
+
+This repository should be imported as:
+
+`import logcache "code.cloudfoundry.org/go-log-cache"`
+
 ## Restful API via Gateway
 
 Log Cache implements a restful interface for getting data.
 
 ### **GET** `/v1/read/<source-id>`
+
+Get data from Log Cache for the given `source-id`.
 
 ##### Request
 
@@ -25,13 +33,81 @@ Query Parameters:
   is 1000 and defaults to 100.
 
 ```
-curl http://<log-cache-addr>:8080/v1/read/<source-id>/?start_time=<start time>&end_time=<end time>
+curl "http://<log-cache-addr>:8080/v1/read/<source-id>/?start_time=<start time>&end_time=<end time>"
 ```
 
 ##### Response Body
 ```
 {
   "envelopes": {"batch": [...] }
+}
+```
+
+### **GET** `/v1/group/<group-name>`
+
+Reads from the given group. The group's source-ids are merged and sorted.
+
+Query Parameters:
+
+- **start_time** is UNIX timestamp in nanoseconds. It defaults to the start of the
+  cache (e.g. `date +%s`). Start time is inclusive. `[starttime..endtime)`
+- **end_time** is UNIX timestamp in nanoseconds. It defaults to current time of the
+  cache (e.g. `date +%s`). End time is exclusive. `[starttime..endtime)`
+- **envelope_type** is filter for Envelope Type. The available filters are:
+  `LOG`, `COUNTER`, `GAUGE`, `TIMER`, and `EVENT`. If set, then only those
+  types of envelopes will be emitted.
+- **limit** is the maximum number of envelopes to request. The max limit size
+  is 1000 and defaults to 100.
+
+```
+curl "http://<log-cache-addr>:8080/v1/group/<group-name>/?start_time=<start time>&end_time=<end time>" -XDELETE
+```
+
+##### Response Body
+```
+{
+  "envelopes": {"batch": [...] }
+}
+```
+
+### **PUT** `/v1/group/<group-name>/<source-id>`
+
+Adds the given source-id to the given group. If the group does not exist, then it creates it.
+
+```
+curl "http://<log-cache-addr>:8080/v1/group/<group-name>/<source-id>" -XPUT
+```
+
+##### Response Body
+```
+{}
+```
+
+### **DELETE** `/v1/group/<group-name>/<source-id>`
+
+Removes the given source-id from the given group.
+
+```
+curl "http://<log-cache-addr>:8080/v1/group/<group-name>/<source-id>" -XDELETE
+```
+
+##### Response Body
+```
+{}
+```
+
+### **GET** `/v1/group/<group-name>/meta`
+
+Gets meta information about the group.
+
+```
+curl "http://<log-cache-addr>:8080/v1/group/<group-name>/meta"
+```
+
+##### Response Body
+```
+{
+  "source_ids": [...]
 }
 ```
 
