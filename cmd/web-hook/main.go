@@ -71,8 +71,8 @@ func startTemplate(info templateInfo, groupPrefix string, follow bool, client *g
 		}),
 	}
 
-	if follow {
-		opts = append(opts, logcache.WithWebHookFollow())
+	if !follow {
+		opts = append(opts, logcache.WithWebHookWindowing(time.Hour))
 	}
 
 	// Manage the group

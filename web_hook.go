@@ -18,6 +18,20 @@ import (
 // WebHook reads a window of time from the LogCache and hands the resulting
 // envelope batches to a user defined go text/template. The template has a
 // Post function available to it which will post data.
+//
+// WebHook has two modes, follow and windowing. Follow mode is default.
+//
+// Follow mode configures a WebHook to follow a sourceID via polling quickly
+// for smaller windows. If follow is enabled, then any WindowWidth and
+// Interval are ignored. When in follow mode, the given template will only be
+// given a single envelope at a time.
+//
+// Windowing mode windows through data to allow templates to assert against
+// time periods. The LogCache is queried for a time range and the given
+// StartTime is incremented by given duration. This is useful when asserting
+// against a certain condition (e.g., CPU is above 50% over the last hour).
+// When in windowing mode, the given template will be given a slice of
+// envelopes.
 type WebHook struct {
 	log        *log.Logger
 	sourceID   string
@@ -25,8 +39,9 @@ type WebHook struct {
 	reader     Reader
 	width      time.Duration
 	interval   time.Duration
+	start      time.Time
 	errHandler func(error)
-	follow     bool
+	windowing  bool
 }
 
 // Reader reads envelopes from LogCache. It will be invoked by Walker several
@@ -52,7 +67,6 @@ func NewWebHook(
 	h := &WebHook{
 		log:        log.New(ioutil.Discard, "", 0),
 		width:      time.Hour,
-		interval:   time.Minute,
 		sourceID:   sourceID,
 		reader:     r,
 		errHandler: func(error) {},
@@ -62,8 +76,14 @@ func NewWebHook(
 		o(h)
 	}
 
-	if h.follow {
+	// Both WithWebHookInterval and WithWebHookWindowing can set this value.
+	// If neither did, give it a default.
+	if h.interval == 0 {
 		h.interval = time.Second
+	}
+
+	if h.start.IsZero() {
+		h.start = time.Now().Add(-h.width)
 	}
 
 	var err error
@@ -158,15 +178,6 @@ func WithWebHookLogger(l *log.Logger) WebHookOption {
 	}
 }
 
-// WithWebHookWindowWidth returns a WebHookOption that configures a WebHook's
-// window width. This is the amount of time that the WebHook will request.
-// This equates to time.Now().Add(-width). It defaults to an hour.
-func WithWebHookWindowWidth(width time.Duration) WebHookOption {
-	return func(h *WebHook) {
-		h.width = width
-	}
-}
-
 // WithWebHookInterval returns a WebHookOption that configures a WebHook's
 // interval. This dictates how often to read from LogCache. It defaults to 1
 // minute.
@@ -184,45 +195,61 @@ func WithWebHookErrorHandler(f func(error)) WebHookOption {
 	}
 }
 
-// WithWebHookFollow returns a WebHookOption that configures a WebHook to
-// follow a sourceID via polling quickly for smaller windows. If follow is
-// enabled, then any WindowWidth and Interval are ignored.
-// When in follow mode, the given template will only be given a single
-// envelope at a time.
-func WithWebHookFollow() WebHookOption {
+// WithWebHookWindowing sets the WebHook into windowing mode. The given
+// template will receive slices of envelopes. The window will be moved by the
+// given interval. If interval is not set, it defaults to 1 minute.
+func WithWebHookWindowing(width time.Duration) WebHookOption {
 	return func(h *WebHook) {
-		h.follow = true
+		h.windowing = true
+		h.width = width
+
+		if h.interval == 0 {
+			h.interval = time.Minute
+		}
+	}
+}
+
+// WithWebHookStartTime sets the start time. It defaults to time.Now().
+func WithWebHookStartTime(t time.Time) WebHookOption {
+	return func(h *WebHook) {
+		h.start = t
 	}
 }
 
 // Start starts reading from LogCache and posting data according to the
 // provided template. It blocks indefinitely.
 func (h *WebHook) Start() {
-	now := time.Now()
-	opts := []logcache.WalkOption{
-		logcache.WithWalkStartTime(now.Add(-h.width)),
-		logcache.WithWalkBackoff(logcache.NewAlwaysRetryBackoff(h.interval)),
-	}
+	if h.windowing {
+		ww := logcache.BuildWalker(
+			h.sourceID,
+			logcache.Reader(h.reader),
+			h.interval,
+			3600,
+		)
 
-	visitor := h.followingVisitor
-
-	if !h.follow {
-		opts = append(opts, logcache.WithWalkEndTime(now))
-		visitor = h.visitor
+		logcache.Window(
+			context.Background(),
+			h.windowingVisitor,
+			ww,
+			logcache.WithWindowWidth(h.width),
+			logcache.WithWindowInterval(h.interval),
+			logcache.WithWindowStartTime(h.start),
+		)
+		return
 	}
 
 	logcache.Walk(
 		context.Background(),
 		h.sourceID,
-		visitor,
+		h.followingVisitor,
 		logcache.Reader(h.reader),
-		opts...,
+		logcache.WithWalkStartTime(h.start),
+		logcache.WithWalkBackoff(logcache.NewAlwaysRetryBackoff(h.interval)),
 	)
 }
 
-func (h *WebHook) visitor(envelopes []*loggregator_v2.Envelope) bool {
-	b := new(bytes.Buffer)
-	if err := h.t.Execute(b, envelopes); err != nil {
+func (h *WebHook) windowingVisitor(envelopes []*loggregator_v2.Envelope) bool {
+	if err := h.t.Execute(ioutil.Discard, envelopes); err != nil {
 		h.errHandler(err)
 	}
 	return true
@@ -230,8 +257,7 @@ func (h *WebHook) visitor(envelopes []*loggregator_v2.Envelope) bool {
 
 func (h *WebHook) followingVisitor(envelopes []*loggregator_v2.Envelope) bool {
 	for _, e := range envelopes {
-		b := new(bytes.Buffer)
-		if err := h.t.Execute(b, e); err != nil {
+		if err := h.t.Execute(ioutil.Discard, e); err != nil {
 			h.errHandler(err)
 			continue
 		}

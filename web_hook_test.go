@@ -72,7 +72,6 @@ var _ = Describe("WebHook", func() {
 				logcache.WithWebHookErrorHandler(func(e error) {
 					panic(e)
 				}),
-				logcache.WithWebHookFollow(),
 			)
 			go h.Start()
 		})
@@ -95,7 +94,7 @@ var _ = Describe("WebHook", func() {
 		})
 	})
 
-	Context("non-follow mode", func() {
+	Context("windowing mode", func() {
 		BeforeEach(func() {
 			r = newSpyReader()
 
@@ -116,16 +115,22 @@ var _ = Describe("WebHook", func() {
 
 			r.errs = []error{nil, nil}
 			r.results = [][]*loggregator_v2.Envelope{
-				{buildCounter(int64(time.Second), "some-name", 99), buildCounter(int64(2*time.Second), "some-name", 100), buildGauge(3*int64(time.Second), "some-name", 101)},
-				{buildGauge(3*int64(time.Second), "some-name", 101)},
+				{
+					buildCounter(int64(time.Second), "some-name", 99),
+					buildCounter(int64(2*time.Second), "some-name", 102),
+					buildGauge(3*int64(time.Second), "some-name", 103),
+				},
+				{
+					buildGauge(3*int64(time.Second), "some-name", 104),
+				},
 			}
 
 			h = logcache.NewWebHook(
 				"some-id",
 				fmt.Sprintf(`
-			{{ if (eq (countEnvelopes .) 1) }}
+			{{ if (eq (countEnvelopes .) 3) }}
 				{{post %q nil "Page Me 1"}}
-			{{ else if eq (averageEnvelopes .) 100.0 }}
+			{{ else if eq (averageEnvelopes .) 104.0 }}
 				{{post %q nil "Page Me 2"}}
 			{{end}}
 			`, server.URL, server.URL),
@@ -133,13 +138,16 @@ var _ = Describe("WebHook", func() {
 				logcache.WithWebHookErrorHandler(func(e error) {
 					panic(e)
 				}),
+				logcache.WithWebHookWindowing(5*time.Nanosecond),
+				logcache.WithWebHookInterval(time.Millisecond),
+				logcache.WithWebHookStartTime(time.Unix(0, 99)),
 			)
 			go h.Start()
 		})
 
 		It("reads from about an hour ago, for the given sourceID", func() {
 			Eventually(r.Starts).ShouldNot(BeEmpty())
-			Expect(time.Since(r.Starts()[0])).To(BeNumerically("~", time.Hour, 3*time.Second))
+			Expect(r.Starts()[0].UnixNano()).To(Equal(int64(99)))
 			Expect(r.SourceIDs()[0]).To(Equal("some-id"))
 
 			_, ok := r.QueryValues()["end_time"]
@@ -268,7 +276,6 @@ var _ = Describe("WebHook", func() {
 				logcache.WithWebHookErrorHandler(func(e error) {
 					shadowedErrs <- e
 				}),
-				logcache.WithWebHookFollow(),
 			)
 			go h.Start()
 		})
