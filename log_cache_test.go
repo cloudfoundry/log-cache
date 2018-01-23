@@ -38,7 +38,7 @@ var _ = Describe("LogCache", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("returns data filtered by source ID in 1 node cluster", func() {
+	It("returns tail of data filtered by source ID in 1 node cluster", func() {
 		spyMetrics := newSpyMetrics()
 		cache := logcache.New(
 			logcache.WithAddr("127.0.0.1:0"),
@@ -53,6 +53,7 @@ var _ = Describe("LogCache", func() {
 			{Timestamp: 1, SourceId: "app-a"},
 			{Timestamp: 2, SourceId: "app-b"},
 			{Timestamp: 3, SourceId: "app-a"},
+			{Timestamp: 4, SourceId: "app-a"},
 		})
 
 		conn, err := grpc.Dial(cache.Addr(),
@@ -65,7 +66,9 @@ var _ = Describe("LogCache", func() {
 		var es []*loggregator_v2.Envelope
 		f := func() error {
 			resp, err := client.Read(context.Background(), &rpc.ReadRequest{
-				SourceId: "app-a",
+				SourceId:   "app-a",
+				Descending: true,
+				Limit:      2,
 			})
 			if err != nil {
 				return err
@@ -80,12 +83,12 @@ var _ = Describe("LogCache", func() {
 		}
 		Eventually(f).Should(BeNil())
 
-		Expect(es[0].Timestamp).To(Equal(int64(1)))
+		Expect(es[0].Timestamp).To(Equal(int64(4)))
 		Expect(es[0].SourceId).To(Equal("app-a"))
 		Expect(es[1].Timestamp).To(Equal(int64(3)))
 		Expect(es[1].SourceId).To(Equal("app-a"))
 
-		Eventually(spyMetrics.getter("Ingress")).Should(Equal(uint64(3)))
+		Eventually(spyMetrics.getter("Ingress")).Should(Equal(uint64(4)))
 		Eventually(spyMetrics.getter("Egress")).Should(Equal(uint64(2)))
 	})
 

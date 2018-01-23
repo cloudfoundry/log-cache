@@ -56,6 +56,7 @@ var _ = Describe("PeerReader", func() {
 			EndTime:      100,
 			Limit:        101,
 			EnvelopeType: logcache.EnvelopeTypes_LOG,
+			Descending:   true,
 		})
 		Expect(err).ToNot(HaveOccurred())
 
@@ -65,6 +66,7 @@ var _ = Describe("PeerReader", func() {
 		Expect(spyEnvelopeStore.end.UnixNano()).To(Equal(int64(100)))
 		Expect(spyEnvelopeStore.envelopeType).To(Equal(&loggregator_v2.Log{}))
 		Expect(spyEnvelopeStore.limit).To(Equal(101))
+		Expect(spyEnvelopeStore.descending).To(BeTrue())
 	})
 
 	DescribeTable("envelope types", func(t logcache.EnvelopeTypes, expected store.EnvelopeType) {
@@ -150,6 +152,7 @@ type spyEnvelopeStore struct {
 	end          time.Time
 	envelopeType store.EnvelopeType
 	limit        int
+	descending   bool
 }
 
 func newSpyEnvelopeStore() *spyEnvelopeStore {
@@ -166,12 +169,14 @@ func (s *spyEnvelopeStore) Get(
 	end time.Time,
 	envelopeType store.EnvelopeType,
 	limit int,
+	descending bool,
 ) []*loggregator_v2.Envelope {
 	s.sourceID = sourceID
 	s.start = start
 	s.end = end
 	s.envelopeType = envelopeType
 	s.limit = limit
+	s.descending = descending
 
 	return s.getEnvelopes
 }

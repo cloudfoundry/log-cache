@@ -151,6 +151,7 @@ func (s *Store) Get(
 	end time.Time,
 	envelopeType EnvelopeType,
 	limit int,
+	descending bool,
 ) []*loggregator_v2.Envelope {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -160,8 +161,13 @@ func (s *Store) Get(
 		return nil
 	}
 
+	traverser := s.treeAscTraverse
+	if descending {
+		traverser = s.treeDescTraverse
+	}
+
 	var res []*loggregator_v2.Envelope
-	s.treeTraverse(t.Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope, idx string) bool {
+	traverser(t.Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope, idx string) bool {
 		if idx == index &&
 			s.checkEnvelopeType(e, envelopeType) {
 			res = append(res, e)
@@ -175,7 +181,7 @@ func (s *Store) Get(
 	return res
 }
 
-func (s *Store) treeTraverse(
+func (s *Store) treeAscTraverse(
 	n *avltree.Node,
 	start int64,
 	end int64,
@@ -187,7 +193,7 @@ func (s *Store) treeTraverse(
 
 	t := n.Key.(int64)
 	if t >= start {
-		if s.treeTraverse(n.Children[0], start, end, f) {
+		if s.treeAscTraverse(n.Children[0], start, end, f) {
 			return true
 		}
 
@@ -198,7 +204,33 @@ func (s *Store) treeTraverse(
 		}
 	}
 
-	return s.treeTraverse(n.Children[1], start, end, f)
+	return s.treeAscTraverse(n.Children[1], start, end, f)
+}
+
+func (s *Store) treeDescTraverse(
+	n *avltree.Node,
+	start int64,
+	end int64,
+	f func(e *loggregator_v2.Envelope, index string) bool,
+) bool {
+	if n == nil {
+		return false
+	}
+
+	t := n.Key.(int64)
+	if t < end {
+		if s.treeDescTraverse(n.Children[1], start, end, f) {
+			return true
+		}
+
+		w := n.Value.(envelopeWrapper)
+
+		if t < start || f(w.e, w.index) {
+			return true
+		}
+	}
+
+	return s.treeDescTraverse(n.Children[0], start, end, f)
 }
 
 func (s *Store) checkEnvelopeType(e *loggregator_v2.Envelope, t EnvelopeType) bool {

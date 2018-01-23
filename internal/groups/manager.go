@@ -30,6 +30,7 @@ type DataStorage interface {
 		end time.Time,
 		envelopeType store.EnvelopeType,
 		limit int,
+		descending bool,
 		requesterID uint64,
 	) []*loggregator_v2.Envelope
 
@@ -151,6 +152,7 @@ func (m *Manager) Read(ctx context.Context, r *logcache.GroupReadRequest, _ ...g
 		time.Unix(0, r.GetEndTime()),
 		m.convertEnvelopeType(r.GetEnvelopeType()),
 		int(r.GetLimit()),
+		false,
 		r.RequesterId,
 	)
 

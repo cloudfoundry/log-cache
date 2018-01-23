@@ -27,6 +27,7 @@ type Getter func(
 	end time.Time,
 	envelopeType store.EnvelopeType,
 	limit int,
+	descending bool,
 ) []*loggregator_v2.Envelope
 
 // NewPeerReader creates and returns a new PeerReader.
@@ -69,6 +70,7 @@ func (r *PeerReader) Read(ctx context.Context, req *logcache.ReadRequest) (*logc
 		time.Unix(0, req.EndTime),
 		r.convertEnvelopeType(req.EnvelopeType),
 		int(req.Limit),
+		req.Descending,
 	)
 	resp := &logcache.ReadResponse{
 		Envelopes: &loggregator_v2.EnvelopeBatch{

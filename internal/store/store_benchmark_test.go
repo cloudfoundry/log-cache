@@ -67,7 +67,7 @@ func BenchmarkStoreGetTime5MinRange(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		results = s.Get(sourceIDs[i%len(sourceIDs)], fiveMinAgo, now, nil, b.N)
+		results = s.Get(sourceIDs[i%len(sourceIDs)], fiveMinAgo, now, nil, b.N, false)
 	}
 }
 
@@ -83,7 +83,7 @@ func BenchmarkStoreGetLogType(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		results = s.Get(sourceIDs[i%len(sourceIDs)], MinTime, MaxTime, logType, b.N)
+		results = s.Get(sourceIDs[i%len(sourceIDs)], MinTime, MaxTime, logType, b.N, false)
 	}
 }
 

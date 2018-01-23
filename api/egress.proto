@@ -20,6 +20,7 @@ message ReadRequest {
     int64 end_time = 3;
     int64 limit = 4;
     EnvelopeTypes envelope_type = 5;
+    bool descending = 6;
 }
 
 enum EnvelopeTypes {

@@ -52,7 +52,7 @@ var _ = Describe("Storage", func() {
 			var r []string
 			ts = nil
 			// [100, 104)
-			for _, e := range s.Get("some-name", time.Unix(0, 100), time.Unix(0, 104), nil, 100, 0) {
+			for _, e := range s.Get("some-name", time.Unix(0, 100), time.Unix(0, 104), nil, 100, false, 0) {
 				r = append(r, e.GetSourceId())
 				ts = append(ts, e.GetTimestamp())
 			}
@@ -78,7 +78,7 @@ var _ = Describe("Storage", func() {
 		s.AddRequester("some-name", 0)
 
 		f := func() []*loggregator_v2.Envelope {
-			return s.Get("some-name", time.Unix(0, 100), time.Unix(0, 101), nil, 100, 0)
+			return s.Get("some-name", time.Unix(0, 100), time.Unix(0, 101), nil, 100, false, 0)
 		}()
 
 		Eventually(f).Should(BeEmpty())
@@ -106,7 +106,7 @@ var _ = Describe("Storage", func() {
 		Eventually(func() []string {
 			var r []string
 			// [100, 104)
-			for _, e := range s.Get("some-name", time.Unix(0, 100), time.Unix(0, 104), nil, 100, 0) {
+			for _, e := range s.Get("some-name", time.Unix(0, 100), time.Unix(0, 104), nil, 100, false, 0) {
 				r = append(r, e.GetSourceId())
 			}
 			return r
@@ -138,7 +138,7 @@ var _ = Describe("Storage", func() {
 
 		Eventually(func() []string {
 			// [100, 104)
-			s.Get("some-name", time.Unix(0, 100), time.Unix(0, 104), nil, 100, 0)
+			s.Get("some-name", time.Unix(0, 100), time.Unix(0, 104), nil, 100, false, 0)
 			return spyReader.truncateSourceIDs()
 		}).Should(
 			And(ContainElement("a"), ContainElement("b")),

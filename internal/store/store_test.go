@@ -35,7 +35,7 @@ var _ = Describe("Store", func() {
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 4)
-		envelopes := s.Get("a", start, end, nil, 10)
+		envelopes := s.Get("a", start, end, nil, 10, false)
 		Expect(envelopes).To(HaveLen(2))
 
 		for _, e := range envelopes {
@@ -45,7 +45,7 @@ var _ = Describe("Store", func() {
 		Expect(sm.values["Expired"]).To(Equal(0.0))
 	})
 
-	It("returns a maximum number of envelopes", func() {
+	It("returns a maximum number of envelopes in ascending order", func() {
 		e1 := buildEnvelope(1, "a")
 		e2 := buildEnvelope(2, "a")
 		e3 := buildEnvelope(3, "a")
@@ -58,8 +58,31 @@ var _ = Describe("Store", func() {
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
-		envelopes := s.Get("a", start, end, nil, 3)
+		envelopes := s.Get("a", start, end, nil, 3, false)
 		Expect(envelopes).To(HaveLen(3))
+		Expect(envelopes[0].GetTimestamp()).To(Equal(int64(1)))
+		Expect(envelopes[1].GetTimestamp()).To(Equal(int64(2)))
+		Expect(envelopes[2].GetTimestamp()).To(Equal(int64(3)))
+	})
+
+	It("returns a maximum number of envelopes in descending order", func() {
+		e1 := buildEnvelope(1, "a")
+		e2 := buildEnvelope(2, "a")
+		e3 := buildEnvelope(3, "a")
+		e4 := buildEnvelope(4, "a")
+
+		s.Put(e1, e1.GetSourceId())
+		s.Put(e2, e2.GetSourceId())
+		s.Put(e3, e3.GetSourceId())
+		s.Put(e4, e4.GetSourceId())
+
+		start := time.Unix(0, 0)
+		end := time.Unix(0, 9999)
+		envelopes := s.Get("a", start, end, nil, 3, true)
+		Expect(envelopes).To(HaveLen(3))
+		Expect(envelopes[0].GetTimestamp()).To(Equal(int64(4)))
+		Expect(envelopes[1].GetTimestamp()).To(Equal(int64(3)))
+		Expect(envelopes[2].GetTimestamp()).To(Equal(int64(2)))
 	})
 
 	DescribeTable("fetches data based on envelope type",
@@ -78,12 +101,12 @@ var _ = Describe("Store", func() {
 
 			start := time.Unix(0, 0)
 			end := time.Unix(0, 9999)
-			envelopes := s.Get("a", start, end, envelopeType, 5)
+			envelopes := s.Get("a", start, end, envelopeType, 5, false)
 			Expect(envelopes).To(HaveLen(1))
 			Expect(envelopes[0].Message).To(BeAssignableToTypeOf(envelopeWrapper))
 
 			// No Filter
-			envelopes = s.Get("a", start, end, nil, 10)
+			envelopes = s.Get("a", start, end, nil, 10, false)
 			Expect(envelopes).To(HaveLen(5))
 		},
 
@@ -103,7 +126,7 @@ var _ = Describe("Store", func() {
 		start := time.Unix(0, 0)
 		end := time.Unix(9999, 0)
 
-		Eventually(func() int { return len(s.Get("a", start, end, nil, 10)) }).Should(Equal(1))
+		Eventually(func() int { return len(s.Get("a", start, end, nil, 10, false)) }).Should(Equal(1))
 	})
 
 	It("truncates older envelopes when max size is reached", func() {
@@ -134,7 +157,7 @@ var _ = Describe("Store", func() {
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
-		envelopes := s.Get("a", start, end, nil, 10)
+		envelopes := s.Get("a", start, end, nil, 10, false)
 		Expect(envelopes).To(HaveLen(5))
 
 		for i, e := range envelopes {
@@ -160,12 +183,12 @@ var _ = Describe("Store", func() {
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
-		envelopes := s.Get("a", start, end, nil, 10)
+		envelopes := s.Get("a", start, end, nil, 10, false)
 		Expect(envelopes).To(HaveLen(2))
 		Expect(envelopes[0].Timestamp).To(Equal(int64(2)))
 		Expect(envelopes[1].Timestamp).To(Equal(int64(3)))
 
-		envelopes = s.Get("b", start, end, nil, 10)
+		envelopes = s.Get("b", start, end, nil, 10, false)
 		Expect(envelopes).To(HaveLen(1))
 
 		Expect(sm.values["Expired"]).To(Equal(1.0))
@@ -186,7 +209,7 @@ var _ = Describe("Store", func() {
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
 
-		envelopes := s.Get("some-id", start, end, nil, 10)
+		envelopes := s.Get("some-id", start, end, nil, 10, false)
 		Expect(envelopes).To(HaveLen(1))
 	})
 })

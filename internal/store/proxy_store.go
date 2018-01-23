@@ -35,6 +35,7 @@ type Getter func(
 	end time.Time,
 	envelopeType EnvelopeType,
 	limit int,
+	descending bool,
 ) []*loggregator_v2.Envelope
 
 // RemoteNodes are used to reach out to other LogCache nodes for data. They
@@ -52,11 +53,12 @@ func (s *ProxyStore) Get(
 	end time.Time,
 	envelopeType EnvelopeType,
 	limit int,
+	descending bool,
 ) []*loggregator_v2.Envelope {
 	idx := s.lookup(sourceID)
 	if s.index == idx {
 		// Local
-		return s.local(sourceID, start, end, envelopeType, limit)
+		return s.local(sourceID, start, end, envelopeType, limit, descending)
 	}
 
 	// Remote
@@ -71,6 +73,7 @@ func (s *ProxyStore) Get(
 		EndTime:      end.UnixNano(),
 		EnvelopeType: s.convertEnvelopeType(envelopeType),
 		Limit:        int64(limit),
+		Descending:   descending,
 	})
 	if err != nil {
 		log.Printf("failed to read from peer: %s", err)

@@ -298,8 +298,9 @@ type spyDataStorage struct {
 	getEnds          []int64
 	getLimits        []int
 	getEnvelopeTypes []store.EnvelopeType
-	getResult        []*loggregator_v2.Envelope
+	getDescending    []bool
 	getRequestIDs    []uint64
+	getResult        []*loggregator_v2.Envelope
 }
 
 func newSpyDataStorage() *spyDataStorage {
@@ -312,6 +313,7 @@ func (s *spyDataStorage) Get(
 	end time.Time,
 	envelopeType store.EnvelopeType,
 	limit int,
+	descending bool,
 	requesterID uint64,
 ) []*loggregator_v2.Envelope {
 	s.getNames = append(s.getNames, name)
@@ -319,6 +321,7 @@ func (s *spyDataStorage) Get(
 	s.getEnds = append(s.getEnds, end.UnixNano())
 	s.getLimits = append(s.getLimits, limit)
 	s.getEnvelopeTypes = append(s.getEnvelopeTypes, envelopeType)
+	s.getDescending = append(s.getDescending, descending)
 	s.getRequestIDs = append(s.getRequestIDs, requesterID)
 
 	return s.getResult
