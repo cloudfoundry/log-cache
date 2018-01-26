@@ -4,50 +4,57 @@ import (
 	"fmt"
 	"time"
 
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/store"
 	"golang.org/x/net/context"
 )
 
 // PeerReader reads envelopes from peers. It implements
-// logcache.IngressServer.
+// rpc.IngressServer.
 type PeerReader struct {
-	put Putter
-	get Getter
+	put   Putter
+	proxy LogCacheProxy
 }
 
 // Putter writes envelopes to the store.
 type Putter func(*loggregator_v2.Envelope)
 
-// Getter fetches envelopes based on the given criteria.
-type Getter func(
-	sourceID string,
-	start time.Time,
-	end time.Time,
-	envelopeType store.EnvelopeType,
-	limit int,
-	descending bool,
-) []*loggregator_v2.Envelope
+// LogCacheProxy proxies to the log cache for getting envelopes or Log Cache
+// Metadata.
+type LogCacheProxy interface {
+	// Gets envelopes from a local or remote Log Cache.
+	Get(
+		sourceID string,
+		start time.Time,
+		end time.Time,
+		envelopeType store.EnvelopeType,
+		limit int,
+		descending bool,
+	) []*loggregator_v2.Envelope
+
+	// Meta gets the metadata from Log Cache instances in the cluster.
+	Meta(localOnly bool) []string
+}
 
 // NewPeerReader creates and returns a new PeerReader.
-func NewPeerReader(p Putter, g Getter) *PeerReader {
+func NewPeerReader(p Putter, lcp LogCacheProxy) *PeerReader {
 	return &PeerReader{
-		put: p,
-		get: g,
+		put:   p,
+		proxy: lcp,
 	}
 }
 
 // Send takes in data from the peer and submits it to the store.
-func (r *PeerReader) Send(ctx context.Context, req *logcache.SendRequest) (*logcache.SendResponse, error) {
+func (r *PeerReader) Send(ctx context.Context, req *rpc.SendRequest) (*rpc.SendResponse, error) {
 	for _, e := range req.Envelopes.Batch {
 		r.put(e)
 	}
-	return &logcache.SendResponse{}, nil
+	return &rpc.SendResponse{}, nil
 }
 
 // Read returns data from the store.
-func (r *PeerReader) Read(ctx context.Context, req *logcache.ReadRequest) (*logcache.ReadResponse, error) {
+func (r *PeerReader) Read(ctx context.Context, req *rpc.ReadRequest) (*rpc.ReadResponse, error) {
 	if req.EndTime != 0 && req.StartTime > req.EndTime {
 		return nil, fmt.Errorf("StartTime (%d) must be before EndTime (%d)", req.StartTime, req.EndTime)
 	}
@@ -64,7 +71,7 @@ func (r *PeerReader) Read(ctx context.Context, req *logcache.ReadRequest) (*logc
 		req.Limit = 100
 	}
 
-	envs := r.get(
+	envs := r.proxy.Get(
 		req.SourceId,
 		time.Unix(0, req.StartTime),
 		time.Unix(0, req.EndTime),
@@ -72,7 +79,7 @@ func (r *PeerReader) Read(ctx context.Context, req *logcache.ReadRequest) (*logc
 		int(req.Limit),
 		req.Descending,
 	)
-	resp := &logcache.ReadResponse{
+	resp := &rpc.ReadResponse{
 		Envelopes: &loggregator_v2.EnvelopeBatch{
 			Batch: envs,
 		},
@@ -81,17 +88,30 @@ func (r *PeerReader) Read(ctx context.Context, req *logcache.ReadRequest) (*logc
 	return resp, nil
 }
 
-func (r *PeerReader) convertEnvelopeType(t logcache.EnvelopeTypes) store.EnvelopeType {
+func (r *PeerReader) Meta(ctx context.Context, req *rpc.MetaRequest) (*rpc.MetaResponse, error) {
+	sourceIds := r.proxy.Meta(req.LocalOnly)
+
+	metaInfo := make(map[string]*rpc.MetaInfo)
+	for _, sourceId := range sourceIds {
+		metaInfo[sourceId] = &rpc.MetaInfo{}
+	}
+
+	return &rpc.MetaResponse{
+		Meta: metaInfo,
+	}, nil
+}
+
+func (r *PeerReader) convertEnvelopeType(t rpc.EnvelopeTypes) store.EnvelopeType {
 	switch t {
-	case logcache.EnvelopeTypes_LOG:
+	case rpc.EnvelopeTypes_LOG:
 		return &loggregator_v2.Log{}
-	case logcache.EnvelopeTypes_COUNTER:
+	case rpc.EnvelopeTypes_COUNTER:
 		return &loggregator_v2.Counter{}
-	case logcache.EnvelopeTypes_GAUGE:
+	case rpc.EnvelopeTypes_GAUGE:
 		return &loggregator_v2.Gauge{}
-	case logcache.EnvelopeTypes_TIMER:
+	case rpc.EnvelopeTypes_TIMER:
 		return &loggregator_v2.Timer{}
-	case logcache.EnvelopeTypes_EVENT:
+	case rpc.EnvelopeTypes_EVENT:
 		return &loggregator_v2.Event{}
 	default:
 		return nil

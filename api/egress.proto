@@ -12,6 +12,11 @@ service Egress {
             get: "/v1/read/{source_id}"
         };
     }
+    rpc Meta(MetaRequest) returns (MetaResponse){
+        option (google.api.http) = {
+            get: "/v1/meta"
+        };
+    }
 }
 
 message ReadRequest {
@@ -34,4 +39,15 @@ enum EnvelopeTypes {
 
 message ReadResponse {
     loggregator.v2.EnvelopeBatch envelopes = 1;
+}
+
+message MetaRequest {
+    bool local_only = 1;
+}
+
+message MetaResponse {
+    map<string, MetaInfo> meta = 1;
+}
+
+message MetaInfo {
 }

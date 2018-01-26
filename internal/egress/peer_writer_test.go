@@ -42,6 +42,16 @@ var _ = Describe("PeerWriter", func() {
 		Eventually(spyLogCache.getReadRequests).Should(HaveLen(1))
 		Expect(spyLogCache.getReadRequests()[0].SourceId).To(Equal("some-id"))
 	})
+
+	It("gets the meta information from the peers", func() {
+		req := &logcache.MetaRequest{
+			LocalOnly: true,
+		}
+		w.Meta(context.Background(), req)
+
+		Eventually(spyLogCache.getMetaRequests).Should(HaveLen(1))
+		Expect(spyLogCache.getMetaRequests()[0].LocalOnly).To(BeTrue())
+	})
 })
 
 type spyLogCache struct {
@@ -49,6 +59,7 @@ type spyLogCache struct {
 	envelopes    []*loggregator_v2.Envelope
 	readRequests []*logcache.ReadRequest
 	readResults  []*loggregator_v2.Envelope
+	metaRequests []*logcache.MetaRequest
 }
 
 func newSpyLogCache() *spyLogCache {
@@ -106,4 +117,13 @@ func (s *spyLogCache) Read(ctx context.Context, r *logcache.ReadRequest) (*logca
 			Batch: s.readResults,
 		},
 	}, nil
+}
+
+func (s *spyLogCache) Meta(ctx context.Context, r *logcache.MetaRequest) (*logcache.MetaResponse, error) {
+	s.metaRequests = append(s.metaRequests, r)
+	return &logcache.MetaResponse{}, nil
+}
+
+func (s *spyLogCache) getMetaRequests() []*logcache.MetaRequest {
+	return s.metaRequests
 }

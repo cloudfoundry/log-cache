@@ -24,7 +24,7 @@ var _ = Describe("PeerReader", func() {
 		spyEnvelopeStore = newSpyEnvelopeStore()
 		r = ingress.NewPeerReader(
 			spyEnvelopeStore.Put,
-			spyEnvelopeStore.Get,
+			spyEnvelopeStore,
 		)
 	})
 
@@ -141,18 +141,40 @@ var _ = Describe("PeerReader", func() {
 		})
 		Expect(err).To(HaveOccurred())
 	})
+
+	It("returns local source IDs from the store", func() {
+		spyEnvelopeStore.metaResponse = []string{
+			"source-1",
+			"source-2",
+		}
+
+		metaInfo, err := r.Meta(context.Background(), &logcache.MetaRequest{
+			LocalOnly: true,
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(spyEnvelopeStore.metaLocalOnly).To(BeTrue())
+
+		Expect(metaInfo).To(Equal(&logcache.MetaResponse{
+			Meta: map[string]*logcache.MetaInfo{
+				"source-1": &logcache.MetaInfo{},
+				"source-2": &logcache.MetaInfo{},
+			},
+		}))
+	})
 })
 
 type spyEnvelopeStore struct {
 	putEnvelopes []*loggregator_v2.Envelope
 	getEnvelopes []*loggregator_v2.Envelope
 
-	sourceID     string
-	start        time.Time
-	end          time.Time
-	envelopeType store.EnvelopeType
-	limit        int
-	descending   bool
+	sourceID      string
+	start         time.Time
+	end           time.Time
+	envelopeType  store.EnvelopeType
+	limit         int
+	descending    bool
+	metaLocalOnly bool
+	metaResponse  []string
 }
 
 func newSpyEnvelopeStore() *spyEnvelopeStore {
@@ -179,4 +201,9 @@ func (s *spyEnvelopeStore) Get(
 	s.descending = descending
 
 	return s.getEnvelopes
+}
+
+func (s *spyEnvelopeStore) Meta(localOnly bool) []string {
+	s.metaLocalOnly = localOnly
+	return s.metaResponse
 }

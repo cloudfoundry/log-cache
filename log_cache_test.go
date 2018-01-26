@@ -215,6 +215,45 @@ var _ = Describe("LogCache", func() {
 		Expect(req.EndTime).To(Equal(int64(101)))
 		Expect(req.EnvelopeType).To(Equal(rpc.EnvelopeTypes_LOG))
 	})
+
+	It("returns all meta information", func() {
+		peer := newSpyLogCache(tlsConfig)
+		peer.metaResponses = []string{
+			"source-1",
+		}
+		peerAddr := peer.start()
+
+		myAddr := "127.0.0.1:0"
+		lc := logcache.New(
+			logcache.WithAddr(myAddr),
+			logcache.WithClustered(0, []string{myAddr, peerAddr},
+				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+			),
+			logcache.WithServerOpts(
+				grpc.Creds(credentials.NewTLS(tlsConfig)),
+			),
+		)
+
+		lc.Start()
+
+		conn, err := grpc.Dial(lc.Addr(),
+			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer conn.Close()
+		client := rpc.NewIngressClient(conn)
+
+		sendRequest := &rpc.SendRequest{
+			Envelopes: &loggregator_v2.EnvelopeBatch{
+				Batch: []*loggregator_v2.Envelope{
+					{SourceId: "source-0"},
+				},
+			},
+		}
+
+		client.Send(context.Background(), sendRequest)
+		Eventually(lc.SourceIDs).Should(ConsistOf("source-1", "source-0"))
+	})
 })
 
 func writeEnvelopes(addr string, es []*loggregator_v2.Envelope) {
@@ -258,6 +297,7 @@ type spyLogCache struct {
 	envelopes     []*loggregator_v2.Envelope
 	readRequests  []*rpc.ReadRequest
 	readEnvelopes map[string]func() []*loggregator_v2.Envelope
+	metaResponses []string
 	tlsConfig     *tls.Config
 }
 
@@ -328,6 +368,17 @@ func (s *spyLogCache) Read(ctx context.Context, r *rpc.ReadRequest) (*rpc.ReadRe
 		Envelopes: &loggregator_v2.EnvelopeBatch{
 			Batch: batch,
 		},
+	}, nil
+}
+
+func (s *spyLogCache) Meta(ctx context.Context, r *rpc.MetaRequest) (*rpc.MetaResponse, error) {
+	metaInfo := make(map[string]*rpc.MetaInfo)
+	for _, sourceId := range s.metaResponses {
+		metaInfo[sourceId] = &rpc.MetaInfo{}
+	}
+
+	return &rpc.MetaResponse{
+		Meta: metaInfo,
 	}, nil
 }
 

@@ -256,6 +256,14 @@ func (s *Store) checkEnvelopeType(e *loggregator_v2.Envelope, t EnvelopeType) bo
 	}
 }
 
+func (s *Store) Meta() []string {
+	var indexKeys []string
+	for k, _ := range s.indexes {
+		indexKeys = append(indexKeys, k)
+	}
+	return indexKeys
+}
+
 // treeStorage stores the trees and sorts them with respect to time. It
 // prevents overwrites for the same key.
 type treeStorage struct {

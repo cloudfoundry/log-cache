@@ -212,6 +212,15 @@ var _ = Describe("Store", func() {
 		envelopes := s.Get("some-id", start, end, nil, 10, false)
 		Expect(envelopes).To(HaveLen(1))
 	})
+
+	It("returns the indices in the store", func() {
+		s = store.NewStore(5, 2, sm)
+		s.Put(buildTypedEnvelope(0, "source-id", &loggregator_v2.Log{}), "index-1")
+		s.Put(buildTypedEnvelope(1, "another-source-id", &loggregator_v2.Log{}), "index-2")
+
+		meta := s.Meta()
+		Expect(meta).To(ConsistOf("index-1", "index-2"))
+	})
 })
 
 func buildEnvelope(timestamp int64, sourceID string) *loggregator_v2.Envelope {

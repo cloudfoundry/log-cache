@@ -24,6 +24,7 @@ type LogCache struct {
 
 	storeSize    int
 	maxPerSource int
+	proxy        *store.ProxyStore
 
 	// Cluster Properties
 	addr     string
@@ -148,7 +149,6 @@ func (m nopMetrics) NewGauge(name string) func(float64) {
 // and therefore does not block.
 func (c *LogCache) Start() {
 	store := store.NewStore(c.storeSize, c.maxPerSource, c.metrics)
-
 	c.setupRouting(store)
 }
 
@@ -185,10 +185,10 @@ func (c *LogCache) setupRouting(s *store.Store) {
 		egressClients[i] = writer
 	}
 
-	proxy := store.NewProxyStore(s.Get, c.nodeIndex, egressClients, lookup.Lookup)
+	c.proxy = store.NewProxyStore(s, c.nodeIndex, egressClients, lookup.Lookup)
 
 	go func() {
-		peerReader := ingress.NewPeerReader(ps.Publish, proxy.Get)
+		peerReader := ingress.NewPeerReader(ps.Publish, c.proxy)
 		srv := grpc.NewServer(c.serverOpts...)
 		logcache.RegisterIngressServer(srv, peerReader)
 		logcache.RegisterEgressServer(srv, peerReader)
@@ -196,6 +196,12 @@ func (c *LogCache) setupRouting(s *store.Store) {
 			log.Fatalf("failed to serve gRPC ingress server: %s", err)
 		}
 	}()
+}
+
+// SourceIDs returns all source ids in the cache
+func (c *LogCache) SourceIDs() []string {
+	localOnly := false
+	return c.proxy.Meta(localOnly)
 }
 
 // Addr returns the address that the LogCache is listening on. This is only

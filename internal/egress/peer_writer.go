@@ -64,6 +64,10 @@ func (w *PeerWriter) Read(ctx context.Context, in *logcache.ReadRequest, opts ..
 	return w.egress.Read(ctx, in, opts...)
 }
 
+func (w *PeerWriter) Meta(ctx context.Context, req *logcache.MetaRequest, opts ...grpc.CallOption) (*logcache.MetaResponse, error) {
+	return w.egress.Meta(ctx, req, opts...)
+}
+
 func (w *PeerWriter) write(b []interface{}) {
 	var e []*loggregator_v2.Envelope
 	for _, i := range b {

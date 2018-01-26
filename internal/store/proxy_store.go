@@ -6,20 +6,36 @@ import (
 
 	"golang.org/x/net/context"
 
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 )
 
 // ProxyStore finds what store has the desired data to read from.
 type ProxyStore struct {
-	local   Getter
+	local   LocalStore
 	remotes RemoteNodes
 	lookup  Lookup
 	index   int
 }
 
+// LocalStore can return envelopes or Log Cache Metadata.
+type LocalStore interface {
+	// Gets envelopes from a local Log Cache.
+	Get(
+		sourceID string,
+		start time.Time,
+		end time.Time,
+		envelopeType EnvelopeType,
+		limit int,
+		descending bool,
+	) []*loggregator_v2.Envelope
+
+	// Meta gets local metadata.
+	Meta() []string
+}
+
 // NewProxyStore creates and returns a ProxyStore.
-func NewProxyStore(local Getter, index int, remotes RemoteNodes, lookup Lookup) *ProxyStore {
+func NewProxyStore(local LocalStore, index int, remotes RemoteNodes, lookup Lookup) *ProxyStore {
 	return &ProxyStore{
 		local:   local,
 		remotes: remotes,
@@ -28,19 +44,9 @@ func NewProxyStore(local Getter, index int, remotes RemoteNodes, lookup Lookup) 
 	}
 }
 
-// Getter gets data from the local store.
-type Getter func(
-	sourceID string,
-	start time.Time,
-	end time.Time,
-	envelopeType EnvelopeType,
-	limit int,
-	descending bool,
-) []*loggregator_v2.Envelope
-
 // RemoteNodes are used to reach out to other LogCache nodes for data. They
 // are indexed based on their index that corresponds to SourceID lookups.
-type RemoteNodes map[int]logcache.EgressClient
+type RemoteNodes map[int]rpc.EgressClient
 
 // Lookup is used to determine what LogCache a sourceID is stored.
 type Lookup func(sourceID string) int
@@ -58,7 +64,7 @@ func (s *ProxyStore) Get(
 	idx := s.lookup(sourceID)
 	if s.index == idx {
 		// Local
-		return s.local(sourceID, start, end, envelopeType, limit, descending)
+		return s.local.Get(sourceID, start, end, envelopeType, limit, descending)
 	}
 
 	// Remote
@@ -67,7 +73,7 @@ func (s *ProxyStore) Get(
 		log.Panicf("Something went poorly. The map and lookup method are out of sync")
 	}
 
-	resp, err := remote.Read(context.Background(), &logcache.ReadRequest{
+	resp, err := remote.Read(context.Background(), &rpc.ReadRequest{
 		SourceId:     sourceID,
 		StartTime:    start.UnixNano(),
 		EndTime:      end.UnixNano(),
@@ -83,19 +89,55 @@ func (s *ProxyStore) Get(
 	return resp.Envelopes.Batch
 }
 
-func (s *ProxyStore) convertEnvelopeType(t EnvelopeType) logcache.EnvelopeTypes {
+// Meta reads the LogCache Metadata from all log-cache peers
+func (p *ProxyStore) Meta(localOnly bool) []string {
+	meta := p.local.Meta()
+	if localOnly {
+		return meta
+	}
+
+	for _, r := range p.remotes {
+		meta = append(meta, p.metaFromRemote(r)...)
+	}
+
+	return meta
+}
+
+func (p *ProxyStore) metaFromRemote(remote rpc.EgressClient) []string {
+	if remote == nil {
+		return nil
+	}
+
+	req := &rpc.MetaRequest{
+		LocalOnly: true,
+	}
+
+	var meta []string
+	remoteMeta, err := remote.Meta(context.Background(), req)
+	if err != nil {
+		return nil
+	}
+
+	for id, _ := range remoteMeta.Meta {
+		meta = append(meta, id)
+	}
+
+	return meta
+}
+
+func (s *ProxyStore) convertEnvelopeType(t EnvelopeType) rpc.EnvelopeTypes {
 	switch t.(type) {
 	case *loggregator_v2.Log:
-		return logcache.EnvelopeTypes_LOG
+		return rpc.EnvelopeTypes_LOG
 	case *loggregator_v2.Counter:
-		return logcache.EnvelopeTypes_COUNTER
+		return rpc.EnvelopeTypes_COUNTER
 	case *loggregator_v2.Gauge:
-		return logcache.EnvelopeTypes_GAUGE
+		return rpc.EnvelopeTypes_GAUGE
 	case *loggregator_v2.Timer:
-		return logcache.EnvelopeTypes_TIMER
+		return rpc.EnvelopeTypes_TIMER
 	case *loggregator_v2.Event:
-		return logcache.EnvelopeTypes_EVENT
+		return rpc.EnvelopeTypes_EVENT
 	default:
-		return logcache.EnvelopeTypes_ANY
+		return rpc.EnvelopeTypes_ANY
 	}
 }
