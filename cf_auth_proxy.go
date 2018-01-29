@@ -44,14 +44,14 @@ type CFAuthProxyOption func(*CFAuthProxy)
 
 // WithCFAuthProxyBlock returns a CFAuthProxyOption that determines if Start
 // launches a go-routine or not. It defaults to launching a go-routine. If
-// this is set, start will block on servering the HTTP endpoint.
+// this is set, start will block on serving the HTTP endpoint.
 func WithCFAuthProxyBlock() CFAuthProxyOption {
 	return func(p *CFAuthProxy) {
 		p.blockOnStart = true
 	}
 }
 
-// WithAuthMiddleare returns a CFAuthProxyOption that sets the CFAuthProxy's
+// WithAuthMiddleware returns a CFAuthProxyOption that sets the CFAuthProxy's
 // authentication and authorization middleware.
 func WithAuthMiddleware(authMiddleware func(http.Handler) http.Handler) CFAuthProxyOption {
 	return func(p *CFAuthProxy) {
