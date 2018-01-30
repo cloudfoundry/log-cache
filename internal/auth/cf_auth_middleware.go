@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"github.com/gorilla/mux"
 )
 
 var (
@@ -49,9 +50,11 @@ func NewCFAuthMiddlewareProvider(
 }
 
 func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sourceID, err := sourceIDFromPath(r.URL.Path)
-		if err != nil {
+	router := mux.NewRouter()
+
+	router.HandleFunc("/v1/read/{sourceID}", func(w http.ResponseWriter, r *http.Request) {
+		sourceID, ok := mux.Vars(r)["sourceID"]
+		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -62,10 +65,10 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 			return
 		}
 
-		err = m.checkUserIsAdmin(authToken)
+		err := m.checkUserIsAdmin(authToken)
 		if err != nil {
-			err := m.checkUserHasLogAccess(authToken, sourceID)
-			if err != nil {
+			er := m.checkUserHasLogAccess(authToken, sourceID)
+			if er != nil {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
@@ -73,6 +76,9 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 
 		h.ServeHTTP(w, r)
 	})
+
+	return router
+
 }
 
 func (m CFAuthMiddlewareProvider) checkUserIsAdmin(authToken string) error {
@@ -150,20 +156,6 @@ func adminToken(body io.ReadCloser) bool {
 	}
 
 	return false
-}
-
-func sourceIDFromPath(path string) (string, error) {
-	matches := sourceIDMatcher.FindAllStringSubmatch(path, 1)
-	if len(matches) != 1 {
-		return "", errors.New("invalid URL")
-	}
-
-	submatches := matches[0]
-	if len(submatches) != 2 {
-		return "", errors.New("invalid URL")
-	}
-
-	return submatches[1], nil
 }
 
 func scopesFromRespBody(body io.ReadCloser) []string {
