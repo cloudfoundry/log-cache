@@ -1,5 +1,7 @@
-Log Cache
+Log Cache 
 =========
+[![GoDoc][go-doc-badge]][go-doc] [![travis][travis-badge]][travis] [![slack.cloudfoundry.org][slack-badge]][loggregator-slack]
+
 
 Log Cache persists data in memory from the [Loggregator
 System](https://github.com/cloudfoundry/loggregator).
@@ -8,7 +10,7 @@ System](https://github.com/cloudfoundry/loggregator).
 
 This repository should be imported as:
 
-`import logcache "code.cloudfoundry.org/go-log-cache"`
+`import logcache "code.cloudfoundry.org/log-cache"`
 
 ## Restful API via Gateway
 
@@ -166,3 +168,11 @@ and posts based on if the count is 1 or if the average comes to 100.
     {{post "http://some.url" nil "Page Me 2"}}
 {{end}}
 ```
+
+[slack-badge]:              https://slack.cloudfoundry.org/badge.svg
+[loggregator-slack]:        https://cloudfoundry.slack.com/archives/loggregator
+[log-cache]:                https://code.cloudfoundry.org/log-cache
+[go-doc-badge]:             https://godoc.org/code.cloudfoundry.org/log-cache?status.svg
+[go-doc]:                   https://godoc.org/code.cloudfoundry.org/log-cache
+[travis-badge]:             https://travis-ci.org/cloudfoundry-incubator/log-cache.svg?branch=master
+[travis]:                   https://travis-ci.org/cloudfoundry-incubator/log-cache?branch=master
