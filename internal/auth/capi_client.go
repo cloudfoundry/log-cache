@@ -1,10 +1,10 @@
 package auth
 
 import (
-	"net/http"
-	"log"
-	"net/url"
 	"fmt"
+	"log"
+	"net/http"
+	"net/url"
 )
 
 type CAPIClient struct {
