@@ -10,18 +10,18 @@ import (
 	"strings"
 )
 
-type HttpClient interface {
+type HTTPClient interface {
 	Do(r *http.Request) (*http.Response, error)
 }
 
 type UAAClient struct {
-	httpClient   HttpClient
+	httpClient   HTTPClient
 	uaa          *url.URL
 	client       string
 	clientSecret string
 }
 
-func NewUAAClient(uaaAddr, client, clientSecret string, httpClient HttpClient) *UAAClient {
+func NewUAAClient(uaaAddr, client, clientSecret string, httpClient HTTPClient) *UAAClient {
 	u, err := url.Parse(uaaAddr)
 	if err != nil {
 		panic(err)

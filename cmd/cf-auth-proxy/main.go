@@ -32,10 +32,11 @@ func main() {
 		buildUAAClient(cfg),
 	)
 
+	capiClient := auth.NewCAPIClient(cfg.CAPI.Addr, buildCAPIClient(cfg))
+
 	middlewareProvider := auth.NewCFAuthMiddlewareProvider(
 		uaaClient,
-		cfg.CAPI.Addr,
-		buildCAPIClient(cfg),
+		capiClient,
 	)
 
 	proxy := logcache.NewCFAuthProxy(

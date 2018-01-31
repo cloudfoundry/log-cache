@@ -1,36 +1,31 @@
 package auth
 
 import (
-	"errors"
-	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
 )
 
-type HTTPClient interface {
-	Do(*http.Request) (*http.Response, error)
-}
-
 type CFAuthMiddlewareProvider struct {
 	adminChecker AdminChecker
-	apiHost      string
-	apiClient    HTTPClient
+	logAuthorizer LogAuthorizer
 }
 
 type AdminChecker interface {
 	IsAdmin(token string) bool
 }
 
+type LogAuthorizer interface{
+	IsAuthorized(sourceID, token string) bool
+}
+
 func NewCFAuthMiddlewareProvider(
 	adminChecker AdminChecker,
-	apiHost string,
-	apiClient HTTPClient,
+	logAuthorizer LogAuthorizer,
 ) CFAuthMiddlewareProvider {
 	return CFAuthMiddlewareProvider{
-		adminChecker: adminChecker,
-		apiHost:      apiHost,
-		apiClient:    apiClient,
+		adminChecker:  adminChecker,
+		logAuthorizer: logAuthorizer,
 	}
 }
 
@@ -51,8 +46,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		}
 
 		if !m.adminChecker.IsAdmin(authToken) {
-			err := m.checkUserHasLogAccess(authToken, sourceID)
-			if err != nil {
+			if !m.logAuthorizer.IsAuthorized(sourceID, authToken) {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
@@ -62,52 +56,4 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 	})
 
 	return router
-
-}
-
-func (m CFAuthMiddlewareProvider) checkUserIsAdmin(authToken string) error {
-	if !m.adminChecker.IsAdmin(authToken) {
-		return errors.New("unauthorized")
-	}
-
-	return nil
-}
-
-func (m CFAuthMiddlewareProvider) checkUserHasLogAccess(authToken string, sourceID string) error {
-	req, err := http.NewRequest(
-		http.MethodGet,
-		m.apiHost+"/internal/v4/log_access/"+sourceID,
-		nil,
-	)
-	if err != nil {
-		log.Printf("failed to build authorize log access request: %s", err)
-		return err
-	}
-
-	req.Header.Set("Authorization", authToken)
-
-	resp, err := m.apiClient.Do(req)
-	if err != nil {
-		log.Printf("failed to contact capi: %s", err)
-		return err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return errors.New("unauthorized")
-	}
-
-	return nil
-}
-
-func (m CFAuthMiddlewareProvider) getSourcesForUser(authToken string) []string {
-	req, _ := http.NewRequest(
-		http.MethodGet,
-		m.apiHost+"/v3/apps",
-		nil,
-	)
-
-	req.Header.Set("Authorization", authToken)
-	m.apiClient.Do(req)
-
-	return nil
 }
