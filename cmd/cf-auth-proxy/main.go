@@ -11,6 +11,7 @@ import (
 
 	"code.cloudfoundry.org/go-envstruct"
 	"code.cloudfoundry.org/log-cache"
+	gologcache "code.cloudfoundry.org/go-log-cache"
 	"code.cloudfoundry.org/log-cache/internal/auth"
 	logtls "code.cloudfoundry.org/log-cache/internal/tls"
 )
@@ -34,9 +35,12 @@ func main() {
 
 	capiClient := auth.NewCAPIClient(cfg.CAPI.Addr, buildCAPIClient(cfg))
 
+	metaFetcher := gologcache.NewClient(cfg.LogCacheGatewayAddr)
+
 	middlewareProvider := auth.NewCFAuthMiddlewareProvider(
 		uaaClient,
 		capiClient,
+		metaFetcher,
 	)
 
 	proxy := logcache.NewCFAuthProxy(

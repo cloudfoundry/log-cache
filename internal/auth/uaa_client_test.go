@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"strings"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -27,8 +26,12 @@ var _ = Describe("UAAClient", func() {
 	})
 
 	It("returns true when scopes include doppler.firehose", func() {
+		data, err := json.Marshal(map[string]interface{}{
+			"scope": []string{"doppler.firehose"},
+		})
+		Expect(err).ToNot(HaveOccurred())
+		httpClient.body = data
 		httpClient.status = http.StatusOK
-		httpClient.scopes = []string{"doppler.firehose"}
 
 		Expect(client.IsAdmin("valid-token")).To(BeTrue())
 	})
@@ -74,18 +77,17 @@ var _ = Describe("UAAClient", func() {
 	})
 
 	It("returns false when the response from the UAA is invalid", func() {
-		httpClient.badReturn = true
+		httpClient.body = []byte("garbage")
 
 		Expect(client.IsAdmin("valid-token")).To(BeFalse())
 	})
 })
 
 type spyHTTPClient struct {
-	request   *http.Request
-	status    int
-	scopes    []string
-	err       error
-	badReturn bool
+	request *http.Request
+	status  int
+	err     error
+	body    []byte
 }
 
 func newSpyHTTPClient() *spyHTTPClient {
@@ -97,22 +99,9 @@ func newSpyHTTPClient() *spyHTTPClient {
 func (s *spyHTTPClient) Do(r *http.Request) (*http.Response, error) {
 	s.request = r
 
-	data, err := json.Marshal(map[string]interface{}{
-		"scope": s.scopes,
-	})
-
-	if err != nil {
-		panic(err)
-	}
-
-	body := ioutil.NopCloser(bytes.NewReader(data))
-	if s.badReturn {
-		body = ioutil.NopCloser(strings.NewReader("garbage"))
-	}
-
 	resp := http.Response{
 		StatusCode: s.status,
-		Body:       body,
+		Body:       ioutil.NopCloser(bytes.NewReader(s.body)),
 	}
 
 	if s.err != nil {

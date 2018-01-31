@@ -253,14 +253,14 @@ var _ = Describe("LogCache", func() {
 		}
 
 		ingressClient.Send(context.Background(), sendRequest)
-		Eventually(func()[]string{
+		Eventually(func() []string {
 			resp, err := egressClient.Meta(context.Background(), &rpc.MetaRequest{})
-			if err != nil{
+			if err != nil {
 				return nil
 			}
 
 			var sourceIDs []string
-			for k := range resp.Meta{
+			for k := range resp.Meta {
 				sourceIDs = append(sourceIDs, k)
 			}
 			return sourceIDs
