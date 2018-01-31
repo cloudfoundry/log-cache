@@ -9,8 +9,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 
-	envstruct "code.cloudfoundry.org/go-envstruct"
-	logcache "code.cloudfoundry.org/log-cache"
+	"code.cloudfoundry.org/go-envstruct"
+	"code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/auth"
 	logtls "code.cloudfoundry.org/log-cache/internal/tls"
 )
@@ -25,11 +25,15 @@ func main() {
 	}
 	envstruct.WriteReport(cfg)
 
-	middlewareProvider := auth.NewCFAuthMiddlewareProvider(
+	uaaClient := auth.NewUAAClient(
+		cfg.UAA.Addr,
 		cfg.UAA.ClientID,
 		cfg.UAA.ClientSecret,
-		cfg.UAA.Addr,
 		buildUAAClient(cfg),
+	)
+
+	middlewareProvider := auth.NewCFAuthMiddlewareProvider(
+		uaaClient,
 		cfg.CAPI.Addr,
 		buildCAPIClient(cfg),
 	)
