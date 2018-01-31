@@ -198,12 +198,6 @@ func (c *LogCache) setupRouting(s *store.Store) {
 	}()
 }
 
-// SourceIDs returns all source ids in the cache
-func (c *LogCache) SourceIDs() []string {
-	localOnly := false
-	return c.proxy.Meta(localOnly)
-}
-
 // Addr returns the address that the LogCache is listening on. This is only
 // valid after Start has been invoked.
 func (c *LogCache) Addr() string {

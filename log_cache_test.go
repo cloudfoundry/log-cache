@@ -241,7 +241,8 @@ var _ = Describe("LogCache", func() {
 		)
 		Expect(err).ToNot(HaveOccurred())
 		defer conn.Close()
-		client := rpc.NewIngressClient(conn)
+		ingressClient := rpc.NewIngressClient(conn)
+		egressClient := rpc.NewEgressClient(conn)
 
 		sendRequest := &rpc.SendRequest{
 			Envelopes: &loggregator_v2.EnvelopeBatch{
@@ -251,8 +252,19 @@ var _ = Describe("LogCache", func() {
 			},
 		}
 
-		client.Send(context.Background(), sendRequest)
-		Eventually(lc.SourceIDs).Should(ConsistOf("source-1", "source-0"))
+		ingressClient.Send(context.Background(), sendRequest)
+		Eventually(func()[]string{
+			resp, err := egressClient.Meta(context.Background(), &rpc.MetaRequest{})
+			if err != nil{
+				return nil
+			}
+
+			var sourceIDs []string
+			for k := range resp.Meta{
+				sourceIDs = append(sourceIDs, k)
+			}
+			return sourceIDs
+		}).Should(ConsistOf("source-0", "source-1"))
 	})
 })
 
