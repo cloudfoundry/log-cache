@@ -15,9 +15,9 @@ var _ = Describe("CfAuthMiddleware", func() {
 		spyAdminChecker *spyAdminChecker
 		spyLogAuthorizer *spyLogAuthorizer
 
-		recorder    *httptest.ResponseRecorder
-		readRequest *http.Request
-		provider    auth.CFAuthMiddlewareProvider
+		recorder *httptest.ResponseRecorder
+		request  *http.Request
+		provider auth.CFAuthMiddlewareProvider
 	)
 
 	BeforeEach(func() {
@@ -30,72 +30,77 @@ var _ = Describe("CfAuthMiddleware", func() {
 		)
 
 		recorder = httptest.NewRecorder()
-		readRequest = httptest.NewRequest(http.MethodGet, "/v1/read/12345", nil)
 	})
 
-	It("forwards the /v1/read request to the handler if user is an admin", func() {
-		var baseHandlerCalled bool
-		baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-			baseHandlerCalled = true
+	Describe("/v1/read", func() {
+		BeforeEach(func() {
+			request = httptest.NewRequest(http.MethodGet, "/v1/read/12345", nil)
 		})
-		authHandler := provider.Middleware(baseHandler)
 
-		spyAdminChecker.result = true
+		It("forwards the /v1/read request to the handler if user is an admin", func() {
+			var baseHandlerCalled bool
+			baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				baseHandlerCalled = true
+			})
+			authHandler := provider.Middleware(baseHandler)
 
-		readRequest.Header.Set("Authorization", "bearer valid-token")
+			spyAdminChecker.result = true
 
-		authHandler.ServeHTTP(recorder, readRequest)
+			request.Header.Set("Authorization", "bearer valid-token")
 
-		Expect(recorder.Code).To(Equal(http.StatusOK))
-		Expect(baseHandlerCalled).To(BeTrue())
+			authHandler.ServeHTTP(recorder, request)
 
-		Expect(spyAdminChecker.token).To(Equal("bearer valid-token"))
-	})
+			Expect(recorder.Code).To(Equal(http.StatusOK))
+			Expect(baseHandlerCalled).To(BeTrue())
 
-	It("forwards the /v1/read request to the handler if non-admin user has log access", func() {
-		spyLogAuthorizer.result=true
-		var baseHandlerCalled bool
-		baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-			baseHandlerCalled = true
+			Expect(spyAdminChecker.token).To(Equal("bearer valid-token"))
 		})
-		authHandler := provider.Middleware(baseHandler)
 
-		readRequest.Header.Set("Authorization", "valid-token")
+		It("forwards the /v1/read request to the handler if non-admin user has log access", func() {
+			spyLogAuthorizer.result = true
+			var baseHandlerCalled bool
+			baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				baseHandlerCalled = true
+			})
+			authHandler := provider.Middleware(baseHandler)
 
-		// Call result
-		authHandler.ServeHTTP(recorder, readRequest)
-		Expect(recorder.Code).To(Equal(http.StatusOK))
-		Expect(baseHandlerCalled).To(BeTrue())
+			request.Header.Set("Authorization", "valid-token")
 
-		//verify CAPI called with correct info
-		Expect(spyLogAuthorizer.token).To(Equal("valid-token"))
-		Expect(spyLogAuthorizer.sourceID).To(Equal("12345"))
-	})
+			// Call result
+			authHandler.ServeHTTP(recorder, request)
+			Expect(recorder.Code).To(Equal(http.StatusOK))
+			Expect(baseHandlerCalled).To(BeTrue())
 
-	It("returns 404 if there's no authorization header present", func() {
-		var baseHandlerCalled bool
-		baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-			baseHandlerCalled = true
+			//verify CAPI called with correct info
+			Expect(spyLogAuthorizer.token).To(Equal("valid-token"))
+			Expect(spyLogAuthorizer.sourceID).To(Equal("12345"))
 		})
-		authHandler := provider.Middleware(baseHandler)
 
-		authHandler.ServeHTTP(recorder, readRequest)
+		It("returns 404 if there's no authorization header present", func() {
+			var baseHandlerCalled bool
+			baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				baseHandlerCalled = true
+			})
+			authHandler := provider.Middleware(baseHandler)
 
-		Expect(recorder.Code).To(Equal(http.StatusNotFound))
-		Expect(baseHandlerCalled).To(BeFalse())
+			authHandler.ServeHTTP(recorder, request)
+
+			Expect(recorder.Code).To(Equal(http.StatusNotFound))
+			Expect(baseHandlerCalled).To(BeFalse())
+		})
 	})
 
 	It("returns 404 if the request is invalid", func() {
-		readRequest.URL.Path = "/invalid/endpoint"
+		request.URL.Path = "/invalid/endpoint"
 
 		baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
 		authHandler := provider.Middleware(baseHandler)
 
 		spyAdminChecker.result = true
 
-		readRequest.Header.Set("Authorization", "valid-token")
+		request.Header.Set("Authorization", "valid-token")
 
-		authHandler.ServeHTTP(recorder, readRequest)
+		authHandler.ServeHTTP(recorder, request)
 
 		Expect(recorder.Code).To(Equal(http.StatusNotFound))
 	})
