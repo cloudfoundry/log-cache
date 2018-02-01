@@ -196,7 +196,7 @@ func WithWebHookFollow() WebHookOption {
 }
 
 // Start starts reading from LogCache and posting data according to the
-// provided template. It blocks indefinately.
+// provided template. It blocks indefinitely.
 func (h *WebHook) Start() {
 	now := time.Now()
 	opts := []logcache.WalkOption{

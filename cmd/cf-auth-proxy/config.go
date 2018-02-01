@@ -10,6 +10,8 @@ type CAPI struct {
 	KeyPath    string `env:"CAPI_KEY_PATH,    required"`
 	CAPath     string `env:"CAPI_CA_PATH,     required"`
 	CommonName string `env:"CAPI_COMMON_NAME, required"`
+
+	ExternalAddr string `env:"CAPI_ADDR_EXTERNAL, required"`
 }
 
 type UAA struct {

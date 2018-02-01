@@ -41,7 +41,7 @@ type templateInfo struct {
 	TemplatePath string
 }
 
-// UnmarshalEnv implaments envstruct.Unmarshaller. It expects the data to be
+// UnmarshalEnv implements envstruct.Unmarshaller. It expects the data to be
 // of the form: SourceID=TemplatePath
 func (i *templateInfo) UnmarshalEnv(s string) error {
 	if s == "" {

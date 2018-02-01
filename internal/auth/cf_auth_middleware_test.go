@@ -8,11 +8,12 @@ import (
 
 	"errors"
 
+	"context"
+
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"github.com/golang/protobuf/jsonpb"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"context"
 )
 
 var _ = Describe("CfAuthMiddleware", func() {
@@ -129,7 +130,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 			Expect(spyLogAuthorizer.availableCalled).To(BeZero())
 		})
 
-		It("uses the requests context", func(){
+		It("uses the requests context", func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 			request = request.WithContext(ctx)
@@ -236,7 +237,7 @@ func (s *spyLogAuthorizer) AvailableSourceIDs(token string) []string {
 type spyMetaFetcher struct {
 	result map[string]*rpc.MetaInfo
 	err    error
-	ctx context.Context
+	ctx    context.Context
 }
 
 func newSpyMetaFetcher() *spyMetaFetcher {

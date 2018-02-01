@@ -9,19 +9,30 @@ import (
 )
 
 type CAPIClient struct {
-	client HTTPClient
-	capi   url.URL
+	client       HTTPClient
+	capi         url.URL
+	externalCapi url.URL
 }
 
-func NewCAPIClient(capiAddr string, client HTTPClient) *CAPIClient {
+func NewCAPIClient(capiAddr, externalCapiAddr string, client HTTPClient) *CAPIClient {
 	u, err := url.Parse(capiAddr)
+	if err != nil {
+		panic(err)
+	}
+
+	e, err := url.Parse(externalCapiAddr)
 	if err != nil {
 		panic(err)
 	}
 
 	return &CAPIClient{
 		client: client,
-		capi:   *u,
+
+		// Dereference the URL to ensure while making the request and
+		// manipulating the path, we have a copy. This avoids a race
+		// condition.
+		capi:         *u,
+		externalCapi: *e,
 	}
 }
 
@@ -44,8 +55,8 @@ func (c *CAPIClient) IsAuthorized(sourceID, token string) bool {
 }
 
 func (c *CAPIClient) AvailableSourceIDs(token string) []string {
-	c.capi.Path = "/v3/apps"
-	req, err := http.NewRequest(http.MethodGet, c.capi.String(), nil)
+	c.externalCapi.Path = "/v3/apps"
+	req, err := http.NewRequest(http.MethodGet, c.externalCapi.String(), nil)
 	if err != nil {
 		log.Printf("failed to build authorize log access request: %s", err)
 		return nil

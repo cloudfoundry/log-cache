@@ -10,8 +10,8 @@ import (
 	"crypto/x509"
 
 	"code.cloudfoundry.org/go-envstruct"
-	"code.cloudfoundry.org/log-cache"
 	gologcache "code.cloudfoundry.org/go-log-cache"
+	"code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/auth"
 	logtls "code.cloudfoundry.org/log-cache/internal/tls"
 )
@@ -33,7 +33,11 @@ func main() {
 		buildUAAClient(cfg),
 	)
 
-	capiClient := auth.NewCAPIClient(cfg.CAPI.Addr, buildCAPIClient(cfg))
+	capiClient := auth.NewCAPIClient(
+		cfg.CAPI.Addr,
+		cfg.CAPI.ExternalAddr,
+		buildCAPIClient(cfg),
+	)
 
 	metaFetcher := gologcache.NewClient(cfg.LogCacheGatewayAddr)
 

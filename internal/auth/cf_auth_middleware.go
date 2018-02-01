@@ -5,10 +5,11 @@ import (
 
 	"log"
 
+	"context"
+
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/gorilla/mux"
-	"context"
 )
 
 type CFAuthMiddlewareProvider struct {

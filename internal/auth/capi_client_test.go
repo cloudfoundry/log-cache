@@ -18,7 +18,7 @@ var _ = Describe("CAPIClient", func() {
 
 	BeforeEach(func() {
 		capiClient = newSpyHTTPClient()
-		client = auth.NewCAPIClient("https://capi.com", capiClient)
+		client = auth.NewCAPIClient("https://capi.com", "http://external.capi.com", capiClient)
 	})
 
 	Describe("IsAuthorized", func() {
@@ -53,7 +53,7 @@ var _ = Describe("CAPIClient", func() {
 			r := capiClient.request
 
 			Expect(r.Method).To(Equal(http.MethodGet))
-			Expect(r.URL.String()).To(Equal("https://capi.com/v3/apps"))
+			Expect(r.URL.String()).To(Equal("http://external.capi.com/v3/apps"))
 			Expect(r.Header.Get("Authorization")).To(Equal("some-token"))
 		})
 

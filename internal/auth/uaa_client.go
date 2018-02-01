@@ -88,7 +88,7 @@ func (c *UAAClient) hasDopplerScope(r uaaResponse) bool {
 func (c *UAAClient) parseResponse(r io.Reader) uaaResponse {
 	var resp uaaResponse
 	if err := json.NewDecoder(r).Decode(&resp); err != nil {
-		log.Printf("unable to decode json reponse from UAA: %s", err)
+		log.Printf("unable to decode json response from UAA: %s", err)
 	}
 	return resp
 }
