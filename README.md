@@ -45,6 +45,21 @@ curl "http://<log-cache-addr>:8080/v1/read/<source-id>/?start_time=<start time>&
 }
 ```
 
+### **GET** `/v1/meta`
+
+Lists the available `SourceIDs` that Log Cache has persisted.
+
+##### Response Body
+```
+{
+  "meta":{
+    "source-id-0":{},
+    "source-id-1":{},
+    ...
+  }
+}
+```
+
 ### **GET** `/v1/group/<group-name>`
 
 Reads from the given group. The group's source-ids are merged and sorted.
