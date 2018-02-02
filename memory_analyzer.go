@@ -3,7 +3,7 @@ package logcache
 import (
 	"time"
 
-	sigar "github.com/cloudfoundry/gosigar"
+	sigar "code.cloudfoundry.org/gosigar"
 )
 
 // MemoryAnalyzer reports the available and total memory.
