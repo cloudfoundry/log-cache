@@ -256,7 +256,11 @@ func (s *Store) checkEnvelopeType(e *loggregator_v2.Envelope, t EnvelopeType) bo
 	}
 }
 
+// Meta returns each source ID tracked in the store.
 func (s *Store) Meta() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	var indexKeys []string
 	for k, _ := range s.indexes {
 		indexKeys = append(indexKeys, k)
