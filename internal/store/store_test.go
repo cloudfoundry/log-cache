@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"sync"
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
@@ -15,11 +16,13 @@ var _ = Describe("Store", func() {
 	var (
 		s  *store.Store
 		sm *spyMetrics
+		sp *spyPruner
 	)
 
 	BeforeEach(func() {
 		sm = newSpyMetrics()
-		s = store.NewStore(5, 5, sm)
+		sp = newSpyPruner()
+		s = store.NewStore(5, sp, sm)
 	})
 
 	It("fetches data based on time and source ID", func() {
@@ -118,9 +121,19 @@ var _ = Describe("Store", func() {
 	)
 
 	It("is thread safe", func() {
+		var wg sync.WaitGroup
+		wg.Add(2)
+		defer wg.Wait()
+
 		e1 := buildEnvelope(0, "a")
 		go func() {
+			defer wg.Done()
 			s.Put(e1, e1.GetSourceId())
+		}()
+
+		go func() {
+			defer wg.Done()
+			s.Meta()
 		}()
 
 		start := time.Unix(0, 0)
@@ -130,7 +143,7 @@ var _ = Describe("Store", func() {
 	})
 
 	It("truncates older envelopes when max size is reached", func() {
-		s = store.NewStore(5, 10, sm)
+		s = store.NewStore(10, sp, sm)
 		// e1 should be truncated and sourceID "b" should be forgotten.
 		e1 := buildTypedEnvelope(0, "b", &loggregator_v2.Log{})
 		// e2 should be truncated.
@@ -153,6 +166,10 @@ var _ = Describe("Store", func() {
 		s.Put(e5, e5.GetSourceId())
 		s.Put(e6, e6.GetSourceId())
 		s.Put(e7, e7.GetSourceId())
+
+		// Next put should prune 3 envelopes
+		sp.result = 3
+
 		s.Put(e8, e8.GetSourceId())
 
 		start := time.Unix(0, 0)
@@ -165,10 +182,16 @@ var _ = Describe("Store", func() {
 		}
 
 		Expect(sm.values["Expired"]).To(Equal(3.0))
+		Expect(sm.values["StoreSize"]).To(Equal(5.0))
+
+		// Ensure b was removed fully
+		for _, s := range s.Meta() {
+			Expect(s).To(Equal("a"))
+		}
 	})
 
 	It("truncates envelopes for a specific source-id if its max size is reached", func() {
-		s = store.NewStore(5, 2, sm)
+		s = store.NewStore(2, sp, sm)
 		// e1 should not be truncated
 		e1 := buildTypedEnvelope(0, "b", &loggregator_v2.Log{})
 		// e2 should be truncated
@@ -202,7 +225,7 @@ var _ = Describe("Store", func() {
 	})
 
 	It("uses the given index", func() {
-		s = store.NewStore(5, 2, sm)
+		s = store.NewStore(2, sp, sm)
 		e := buildTypedEnvelope(0, "a", &loggregator_v2.Log{})
 		s.Put(e, "some-id")
 
@@ -214,7 +237,7 @@ var _ = Describe("Store", func() {
 	})
 
 	It("returns the indices in the store", func() {
-		s = store.NewStore(5, 2, sm)
+		s = store.NewStore(2, sp, sm)
 		s.Put(buildTypedEnvelope(0, "source-id", &loggregator_v2.Log{}), "index-1")
 		s.Put(buildTypedEnvelope(1, "another-source-id", &loggregator_v2.Log{}), "index-2")
 
@@ -284,4 +307,18 @@ func (s *spyMetrics) NewGauge(name string) func(value float64) {
 	return func(v float64) {
 		s.values[name] = v
 	}
+}
+
+type spyPruner struct {
+	called int
+	result int
+}
+
+func newSpyPruner() *spyPruner {
+	return &spyPruner{}
+}
+
+func (s *spyPruner) Prune() int {
+	s.called++
+	return s.result
 }

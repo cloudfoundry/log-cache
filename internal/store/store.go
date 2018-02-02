@@ -18,12 +18,19 @@ type Metrics interface {
 	NewGauge(name string) func(value float64)
 }
 
+// Pruner is used to determine if the store should prune.
+type Pruner interface {
+	// Prune returns true if the store should prune entries. The returned
+	// value is the length of entries to prune.
+	Prune() int
+}
+
 // Store is an in memory data store for envelopes. It will keep a bounded
 // number and drop older data once that threshold is exceeded. All functions
-// are thread safe.
+// are thread safe. The Pruner is used to know when entries should be
+// pruned.
 type Store struct {
 	mu           sync.RWMutex
-	size         int
 	maxPerSource int
 
 	indexes map[string]*avltree.Tree
@@ -41,13 +48,16 @@ type Store struct {
 	setCachePeriod func(value float64)
 	incIngress     func(delta uint64)
 	incEgress      func(delta uint64)
+	setStoreSize   func(value float64)
+
+	p Pruner
 }
 
 // NewStore creates a new store.
-func NewStore(size, maxPerSource int, m Metrics) *Store {
+func NewStore(maxPerSource int, p Pruner, m Metrics) *Store {
 	return &Store{
-		size:            size,
 		maxPerSource:    maxPerSource,
+		p:               p,
 		indexes:         make(map[string]*avltree.Tree),
 		oldestValueTree: newTreeStorage(),
 
@@ -55,6 +65,7 @@ func NewStore(size, maxPerSource int, m Metrics) *Store {
 		setCachePeriod: m.NewGauge("CachePeriod"),
 		incIngress:     m.NewCounter("Ingress"),
 		incEgress:      m.NewCounter("Egress"),
+		setStoreSize:   m.NewGauge("StoreSize"),
 	}
 }
 
@@ -102,6 +113,7 @@ func (s *Store) Put(e *loggregator_v2.Envelope, index string) {
 	}
 
 	s.truncate()
+	s.setStoreSize(float64(s.count))
 
 	oldestValue, _ := s.oldestValueTree.Left()
 	cachePeriod := (time.Now().UnixNano() - oldestValue) / int64(time.Millisecond)
@@ -111,33 +123,32 @@ func (s *Store) Put(e *loggregator_v2.Envelope, index string) {
 // truncate removes the oldest envelope from the entire cache. It considers
 // each source-id.
 func (s *Store) truncate() {
-	if s.count <= s.size {
-		return
+	prune := s.p.Prune()
+	for i := 0; i < prune; i++ {
+		s.count--
+		s.incExpired(1)
+
+		// dereference the node so that after we remove it, the pointer does not
+		// get updated underneath us.
+		key, oldTree := s.oldestValueTree.Left()
+		s.oldestValueTree.Remove(key, oldTree)
+
+		// Truncate the oldest envelope.
+		left := oldTree.Left()
+
+		index := left.Value.(envelopeWrapper).index
+
+		oldTree.Remove(key)
+
+		if oldTree.Size() == 0 {
+			// Remove the index completely.
+			delete(s.indexes, index)
+			continue
+		}
+
+		// Add tree back to oldestValueTree for future pruning.
+		s.oldestValueTree.Put(oldTree.Left().Key.(int64), oldTree)
 	}
-
-	s.count--
-	s.incExpired(1)
-
-	// dereference the node so that after we remove it, the pointer does not
-	// get updated underneath us.
-	key, oldTree := s.oldestValueTree.Left()
-	s.oldestValueTree.Remove(key, oldTree)
-
-	// Truncate the oldest envelope.
-	left := oldTree.Left()
-
-	index := left.Value.(envelopeWrapper).index
-
-	oldTree.Remove(key)
-
-	if oldTree.Size() == 0 {
-		// Remove the index completely.
-		delete(s.indexes, index)
-		return
-	}
-
-	// Add tree back to oldestValueTree for future pruning.
-	s.oldestValueTree.Put(oldTree.Left().Key.(int64), oldTree)
 }
 
 // EnvelopeType is used to filter envelopes based on type.

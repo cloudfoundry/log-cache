@@ -23,7 +23,7 @@ var (
 )
 
 func BenchmarkStoreWrite(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, nopMetrics{})
+	s := store.NewStore(StoreSize, &staticPruner{}, nopMetrics{})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -33,7 +33,7 @@ func BenchmarkStoreWrite(b *testing.B) {
 }
 
 func BenchmarkStoreTruncationOnWrite(b *testing.B) {
-	s := store.NewStore(100, 100, nopMetrics{})
+	s := store.NewStore(100, &staticPruner{}, nopMetrics{})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -43,7 +43,7 @@ func BenchmarkStoreTruncationOnWrite(b *testing.B) {
 }
 
 func BenchmarkStoreWriteParallel(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, nopMetrics{})
+	s := store.NewStore(StoreSize, &staticPruner{}, nopMetrics{})
 
 	b.ResetTimer()
 
@@ -56,7 +56,7 @@ func BenchmarkStoreWriteParallel(b *testing.B) {
 }
 
 func BenchmarkStoreGetTime5MinRange(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, nopMetrics{})
+	s := store.NewStore(StoreSize, &staticPruner{}, nopMetrics{})
 
 	for i := 0; i < StoreSize/10; i++ {
 		e := gen()
@@ -72,7 +72,7 @@ func BenchmarkStoreGetTime5MinRange(b *testing.B) {
 }
 
 func BenchmarkStoreGetLogType(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, nopMetrics{})
+	s := store.NewStore(StoreSize, &staticPruner{}, nopMetrics{})
 
 	for i := 0; i < StoreSize/10; i++ {
 		e := gen()
@@ -123,4 +123,17 @@ func (n nopMetrics) NewCounter(string) func(delta uint64) {
 
 func (n nopMetrics) NewGauge(string) func(value float64) {
 	return func(float64) {}
+}
+
+type staticPruner struct {
+	size int
+}
+
+func (s *staticPruner) Prune() int {
+	s.size++
+	if s.size > StoreSize {
+		return s.size - StoreSize
+	}
+
+	return 0
 }
