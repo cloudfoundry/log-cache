@@ -19,12 +19,14 @@ var _ = Describe("Storage", func() {
 		s          *groups.Storage
 		spyMetrics *spyMetrics
 		spyReader  *spyReader
+		spyPruner  *spyPruner
 	)
 
 	BeforeEach(func() {
 		spyMetrics = newSpyMetrics()
 		spyReader = newSpyReader()
-		s = groups.NewStorage(5, spyReader.Read, time.Millisecond, spyMetrics, log.New(GinkgoWriter, "", 0))
+		spyPruner = newSpyPruner()
+		s = groups.NewStorage(spyReader.Read, time.Millisecond, spyPruner, spyMetrics, log.New(GinkgoWriter, "", 0))
 	})
 
 	It("returns data sorted by timestamp", func() {
@@ -243,4 +245,21 @@ func (s *spyMetrics) NewGauge(name string) func(value float64) {
 		defer s.mu.Unlock()
 		s.values[name] = v
 	}
+}
+
+type spyPruner struct {
+	size int
+}
+
+func newSpyPruner() *spyPruner {
+	return &spyPruner{}
+}
+
+func (s *spyPruner) Prune() int {
+	s.size++
+	if s.size > 5 {
+		return s.size - 5
+	}
+
+	return 0
 }

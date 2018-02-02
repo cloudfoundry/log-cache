@@ -22,7 +22,6 @@ type LogCache struct {
 	serverOpts []grpc.ServerOption
 	metrics    Metrics
 
-	storeSize    int
 	maxPerSource int
 	proxy        *store.ProxyStore
 
@@ -43,7 +42,6 @@ func New(opts ...LogCacheOption) *LogCache {
 	cache := &LogCache{
 		log:          log.New(ioutil.Discard, "", 0),
 		metrics:      nopMetrics{},
-		storeSize:    10000000,
 		maxPerSource: 100000,
 
 		// Defaults to a single entry. The default does not route data.
@@ -67,14 +65,6 @@ type LogCacheOption func(*LogCache)
 func WithLogger(l *log.Logger) LogCacheOption {
 	return func(c *LogCache) {
 		c.log = l
-	}
-}
-
-// WithStoreSize returns a LogCacheOption that configures the store's
-// memory size as number of envelopes. Defaults to 1000000 envelopes.
-func WithStoreSize(size int) LogCacheOption {
-	return func(c *LogCache) {
-		c.storeSize = size
 	}
 }
 
@@ -148,7 +138,8 @@ func (m nopMetrics) NewGauge(name string) func(float64) {
 // Start starts the LogCache. It has an internal go-routine that it creates
 // and therefore does not block.
 func (c *LogCache) Start() {
-	store := store.NewStore(c.storeSize, c.maxPerSource, c.metrics)
+	p := store.NewPruneConsultant(100, 70, NewMemoryAnalyzer(c.metrics))
+	store := store.NewStore(c.maxPerSource, p, c.metrics)
 	c.setupRouting(store)
 }
 

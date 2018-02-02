@@ -11,6 +11,7 @@ import (
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"code.cloudfoundry.org/log-cache/internal/groups"
 	"code.cloudfoundry.org/log-cache/internal/ingress"
+	"code.cloudfoundry.org/log-cache/internal/store"
 	"google.golang.org/grpc"
 )
 
@@ -113,10 +114,11 @@ func (g *GroupReader) Addr() string {
 }
 
 func (g *GroupReader) reverseProxy() rpc.GroupReaderServer {
+	p := store.NewPruneConsultant(100, 70, NewMemoryAnalyzer(g.metrics))
 	var gs []rpc.GroupReaderClient
 	for i, a := range g.nodeAddrs {
 		if i == g.nodeIndex {
-			s := groups.NewStorage(1000, g.client.Read, time.Second, g.metrics, g.log)
+			s := groups.NewStorage(g.client.Read, time.Second, p, g.metrics, g.log)
 			gs = append(gs, groups.NewManager(s, time.Minute))
 			continue
 		}

@@ -26,7 +26,6 @@ func main() {
 	envstruct.WriteReport(cfg)
 
 	cache := logcache.New(
-		logcache.WithStoreSize(cfg.StoreSize),
 		logcache.WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
 		logcache.WithMetrics(metrics.New(expvar.NewMap("LogCache"))),
 		logcache.WithAddr(cfg.Addr),

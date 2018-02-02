@@ -11,9 +11,6 @@ type Config struct {
 	TLS        tls.TLS
 	HealthPort int `env:"HEALTH_PORT"`
 
-	// StoreSize is the number of envelopes to store.
-	StoreSize int `env:"STORE_SIZE"`
-
 	// NodeIndex determines what data the node stores. It splits up the range
 	// of 0 - 18446744073709551615 evenly. If data falls out of range of the
 	// given node, it will be routed to theh correct one.
@@ -31,7 +28,6 @@ type Config struct {
 func LoadConfig() (*Config, error) {
 	c := Config{
 		Addr:       ":8080",
-		StoreSize:  10000,
 		HealthPort: 6060,
 	}
 
