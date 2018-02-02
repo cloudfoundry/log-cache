@@ -181,6 +181,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 	})
 
 	It("returns 404 if the request is invalid", func() {
+		request = httptest.NewRequest(http.MethodGet, "/v1/read/12345", nil)
 		request.URL.Path = "/invalid/endpoint"
 
 		baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
