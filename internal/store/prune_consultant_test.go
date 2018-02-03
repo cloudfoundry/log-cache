@@ -29,7 +29,7 @@ var _ = Describe("PruneConsultant", func() {
 		sm.available = 49
 		sm.total = 100
 
-		Expect(c.Prune()).To(Equal(-5))
+		Expect(c.Prune()).To(Equal(5))
 	})
 })
 

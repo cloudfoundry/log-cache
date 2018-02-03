@@ -142,6 +142,13 @@ var _ = Describe("Store", func() {
 		Eventually(func() int { return len(s.Get("a", start, end, nil, 10, false)) }).Should(Equal(1))
 	})
 
+	It("survives being over pruned", func() {
+		s = store.NewStore(10, sp, sm)
+		sp.result = 1000
+		e1 := buildTypedEnvelope(0, "b", &loggregator_v2.Log{})
+		Expect(func() { s.Put(e1, e1.GetSourceId()) }).ToNot(Panic())
+	})
+
 	It("truncates older envelopes when max size is reached", func() {
 		s = store.NewStore(10, sp, sm)
 		// e1 should be truncated and sourceID "b" should be forgotten.

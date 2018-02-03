@@ -125,6 +125,11 @@ func (s *Store) Put(e *loggregator_v2.Envelope, index string) {
 func (s *Store) truncate() {
 	prune := s.p.Prune()
 	for i := 0; i < prune; i++ {
+		// Prevent the whole cache from being pruned
+		if s.count <= 1 {
+			return
+		}
+
 		s.count--
 		s.incExpired(1)
 

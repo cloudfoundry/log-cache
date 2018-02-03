@@ -28,7 +28,7 @@ func NewPruneConsultant(stepBy int, percentToFill float64, m Memory) *PruneConsu
 func (a *PruneConsultant) Prune() int {
 	avail, total := a.m.Memory()
 	if 100-float64(avail*100)/float64(total) > a.percentToFill {
-		return -a.stepBy
+		return a.stepBy
 	}
 
 	return 0
