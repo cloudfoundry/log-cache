@@ -28,7 +28,7 @@ func NewMemoryAnalyzer(m Metrics) *MemoryAnalyzer {
 
 // Memory returns the available and total system memory.
 func (a *MemoryAnalyzer) Memory() (available, total uint64) {
-	if time.Since(a.lastResult) > time.Minute {
+	if time.Since(a.lastResult) > 5*time.Second {
 		a.lastResult = time.Now()
 
 		var m sigar.Mem
