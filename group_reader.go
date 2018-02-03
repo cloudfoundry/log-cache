@@ -114,7 +114,7 @@ func (g *GroupReader) Addr() string {
 }
 
 func (g *GroupReader) reverseProxy() rpc.GroupReaderServer {
-	p := store.NewPruneConsultant(100, 70, NewMemoryAnalyzer(g.metrics))
+	p := store.NewPruneConsultant(2, 70, NewMemoryAnalyzer(g.metrics))
 	var gs []rpc.GroupReaderClient
 	for i, a := range g.nodeAddrs {
 		if i == g.nodeIndex {
