@@ -49,6 +49,7 @@ func (a *MemoryAnalyzer) Memory() (heapInUse, total uint64) {
 		runtime.ReadMemStats(&rm)
 
 		a.heap = rm.HeapInuse
+		a.setHeap(float64(a.heap))
 	}
 
 	return a.heap, a.total
