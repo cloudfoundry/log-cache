@@ -15,18 +15,18 @@ var _ = Describe("PruneConsultant", func() {
 
 	BeforeEach(func() {
 		sm = newSpyMemory()
-		c = store.NewPruneConsultant(5, 50, sm)
+		c = store.NewPruneConsultant(5, 70, sm)
 	})
 
 	It("does not prune any entries if memory utilization is under allotment", func() {
-		sm.available = 100
+		sm.heap = 70
 		sm.total = 100
 
 		Expect(c.Prune()).To(BeZero())
 	})
 
 	It("prunes entries if memory utilization is over allotment", func() {
-		sm.available = 49
+		sm.heap = 71
 		sm.total = 100
 
 		Expect(c.Prune()).To(Equal(5))
@@ -34,7 +34,7 @@ var _ = Describe("PruneConsultant", func() {
 })
 
 type spyMemory struct {
-	available, total uint64
+	heap, total uint64
 }
 
 func newSpyMemory() *spyMemory {
@@ -42,5 +42,5 @@ func newSpyMemory() *spyMemory {
 }
 
 func (s *spyMemory) Memory() (uint64, uint64) {
-	return s.available, s.total
+	return s.heap, s.total
 }

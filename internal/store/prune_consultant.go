@@ -11,8 +11,8 @@ type PruneConsultant struct {
 
 // Memory is used to give information about system memory.
 type Memory interface {
-	// Memory returns available and total system memory.
-	Memory() (available, total uint64)
+	// Memory returns in-use heap memory and total system memory.
+	Memory() (heap, total uint64)
 }
 
 // NewPruneConsultant returns a new PruneConsultant.
@@ -26,8 +26,8 @@ func NewPruneConsultant(stepBy int, percentToFill float64, m Memory) *PruneConsu
 
 // Prune reports how many entries should be removed.
 func (a *PruneConsultant) Prune() int {
-	avail, total := a.m.Memory()
-	if 100-float64(avail*100)/float64(total) > a.percentToFill {
+	heap, total := a.m.Memory()
+	if float64(heap*100)/float64(total) > a.percentToFill {
 		return a.stepBy
 	}
 
