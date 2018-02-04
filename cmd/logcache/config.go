@@ -11,6 +11,10 @@ type Config struct {
 	TLS        tls.TLS
 	HealthPort int `env:"HEALTH_PORT"`
 
+	// MinimumSize sets the lower bound for pruning. It will not prune beyond
+	// the set size. Defaults to 500000.
+	MinimumSize int `env:"MINIMUM_SIZE"`
+
 	// NodeIndex determines what data the node stores. It splits up the range
 	// of 0 - 18446744073709551615 evenly. If data falls out of range of the
 	// given node, it will be routed to theh correct one.
@@ -27,8 +31,9 @@ type Config struct {
 // LoadConfig creates Config object from environment variables
 func LoadConfig() (*Config, error) {
 	c := Config{
-		Addr:       ":8080",
-		HealthPort: 6060,
+		Addr:        ":8080",
+		HealthPort:  6060,
+		MinimumSize: 500000,
 	}
 
 	if err := envstruct.Load(&c); err != nil {

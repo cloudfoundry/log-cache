@@ -42,6 +42,7 @@ type Store struct {
 	// count is incremented each Put. It is used to determine when to prune. When
 	// an envelope is pruned, it is decremented.
 	count int
+	min   int
 
 	// metrics
 	incExpired     func(delta uint64)
@@ -54,12 +55,13 @@ type Store struct {
 }
 
 // NewStore creates a new store.
-func NewStore(maxPerSource int, p Pruner, m Metrics) *Store {
+func NewStore(maxPerSource, min int, p Pruner, m Metrics) *Store {
 	return &Store{
 		maxPerSource:    maxPerSource,
 		p:               p,
 		indexes:         make(map[string]*avltree.Tree),
 		oldestValueTree: newTreeStorage(),
+		min:             min,
 
 		incExpired:     m.NewCounter("Expired"),
 		setCachePeriod: m.NewGauge("CachePeriod"),
@@ -126,7 +128,7 @@ func (s *Store) truncate() {
 	prune := s.p.Prune()
 	for i := 0; i < prune; i++ {
 		// Prevent the whole cache from being pruned
-		if s.count <= 1 {
+		if s.count <= s.min {
 			return
 		}
 

@@ -63,7 +63,7 @@ func NewStorage(
 		streamAgg: streamaggregator.New(),
 		ctx:       ctx,
 		cancel:    cancel,
-		store:     store.NewStore(1000, p, m),
+		store:     store.NewStore(1000, 1000, p, m),
 		m:         make(map[string]*aggregator),
 	}
 

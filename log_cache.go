@@ -23,6 +23,7 @@ type LogCache struct {
 	metrics    Metrics
 
 	maxPerSource int
+	min          int
 	proxy        *store.ProxyStore
 
 	// Cluster Properties
@@ -43,6 +44,7 @@ func New(opts ...LogCacheOption) *LogCache {
 		log:          log.New(ioutil.Discard, "", 0),
 		metrics:      nopMetrics{},
 		maxPerSource: 100000,
+		min:          500000,
 
 		// Defaults to a single entry. The default does not route data.
 		nodeAddrs: []string{"bogus-address"},
@@ -93,6 +95,14 @@ func WithServerOpts(opts ...grpc.ServerOption) LogCacheOption {
 	}
 }
 
+// WithMinimumSize sets the lower bound for pruning. It will not prune once
+// this size is reached. Defaults to 500000.
+func WithMinimumSize(min int) LogCacheOption {
+	return func(c *LogCache) {
+		c.min = min
+	}
+}
+
 // WithClustered enables the LogCache to route data to peer nodes. It hashes
 // each envelope by SourceId and routes data that does not belong on the node
 // to the correct node. NodeAddrs is a slice of node addresses where the slice
@@ -139,7 +149,7 @@ func (m nopMetrics) NewGauge(name string) func(float64) {
 // and therefore does not block.
 func (c *LogCache) Start() {
 	p := store.NewPruneConsultant(2, 70, NewMemoryAnalyzer(c.metrics))
-	store := store.NewStore(c.maxPerSource, p, c.metrics)
+	store := store.NewStore(c.maxPerSource, c.min, p, c.metrics)
 	c.setupRouting(store)
 }
 
