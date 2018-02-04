@@ -32,7 +32,7 @@ func NewMemoryAnalyzer(m Metrics) *MemoryAnalyzer {
 }
 
 // Memory returns the heap memory and total system memory.
-func (a *MemoryAnalyzer) Memory() (heapInUse, total uint64) {
+func (a *MemoryAnalyzer) Memory() (heapInUse, available, total uint64) {
 	if time.Since(a.lastResult) > 5*time.Second {
 		a.lastResult = time.Now()
 
@@ -52,5 +52,5 @@ func (a *MemoryAnalyzer) Memory() (heapInUse, total uint64) {
 		a.setHeap(float64(a.heap))
 	}
 
-	return a.heap, a.total
+	return a.heap, a.avail, a.total
 }

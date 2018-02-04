@@ -138,7 +138,7 @@ func (m nopMetrics) NewGauge(name string) func(float64) {
 // Start starts the LogCache. It has an internal go-routine that it creates
 // and therefore does not block.
 func (c *LogCache) Start() {
-	p := store.NewPruneConsultant(2, 50, NewMemoryAnalyzer(c.metrics))
+	p := store.NewPruneConsultant(2, 70, NewMemoryAnalyzer(c.metrics))
 	store := store.NewStore(c.maxPerSource, p, c.metrics)
 	c.setupRouting(store)
 }

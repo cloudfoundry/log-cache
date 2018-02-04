@@ -19,6 +19,7 @@ var _ = Describe("PruneConsultant", func() {
 	})
 
 	It("does not prune any entries if memory utilization is under allotment", func() {
+		sm.avail = 100
 		sm.heap = 70
 		sm.total = 100
 
@@ -26,7 +27,15 @@ var _ = Describe("PruneConsultant", func() {
 	})
 
 	It("prunes entries if memory utilization is over allotment", func() {
+		sm.avail = 100
 		sm.heap = 71
+		sm.total = 100
+
+		Expect(c.Prune()).To(Equal(5))
+	})
+
+	It("prunes entries if available system memory is under 20", func() {
+		sm.avail = 19
 		sm.total = 100
 
 		Expect(c.Prune()).To(Equal(5))
@@ -34,13 +43,13 @@ var _ = Describe("PruneConsultant", func() {
 })
 
 type spyMemory struct {
-	heap, total uint64
+	heap, avail, total uint64
 }
 
 func newSpyMemory() *spyMemory {
 	return &spyMemory{}
 }
 
-func (s *spyMemory) Memory() (uint64, uint64) {
-	return s.heap, s.total
+func (s *spyMemory) Memory() (uint64, uint64, uint64) {
+	return s.heap, s.avail, s.total
 }
