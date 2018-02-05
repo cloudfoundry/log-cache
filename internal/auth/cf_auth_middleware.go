@@ -13,14 +13,18 @@ import (
 )
 
 type CFAuthMiddlewareProvider struct {
-	adminChecker  AdminChecker
+	oauth2Reader  Oauth2ClientReader
 	logAuthorizer LogAuthorizer
 	metaFetcher   MetaFetcher
 	marshaller    jsonpb.Marshaler
 }
 
-type AdminChecker interface {
-	IsAdmin(token string) bool
+type Oauth2Client struct {
+	IsAdmin bool
+}
+
+type Oauth2ClientReader interface {
+	Read(token string) Oauth2Client
 }
 
 type LogAuthorizer interface {
@@ -33,12 +37,12 @@ type MetaFetcher interface {
 }
 
 func NewCFAuthMiddlewareProvider(
-	adminChecker AdminChecker,
+	oauth2Reader Oauth2ClientReader,
 	logAuthorizer LogAuthorizer,
 	metaFetcher MetaFetcher,
 ) CFAuthMiddlewareProvider {
 	return CFAuthMiddlewareProvider{
-		adminChecker:  adminChecker,
+		oauth2Reader:  oauth2Reader,
 		logAuthorizer: logAuthorizer,
 		metaFetcher:   metaFetcher,
 	}
@@ -60,7 +64,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 			return
 		}
 
-		if !m.adminChecker.IsAdmin(authToken) {
+		if !m.oauth2Reader.Read(authToken).IsAdmin {
 			if !m.logAuthorizer.IsAuthorized(sourceID, authToken) {
 				w.WriteHeader(http.StatusNotFound)
 				return
@@ -94,7 +98,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 }
 
 func (m CFAuthMiddlewareProvider) onlyAuthorized(authToken string, meta map[string]*rpc.MetaInfo) map[string]*rpc.MetaInfo {
-	if m.adminChecker.IsAdmin(authToken) {
+	if m.oauth2Reader.Read(authToken).IsAdmin {
 		return meta
 	}
 
