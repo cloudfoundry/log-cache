@@ -33,12 +33,12 @@ var _ = Describe("UAAClient", func() {
 		httpClient.body = data
 		httpClient.status = http.StatusOK
 
-		Expect(client.IsAdmin("valid-token")).To(BeTrue())
+		Expect(client.Read("valid-token").IsAdmin).To(BeTrue())
 	})
 
 	It("calls UAA correctly", func() {
 		token := "my-token"
-		client.IsAdmin(token)
+		client.Read(token)
 
 		r := httpClient.request
 
@@ -61,25 +61,25 @@ var _ = Describe("UAAClient", func() {
 	})
 
 	It("returns false when token is blank", func() {
-		Expect(client.IsAdmin("")).To(BeFalse())
+		Expect(client.Read("").IsAdmin).To(BeFalse())
 	})
 
 	It("returns false when scopes don't include doppler.firehose", func() {
 		httpClient.status = http.StatusOK
 
-		Expect(client.IsAdmin("invalid-token")).To(BeFalse())
+		Expect(client.Read("invalid-token").IsAdmin).To(BeFalse())
 	})
 
 	It("returns false when the request fails", func() {
 		httpClient.err = errors.New("some-err")
 
-		Expect(client.IsAdmin("valid-token")).To(BeFalse())
+		Expect(client.Read("valid-token").IsAdmin).To(BeFalse())
 	})
 
 	It("returns false when the response from the UAA is invalid", func() {
 		httpClient.body = []byte("garbage")
 
-		Expect(client.IsAdmin("valid-token")).To(BeFalse())
+		Expect(client.Read("valid-token").IsAdmin).To(BeFalse())
 	})
 })
 

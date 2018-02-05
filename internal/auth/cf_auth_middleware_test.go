@@ -18,9 +18,9 @@ import (
 
 var _ = Describe("CfAuthMiddleware", func() {
 	var (
-		spyAdminChecker  *spyAdminChecker
-		spyLogAuthorizer *spyLogAuthorizer
-		spyMetaFetcher   *spyMetaFetcher
+		spyOauth2ClientReader *spyOauth2ClientReader
+		spyLogAuthorizer      *spyLogAuthorizer
+		spyMetaFetcher        *spyMetaFetcher
 
 		recorder *httptest.ResponseRecorder
 		request  *http.Request
@@ -28,12 +28,12 @@ var _ = Describe("CfAuthMiddleware", func() {
 	)
 
 	BeforeEach(func() {
-		spyAdminChecker = newAdminChecker()
+		spyOauth2ClientReader = newAdminChecker()
 		spyLogAuthorizer = newSpyLogAuthorizer()
 		spyMetaFetcher = newSpyMetaFetcher()
 
 		provider = auth.NewCFAuthMiddlewareProvider(
-			spyAdminChecker,
+			spyOauth2ClientReader,
 			spyLogAuthorizer,
 			spyMetaFetcher,
 		)
@@ -53,7 +53,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 			})
 			authHandler := provider.Middleware(baseHandler)
 
-			spyAdminChecker.result = true
+			spyOauth2ClientReader.result = true
 
 			request.Header.Set("Authorization", "bearer valid-token")
 
@@ -62,7 +62,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 			Expect(recorder.Code).To(Equal(http.StatusOK))
 			Expect(baseHandlerCalled).To(BeTrue())
 
-			Expect(spyAdminChecker.token).To(Equal("bearer valid-token"))
+			Expect(spyOauth2ClientReader.token).To(Equal("bearer valid-token"))
 		})
 
 		It("forwards the /v1/read request to the handler if non-admin user has log access", func() {
@@ -103,6 +103,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 		var (
 			authHandler http.Handler
 		)
+
 		BeforeEach(func() {
 			request = httptest.NewRequest(http.MethodGet, "/v1/meta", nil)
 			authHandler = provider.Middleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -115,7 +116,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 				"source-0": {},
 				"source-1": {},
 			}
-			spyAdminChecker.result = true
+			spyOauth2ClientReader.result = true
 			request.Header.Set("Authorization", "valid-token")
 			authHandler.ServeHTTP(recorder, request)
 
@@ -142,7 +143,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 
 		It("returns 502 if MetaFetcher fails", func() {
 			spyMetaFetcher.err = errors.New("expected")
-			spyAdminChecker.result = true
+			spyOauth2ClientReader.result = true
 			request.Header.Set("Authorization", "valid-token")
 			authHandler.ServeHTTP(recorder, request)
 
@@ -155,7 +156,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 				"source-1": {},
 				"source-2": {},
 			}
-			spyAdminChecker.result = false
+			spyOauth2ClientReader.result = false
 			spyLogAuthorizer.available = []string{
 				"source-0",
 				"source-1",
@@ -181,13 +182,12 @@ var _ = Describe("CfAuthMiddleware", func() {
 	})
 
 	It("returns 404 if the request is invalid", func() {
-		request = httptest.NewRequest(http.MethodGet, "/v1/read/12345", nil)
-		request.URL.Path = "/invalid/endpoint"
+		request = httptest.NewRequest(http.MethodGet, "/invalid/endpoint", nil)
 
 		baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
 		authHandler := provider.Middleware(baseHandler)
 
-		spyAdminChecker.result = true
+		spyOauth2ClientReader.result = true
 
 		request.Header.Set("Authorization", "valid-token")
 
@@ -197,18 +197,18 @@ var _ = Describe("CfAuthMiddleware", func() {
 	})
 })
 
-type spyAdminChecker struct {
+type spyOauth2ClientReader struct {
 	token  string
 	result bool
 }
 
-func newAdminChecker() *spyAdminChecker {
-	return &spyAdminChecker{}
+func newAdminChecker() *spyOauth2ClientReader {
+	return &spyOauth2ClientReader{}
 }
 
-func (s *spyAdminChecker) IsAdmin(token string) bool {
+func (s *spyOauth2ClientReader) Read(token string) auth.Oauth2Client {
 	s.token = token
-	return s.result
+	return auth.Oauth2Client{IsAdmin: s.result}
 }
 
 type spyLogAuthorizer struct {

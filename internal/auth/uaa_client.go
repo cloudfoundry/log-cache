@@ -36,9 +36,9 @@ func NewUAAClient(uaaAddr, client, clientSecret string, httpClient HTTPClient) *
 	}
 }
 
-func (c *UAAClient) IsAdmin(token string) bool {
+func (c *UAAClient) Read(token string) Oauth2Client {
 	if token == "" {
-		return false
+		return Oauth2Client{}
 	}
 
 	form := url.Values{
@@ -48,7 +48,7 @@ func (c *UAAClient) IsAdmin(token string) bool {
 	req, err := http.NewRequest("POST", c.uaa.String(), strings.NewReader(form.Encode()))
 	if err != nil {
 		log.Printf("failed to create UAA request: %s", err)
-		return false
+		return Oauth2Client{}
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(c.client, c.clientSecret)
@@ -56,7 +56,7 @@ func (c *UAAClient) IsAdmin(token string) bool {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		log.Printf("UAA request failed: %s", err)
-		return false
+		return Oauth2Client{}
 	}
 
 	defer func() {
@@ -64,7 +64,9 @@ func (c *UAAClient) IsAdmin(token string) bool {
 		resp.Body.Close()
 	}()
 
-	return resp.StatusCode == http.StatusOK && c.hasDopplerScope(c.parseResponse(resp.Body))
+	return Oauth2Client{
+		IsAdmin: resp.StatusCode == http.StatusOK && c.hasDopplerScope(c.parseResponse(resp.Body)),
+	}
 }
 
 func trimBearer(authToken string) string {
