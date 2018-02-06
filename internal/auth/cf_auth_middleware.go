@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"fmt"
 	"net/http"
 
 	"log"
@@ -20,11 +21,13 @@ type CFAuthMiddlewareProvider struct {
 }
 
 type Oauth2Client struct {
-	IsAdmin bool
+	IsAdmin  bool
+	ClientID string
+	UserID   string
 }
 
 type Oauth2ClientReader interface {
-	Read(token string) Oauth2Client
+	Read(token string) (Oauth2Client, error)
 }
 
 type LogAuthorizer interface {
@@ -64,7 +67,14 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 			return
 		}
 
-		if !m.oauth2Reader.Read(authToken).IsAdmin {
+		c, err := m.oauth2Reader.Read(authToken)
+		if err != nil {
+			log.Printf("failed to read from Oauth2 server: %s", err)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		if !c.IsAdmin {
 			if !m.logAuthorizer.IsAuthorized(sourceID, authToken) {
 				w.WriteHeader(http.StatusNotFound)
 				return
@@ -74,11 +84,12 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		h.ServeHTTP(w, r)
 	})
 
-	router.HandleFunc("/v1/meta", func(w http.ResponseWriter, r *http.Request) {
-		meta, err := m.metaFetcher.Meta(r.Context())
-		if err != nil {
-			log.Printf("failed to fetch meta information: %s", err)
-			w.WriteHeader(http.StatusBadGateway)
+	router.HandleFunc("/v1/group/{name}/{sourceID}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+
+		sourceID, ok := mux.Vars(r)["sourceID"]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
@@ -88,17 +99,110 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 			return
 		}
 
+		m.logAuthorizer.IsAuthorized(sourceID, authToken)
+
+		c, err := m.oauth2Reader.Read(authToken)
+		if err != nil {
+			log.Printf("failed to read from Oauth2 server: %s", err)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		r.URL.Path = fmt.Sprintf(
+			"/v1/group/%s-%s-%s/%s",
+			c.ClientID,
+			c.UserID,
+			vars["name"],
+			sourceID,
+		)
+
+		h.ServeHTTP(w, r)
+	}).Methods("PUT")
+
+	router.HandleFunc("/v1/group/{name}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+
+		authToken := r.Header.Get("Authorization")
+		if authToken == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		c, err := m.oauth2Reader.Read(authToken)
+		if err != nil {
+			log.Printf("failed to read from Oauth2 server: %s", err)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		r.URL.Path = fmt.Sprintf(
+			"/v1/group/%s-%s-%s",
+			c.ClientID,
+			c.UserID,
+			vars["name"],
+		)
+
+		h.ServeHTTP(w, r)
+	}).Methods("GET")
+
+	router.HandleFunc("/v1/group/{name}/meta", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+
+		authToken := r.Header.Get("Authorization")
+		if authToken == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		c, err := m.oauth2Reader.Read(authToken)
+		if err != nil {
+			log.Printf("failed to read from Oauth2 server: %s", err)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		r.URL.Path = fmt.Sprintf(
+			"/v1/group/%s-%s-%s/meta",
+			c.ClientID,
+			c.UserID,
+			vars["name"],
+		)
+
+		h.ServeHTTP(w, r)
+	}).Methods("GET")
+
+	router.HandleFunc("/v1/meta", func(w http.ResponseWriter, r *http.Request) {
+		authToken := r.Header.Get("Authorization")
+		if authToken == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		c, err := m.oauth2Reader.Read(authToken)
+		if err != nil {
+			log.Printf("failed to read from Oauth2 server: %s", err)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		meta, err := m.metaFetcher.Meta(r.Context())
+		if err != nil {
+			log.Printf("failed to fetch meta information: %s", err)
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+
 		// We don't care if writing to the client fails. They can come back and ask again.
 		_ = m.marshaller.Marshal(w, &rpc.MetaResponse{
-			Meta: m.onlyAuthorized(authToken, meta),
+			Meta: m.onlyAuthorized(authToken, meta, c),
 		})
 	})
 
 	return router
 }
 
-func (m CFAuthMiddlewareProvider) onlyAuthorized(authToken string, meta map[string]*rpc.MetaInfo) map[string]*rpc.MetaInfo {
-	if m.oauth2Reader.Read(authToken).IsAdmin {
+func (m CFAuthMiddlewareProvider) onlyAuthorized(authToken string, meta map[string]*rpc.MetaInfo, c Oauth2Client) map[string]*rpc.MetaInfo {
+	if c.IsAdmin {
 		return meta
 	}
 

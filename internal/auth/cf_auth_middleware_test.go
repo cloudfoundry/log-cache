@@ -97,6 +97,24 @@ var _ = Describe("CfAuthMiddleware", func() {
 			Expect(recorder.Code).To(Equal(http.StatusNotFound))
 			Expect(baseHandlerCalled).To(BeFalse())
 		})
+
+		It("returns 404 if Oauth2ClientReader returns an error", func() {
+			var baseHandlerCalled bool
+			baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				baseHandlerCalled = true
+			})
+			authHandler := provider.Middleware(baseHandler)
+
+			spyOauth2ClientReader.err = errors.New("some-error")
+			spyOauth2ClientReader.result = true
+			spyLogAuthorizer.result = true
+
+			request.Header.Set("Authorization", "valid-token")
+			authHandler.ServeHTTP(recorder, request)
+
+			Expect(recorder.Code).To(Equal(http.StatusNotFound))
+			Expect(baseHandlerCalled).To(BeFalse())
+		})
 	})
 
 	Describe("/v1/meta", func() {
@@ -132,12 +150,14 @@ var _ = Describe("CfAuthMiddleware", func() {
 		})
 
 		It("uses the requests context", func() {
+			request.Header.Set("Authorization", "valid-token")
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 			request = request.WithContext(ctx)
 
 			authHandler.ServeHTTP(recorder, request)
 
+			Expect(spyMetaFetcher.called).To(Equal(1))
 			Expect(spyMetaFetcher.ctx.Done()).To(BeClosed())
 		})
 
@@ -174,10 +194,185 @@ var _ = Describe("CfAuthMiddleware", func() {
 			Expect(spyLogAuthorizer.token).To(Equal("valid-token"))
 		})
 
+		It("returns 404 if Oauth2ClientReader returns an error", func() {
+			spyOauth2ClientReader.err = errors.New("some-error")
+			spyOauth2ClientReader.result = true
+			spyLogAuthorizer.result = true
+
+			request.Header.Set("Authorization", "valid-token")
+			authHandler.ServeHTTP(recorder, request)
+
+			Expect(recorder.Code).To(Equal(http.StatusNotFound))
+			Expect(spyMetaFetcher.called).To(BeZero())
+		})
+
 		It("returns 404 if there's no authorization header present", func() {
 			authHandler.ServeHTTP(recorder, request)
 
 			Expect(recorder.Code).To(Equal(http.StatusNotFound))
+		})
+	})
+
+	Describe("/v1/group", func() {
+		BeforeEach(func() {
+			spyOauth2ClientReader.client = "some-client-id"
+			spyOauth2ClientReader.user = "some-user-id"
+
+			request = httptest.NewRequest(http.MethodGet, "/v1/group/some-name", nil)
+		})
+
+		Describe("Add to group", func() {
+			BeforeEach(func() {
+				request.URL.Path = "/v1/group/some-name/some-id"
+				request.Method = "PUT"
+			})
+
+			It("prefixes group name for GET request with the client_id and user_id", func() {
+				request.Header.Set("Authorization", "valid-token")
+
+				var req *http.Request
+				baseHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+					req = r
+				})
+				authHandler := provider.Middleware(baseHandler)
+
+				spyLogAuthorizer.result = true
+
+				authHandler.ServeHTTP(recorder, request)
+
+				Expect(recorder.Code).To(Equal(http.StatusOK))
+
+				Expect(req.URL.Path).To(Equal("/v1/group/some-client-id-some-user-id-some-name/some-id"))
+				Expect(spyOauth2ClientReader.token).To(Equal("valid-token"))
+
+				Expect(spyLogAuthorizer.sourceID).To(Equal("some-id"))
+				Expect(spyLogAuthorizer.token).To(Equal("valid-token"))
+			})
+
+			It("returns 404 if Oauth2ClientReader returns an error", func() {
+				spyOauth2ClientReader.err = errors.New("some-error")
+				spyOauth2ClientReader.result = true
+				spyLogAuthorizer.result = true
+
+				request.Header.Set("Authorization", "valid-token")
+
+				var baseHandlerCalled bool
+				baseHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+					baseHandlerCalled = true
+				})
+				authHandler := provider.Middleware(baseHandler)
+				authHandler.ServeHTTP(recorder, request)
+
+				Expect(recorder.Code).To(Equal(http.StatusNotFound))
+				Expect(baseHandlerCalled).To(BeFalse())
+			})
+
+			It("returns 404 if there's no authorization header present", func() {
+				baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
+				provider.Middleware(baseHandler).ServeHTTP(recorder, request)
+
+				Expect(recorder.Code).To(Equal(http.StatusNotFound))
+			})
+		})
+
+		Describe("Read from group", func() {
+			BeforeEach(func() {
+				request.URL.Path = "/v1/group/some-name"
+				request.Method = "GET"
+			})
+
+			It("prefixes group name for GET request with the client_id and user_id", func() {
+				request.Header.Set("Authorization", "valid-token")
+
+				var req *http.Request
+				baseHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+					req = r
+				})
+				authHandler := provider.Middleware(baseHandler)
+
+				spyLogAuthorizer.result = true
+
+				authHandler.ServeHTTP(recorder, request)
+
+				Expect(recorder.Code).To(Equal(http.StatusOK))
+
+				Expect(req.URL.Path).To(Equal("/v1/group/some-client-id-some-user-id-some-name"))
+				Expect(spyOauth2ClientReader.token).To(Equal("valid-token"))
+			})
+
+			It("returns 404 if Oauth2ClientReader returns an error", func() {
+				spyOauth2ClientReader.err = errors.New("some-error")
+				spyOauth2ClientReader.result = true
+
+				request.Header.Set("Authorization", "valid-token")
+
+				var baseHandlerCalled bool
+				baseHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+					baseHandlerCalled = true
+				})
+				authHandler := provider.Middleware(baseHandler)
+				authHandler.ServeHTTP(recorder, request)
+
+				Expect(recorder.Code).To(Equal(http.StatusNotFound))
+				Expect(baseHandlerCalled).To(BeFalse())
+			})
+
+			It("returns 404 if there's no authorization header present", func() {
+				baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
+				provider.Middleware(baseHandler).ServeHTTP(recorder, request)
+
+				Expect(recorder.Code).To(Equal(http.StatusNotFound))
+			})
+		})
+
+		Describe("Read meta for group", func() {
+			BeforeEach(func() {
+				request.URL.Path = "/v1/group/some-name/meta"
+				request.Method = "GET"
+			})
+
+			It("prefixes group name for GET request with the client_id and user_id", func() {
+				request.Header.Set("Authorization", "valid-token")
+
+				var req *http.Request
+				baseHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+					req = r
+				})
+				authHandler := provider.Middleware(baseHandler)
+
+				spyLogAuthorizer.result = true
+
+				authHandler.ServeHTTP(recorder, request)
+
+				Expect(recorder.Code).To(Equal(http.StatusOK))
+
+				Expect(req.URL.Path).To(Equal("/v1/group/some-client-id-some-user-id-some-name/meta"))
+				Expect(spyOauth2ClientReader.token).To(Equal("valid-token"))
+			})
+
+			It("returns 404 if Oauth2ClientReader returns an error", func() {
+				spyOauth2ClientReader.err = errors.New("some-error")
+				spyOauth2ClientReader.result = true
+
+				request.Header.Set("Authorization", "valid-token")
+
+				var baseHandlerCalled bool
+				baseHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+					baseHandlerCalled = true
+				})
+				authHandler := provider.Middleware(baseHandler)
+				authHandler.ServeHTTP(recorder, request)
+
+				Expect(recorder.Code).To(Equal(http.StatusNotFound))
+				Expect(baseHandlerCalled).To(BeFalse())
+			})
+
+			It("returns 404 if there's no authorization header present", func() {
+				baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
+				provider.Middleware(baseHandler).ServeHTTP(recorder, request)
+
+				Expect(recorder.Code).To(Equal(http.StatusNotFound))
+			})
 		})
 	})
 
@@ -200,15 +395,22 @@ var _ = Describe("CfAuthMiddleware", func() {
 type spyOauth2ClientReader struct {
 	token  string
 	result bool
+	client string
+	user   string
+	err    error
 }
 
 func newAdminChecker() *spyOauth2ClientReader {
 	return &spyOauth2ClientReader{}
 }
 
-func (s *spyOauth2ClientReader) Read(token string) auth.Oauth2Client {
+func (s *spyOauth2ClientReader) Read(token string) (auth.Oauth2Client, error) {
 	s.token = token
-	return auth.Oauth2Client{IsAdmin: s.result}
+	return auth.Oauth2Client{
+		IsAdmin:  s.result,
+		ClientID: s.client,
+		UserID:   s.user,
+	}, s.err
 }
 
 type spyLogAuthorizer struct {
@@ -239,6 +441,7 @@ type spyMetaFetcher struct {
 	result map[string]*rpc.MetaInfo
 	err    error
 	ctx    context.Context
+	called int
 }
 
 func newSpyMetaFetcher() *spyMetaFetcher {
@@ -246,6 +449,7 @@ func newSpyMetaFetcher() *spyMetaFetcher {
 }
 
 func (s *spyMetaFetcher) Meta(ctx context.Context) (map[string]*rpc.MetaInfo, error) {
+	s.called++
 	s.ctx = ctx
 	return s.result, s.err
 }
