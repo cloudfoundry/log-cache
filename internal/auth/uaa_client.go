@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"io/ioutil"
 	"log"
@@ -36,9 +37,9 @@ func NewUAAClient(uaaAddr, client, clientSecret string, httpClient HTTPClient) *
 	}
 }
 
-func (c *UAAClient) Read(token string) Oauth2Client {
+func (c *UAAClient) Read(token string) (Oauth2Client, error) {
 	if token == "" {
-		return Oauth2Client{}
+		return Oauth2Client{}, errors.New("missing token")
 	}
 
 	form := url.Values{
@@ -48,7 +49,7 @@ func (c *UAAClient) Read(token string) Oauth2Client {
 	req, err := http.NewRequest("POST", c.uaa.String(), strings.NewReader(form.Encode()))
 	if err != nil {
 		log.Printf("failed to create UAA request: %s", err)
-		return Oauth2Client{}
+		return Oauth2Client{}, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(c.client, c.clientSecret)
@@ -56,7 +57,7 @@ func (c *UAAClient) Read(token string) Oauth2Client {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		log.Printf("UAA request failed: %s", err)
-		return Oauth2Client{}
+		return Oauth2Client{}, err
 	}
 
 	defer func() {
@@ -64,9 +65,17 @@ func (c *UAAClient) Read(token string) Oauth2Client {
 		resp.Body.Close()
 	}()
 
-	return Oauth2Client{
-		IsAdmin: resp.StatusCode == http.StatusOK && c.hasDopplerScope(c.parseResponse(resp.Body)),
+	uaaR, err := c.parseResponse(resp.Body)
+	if err != nil {
+		log.Printf("failed to parse UAA response body: %s", err)
+		return Oauth2Client{}, err
 	}
+
+	return Oauth2Client{
+		IsAdmin:  resp.StatusCode == http.StatusOK && c.hasDopplerScope(uaaR),
+		UserID:   uaaR.UserID,
+		ClientID: uaaR.ClientID,
+	}, nil
 }
 
 func trimBearer(authToken string) string {
@@ -74,7 +83,9 @@ func trimBearer(authToken string) string {
 }
 
 type uaaResponse struct {
-	Scopes []string `json:"scope"`
+	Scopes   []string `json:"scope"`
+	UserID   string   `json:"user_id"`
+	ClientID string   `json:"client_id"`
 }
 
 func (c *UAAClient) hasDopplerScope(r uaaResponse) bool {
@@ -87,10 +98,11 @@ func (c *UAAClient) hasDopplerScope(r uaaResponse) bool {
 	return false
 }
 
-func (c *UAAClient) parseResponse(r io.Reader) uaaResponse {
+func (c *UAAClient) parseResponse(r io.Reader) (uaaResponse, error) {
 	var resp uaaResponse
 	if err := json.NewDecoder(r).Decode(&resp); err != nil {
 		log.Printf("unable to decode json response from UAA: %s", err)
+		return uaaResponse{}, err
 	}
-	return resp
+	return resp, nil
 }

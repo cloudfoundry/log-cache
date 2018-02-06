@@ -25,15 +25,21 @@ var _ = Describe("UAAClient", func() {
 		client = auth.NewUAAClient("https://uaa.com", "some-client", "some-client-secret", httpClient)
 	})
 
-	It("returns true when scopes include doppler.firehose", func() {
+	It("returns IsAdmin when scopes include doppler.firehose with correct clientID and UserID", func() {
 		data, err := json.Marshal(map[string]interface{}{
-			"scope": []string{"doppler.firehose"},
+			"scope":     []string{"doppler.firehose"},
+			"user_id":   "some-user",
+			"client_id": "some-client",
 		})
 		Expect(err).ToNot(HaveOccurred())
 		httpClient.body = data
 		httpClient.status = http.StatusOK
 
-		Expect(client.Read("valid-token").IsAdmin).To(BeTrue())
+		c, err := client.Read("valid-token")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(c.IsAdmin).To(BeTrue())
+		Expect(c.UserID).To(Equal("some-user"))
+		Expect(c.ClientID).To(Equal("some-client"))
 	})
 
 	It("calls UAA correctly", func() {
@@ -60,26 +66,39 @@ var _ = Describe("UAAClient", func() {
 		Expect(urlValues.Get("token")).To(Equal(token))
 	})
 
-	It("returns false when token is blank", func() {
-		Expect(client.Read("").IsAdmin).To(BeFalse())
+	It("returns error when token is blank", func() {
+		_, err := client.Read("")
+		Expect(err).To(HaveOccurred())
 	})
 
 	It("returns false when scopes don't include doppler.firehose", func() {
+		data, err := json.Marshal(map[string]interface{}{
+			"scope":     []string{"some-scope"},
+			"user_id":   "some-user",
+			"client_id": "some-client",
+		})
+		Expect(err).ToNot(HaveOccurred())
+		httpClient.body = data
 		httpClient.status = http.StatusOK
 
-		Expect(client.Read("invalid-token").IsAdmin).To(BeFalse())
+		c, err := client.Read("invalid-token")
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(c.IsAdmin).To(BeFalse())
 	})
 
 	It("returns false when the request fails", func() {
 		httpClient.err = errors.New("some-err")
 
-		Expect(client.Read("valid-token").IsAdmin).To(BeFalse())
+		_, err := client.Read("valid-token")
+		Expect(err).To(HaveOccurred())
 	})
 
 	It("returns false when the response from the UAA is invalid", func() {
 		httpClient.body = []byte("garbage")
 
-		Expect(client.Read("valid-token").IsAdmin).To(BeFalse())
+		_, err := client.Read("valid-token")
+		Expect(err).To(HaveOccurred())
 	})
 })
 
