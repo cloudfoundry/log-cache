@@ -14,10 +14,10 @@ import (
 
 // Manager manages groups. It implements logcache.GroupReader.
 type Manager struct {
-	mu               sync.RWMutex
-	m                map[string]groupInfo
-	s                DataStorage
-	requesterTimeout time.Duration
+	mu      sync.RWMutex
+	m       map[string]groupInfo
+	s       DataStorage
+	timeout time.Duration
 }
 
 // DataStorage is used to store data for a given group.
@@ -48,11 +48,11 @@ type DataStorage interface {
 }
 
 // NewManager creates a new Manager to manage groups.
-func NewManager(s DataStorage, requesterTimeout time.Duration) *Manager {
+func NewManager(s DataStorage, timeout time.Duration) *Manager {
 	return &Manager{
-		m:                make(map[string]groupInfo),
-		s:                s,
-		requesterTimeout: requesterTimeout,
+		m:       make(map[string]groupInfo),
+		s:       s,
+		timeout: timeout,
 	}
 }
 
@@ -72,8 +72,15 @@ func (m *Manager) AddToGroup(ctx context.Context, r *logcache.AddToGroupRequest,
 
 	gi, ok := m.m[r.Name]
 	if !ok {
+		gi.expire = time.AfterFunc(m.timeout, func() {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			delete(m.m, r.Name)
+		})
 		gi.requesterIDs = make(map[uint64]time.Time)
 	}
+
+	m.resetExpire(gi)
 
 	// Ensure that sourceID is not already tracked.
 	for _, ID := range gi.sourceIDs {
@@ -100,6 +107,7 @@ func (m *Manager) RemoveFromGroup(ctx context.Context, r *logcache.RemoveFromGro
 	if !ok {
 		return &logcache.RemoveFromGroupResponse{}, nil
 	}
+	m.resetExpire(a)
 
 	for i, x := range a.sourceIDs {
 		if x == r.SourceId {
@@ -116,6 +124,9 @@ func (m *Manager) RemoveFromGroup(ctx context.Context, r *logcache.RemoveFromGro
 	return &logcache.RemoveFromGroupResponse{}, nil
 }
 
+// Read reads from a group. As a side effect, this first prunes any expired
+// requesters for the group. This is to ensure that the current read will read
+// from the most sourceIDs necessary.
 func (m *Manager) Read(ctx context.Context, r *logcache.GroupReadRequest, _ ...grpc.CallOption) (*logcache.GroupReadResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -124,6 +135,7 @@ func (m *Manager) Read(ctx context.Context, r *logcache.GroupReadRequest, _ ...g
 	if !ok {
 		return nil, grpc.Errorf(codes.NotFound, "unknown group name: %s", r.GetName())
 	}
+	m.resetExpire(gi)
 
 	if _, ok := gi.requesterIDs[r.RequesterId]; !ok {
 		m.s.AddRequester(r.Name, r.RequesterId)
@@ -132,7 +144,7 @@ func (m *Manager) Read(ctx context.Context, r *logcache.GroupReadRequest, _ ...g
 
 	// Check for expired requesters
 	for k, v := range m.m[r.Name].requesterIDs {
-		if time.Since(v) >= m.requesterTimeout {
+		if time.Since(v) >= m.timeout {
 			delete(m.m[r.Name].requesterIDs, k)
 			m.s.RemoveRequester(r.Name, k)
 		}
@@ -165,7 +177,7 @@ func (m *Manager) Read(ctx context.Context, r *logcache.GroupReadRequest, _ ...g
 
 // Group returns information about the given group. If the group does not
 // exist, the returned sourceID slice will be empty, but an error will not be
-// returned.
+// returned. It does not keep the group alive.
 func (m *Manager) Group(ctx context.Context, r *logcache.GroupRequest, _ ...grpc.CallOption) (*logcache.GroupResponse, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -180,6 +192,13 @@ func (m *Manager) Group(ctx context.Context, r *logcache.GroupRequest, _ ...grpc
 		SourceIds:    a.sourceIDs,
 		RequesterIds: reqIds,
 	}, nil
+}
+
+func (m *Manager) resetExpire(gi groupInfo) {
+	if !gi.expire.Stop() && len(gi.expire.C) != 0 {
+		<-gi.expire.C
+	}
+	gi.expire.Reset(m.timeout)
 }
 
 func (m *Manager) convertEnvelopeType(t logcache.EnvelopeTypes) store.EnvelopeType {
@@ -202,4 +221,5 @@ func (m *Manager) convertEnvelopeType(t logcache.EnvelopeTypes) store.EnvelopeTy
 type groupInfo struct {
 	sourceIDs    []string
 	requesterIDs map[uint64]time.Time
+	expire       *time.Timer
 }
