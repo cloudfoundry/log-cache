@@ -39,6 +39,8 @@ type Store struct {
 	// added and needs to be pruned, it is done so from here.
 	oldestValueTree *treeStorage
 
+	meta map[string]MetaInfo
+
 	// count is incremented each Put. It is used to determine when to prune. When
 	// an envelope is pruned, it is decremented.
 	count int
@@ -60,6 +62,7 @@ func NewStore(maxPerSource, min int, p Pruner, m Metrics) *Store {
 		maxPerSource:    maxPerSource,
 		p:               p,
 		indexes:         make(map[string]*avltree.Tree),
+		meta:            make(map[string]MetaInfo),
 		oldestValueTree: newTreeStorage(),
 		min:             min,
 
@@ -101,6 +104,12 @@ func (s *Store) Put(e *loggregator_v2.Envelope, index string) {
 		// oldest before putting a new envelope in.
 		t.Remove(oldest)
 		s.incExpired(1)
+
+		// Update the meta
+		m := s.meta[index]
+		m.Count--
+		m.Expired++
+		s.meta[index] = m
 	}
 
 	t.Put(e.Timestamp, envelopeWrapper{e: e, index: index})
@@ -117,9 +126,19 @@ func (s *Store) Put(e *loggregator_v2.Envelope, index string) {
 	s.truncate()
 	s.setStoreSize(float64(s.count))
 
+	// Set Cache Period
 	oldestValue, _ := s.oldestValueTree.Left()
 	cachePeriod := (time.Now().UnixNano() - oldestValue) / int64(time.Millisecond)
 	s.setCachePeriod(float64(cachePeriod))
+
+	// Update the meta
+	m := s.meta[index]
+	m.Count++
+	if e.Timestamp > m.Newest.UnixNano() {
+		m.Newest = time.Unix(0, e.Timestamp)
+	}
+	m.Oldest = time.Unix(0, t.Left().Key.(int64))
+	s.meta[index] = m
 }
 
 // truncate removes the oldest envelope from the entire cache. It considers
@@ -150,11 +169,21 @@ func (s *Store) truncate() {
 		if oldTree.Size() == 0 {
 			// Remove the index completely.
 			delete(s.indexes, index)
+			delete(s.meta, index)
 			continue
 		}
 
+		newOldest := oldTree.Left().Key.(int64)
+
+		// Update the meta
+		m := s.meta[index]
+		m.Count--
+		m.Expired++
+		m.Oldest = time.Unix(0, newOldest)
+		s.meta[index] = m
+
 		// Add tree back to oldestValueTree for future pruning.
-		s.oldestValueTree.Put(oldTree.Left().Key.(int64), oldTree)
+		s.oldestValueTree.Put(newOldest, oldTree)
 	}
 }
 
@@ -274,16 +303,35 @@ func (s *Store) checkEnvelopeType(e *loggregator_v2.Envelope, t EnvelopeType) bo
 	}
 }
 
+// MetaInfo is used to describe each individual index.
+type MetaInfo struct {
+	// Count is the number of entries for the given index.
+	Count int
+
+	// Expired is the number of entries that have been pruned for the given
+	// index.
+	Expired int
+
+	// Oldest is the first available timestamp for the given index.
+	Oldest time.Time
+
+	// Newest is the last available timestamp for the given index.
+	Newest time.Time
+}
+
 // Meta returns each source ID tracked in the store.
-func (s *Store) Meta() []string {
+func (s *Store) Meta() map[string]MetaInfo {
+	meta := make(map[string]MetaInfo)
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var indexKeys []string
-	for k, _ := range s.indexes {
-		indexKeys = append(indexKeys, k)
+	// Copy the map so that we don't leak the lock protected map beyond the
+	// locks.
+	for k, v := range s.meta {
+		meta[k] = v
 	}
-	return indexKeys
+	return meta
 }
 
 // treeStorage stores the trees and sorts them with respect to time. It

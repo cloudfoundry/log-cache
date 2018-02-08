@@ -143,9 +143,19 @@ var _ = Describe("PeerReader", func() {
 	})
 
 	It("returns local source IDs from the store", func() {
-		spyEnvelopeStore.metaResponse = []string{
-			"source-1",
-			"source-2",
+		spyEnvelopeStore.metaResponse = map[string]store.MetaInfo{
+			"source-1": store.MetaInfo{
+				Count:   1,
+				Expired: 2,
+				Oldest:  time.Unix(0, 3),
+				Newest:  time.Unix(0, 4),
+			},
+			"source-2": store.MetaInfo{
+				Count:   5,
+				Expired: 6,
+				Oldest:  time.Unix(0, 7),
+				Newest:  time.Unix(0, 8),
+			},
 		}
 
 		metaInfo, err := r.Meta(context.Background(), &logcache.MetaRequest{
@@ -156,8 +166,18 @@ var _ = Describe("PeerReader", func() {
 
 		Expect(metaInfo).To(Equal(&logcache.MetaResponse{
 			Meta: map[string]*logcache.MetaInfo{
-				"source-1": &logcache.MetaInfo{},
-				"source-2": &logcache.MetaInfo{},
+				"source-1": &logcache.MetaInfo{
+					Count:           1,
+					Expired:         2,
+					OldestTimestamp: 3,
+					NewestTimestamp: 4,
+				},
+				"source-2": &logcache.MetaInfo{
+					Count:           5,
+					Expired:         6,
+					OldestTimestamp: 7,
+					NewestTimestamp: 8,
+				},
 			},
 		}))
 	})
@@ -174,7 +194,7 @@ type spyEnvelopeStore struct {
 	limit         int
 	descending    bool
 	metaLocalOnly bool
-	metaResponse  []string
+	metaResponse  map[string]store.MetaInfo
 }
 
 func newSpyEnvelopeStore() *spyEnvelopeStore {
@@ -203,7 +223,7 @@ func (s *spyEnvelopeStore) Get(
 	return s.getEnvelopes
 }
 
-func (s *spyEnvelopeStore) Meta(localOnly bool) []string {
+func (s *spyEnvelopeStore) Meta(localOnly bool) map[string]store.MetaInfo {
 	s.metaLocalOnly = localOnly
 	return s.metaResponse
 }

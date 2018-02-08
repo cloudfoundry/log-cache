@@ -85,33 +85,83 @@ var _ = Describe("ProxyStore", func() {
 
 	It("gets sourceIds from the local store", func() {
 		lookup.result = localIndex
-		local.metaResult = []string{
-			"source-1",
-			"source-2",
+		local.metaResult = map[string]store.MetaInfo{
+			"source-1": store.MetaInfo{
+				Count:   1,
+				Expired: 2,
+				Oldest:  time.Unix(0, 3),
+				Newest:  time.Unix(0, 4),
+			},
+			"source-2": store.MetaInfo{
+				Count:   5,
+				Expired: 6,
+				Oldest:  time.Unix(0, 7),
+				Newest:  time.Unix(0, 8),
+			},
 		}
 
 		sourceIds := proxy.Meta(true)
-		Expect(sourceIds).To(ContainElement("source-1"))
-		Expect(sourceIds).To(ContainElement("source-2"))
+		Expect(sourceIds).To(HaveKeyWithValue("source-1", store.MetaInfo{
+			Count:   1,
+			Expired: 2,
+			Oldest:  time.Unix(0, 3),
+			Newest:  time.Unix(0, 4),
+		}))
+		Expect(sourceIds).To(HaveKeyWithValue("source-2", store.MetaInfo{
+			Count:   5,
+			Expired: 6,
+			Oldest:  time.Unix(0, 7),
+			Newest:  time.Unix(0, 8),
+		}))
 
 		Expect(egressClient.metaRequests).To(BeEmpty())
 	})
 
 	It("gets sourceIds from the remote store and the local store", func() {
-		local.metaResult = []string{
-			"source-1",
-			"source-2",
+		local.metaResult = map[string]store.MetaInfo{
+			"source-1": store.MetaInfo{
+				Count:   1,
+				Expired: 2,
+				Oldest:  time.Unix(0, 3),
+				Newest:  time.Unix(0, 4),
+			},
+			"source-2": store.MetaInfo{
+				Count:   5,
+				Expired: 6,
+				Oldest:  time.Unix(0, 7),
+				Newest:  time.Unix(0, 8),
+			},
 		}
 
 		lookup.result = remoteIndex
-		egressClient.metaResults = []string{
-			"source-3",
+		egressClient.metaResults = map[string]*rpc.MetaInfo{
+			"source-3": &rpc.MetaInfo{
+				Count:           9,
+				Expired:         10,
+				OldestTimestamp: 11,
+				NewestTimestamp: 12,
+			},
 		}
 
 		sourceIds := proxy.Meta(false)
-		Expect(sourceIds).To(ContainElement("source-1"))
-		Expect(sourceIds).To(ContainElement("source-2"))
-		Expect(sourceIds).To(ContainElement("source-3"))
+		Expect(sourceIds).To(HaveKeyWithValue("source-1", store.MetaInfo{
+			Count:   1,
+			Expired: 2,
+			Oldest:  time.Unix(0, 3),
+			Newest:  time.Unix(0, 4),
+		}))
+		Expect(sourceIds).To(HaveKeyWithValue("source-2", store.MetaInfo{
+			Count:   5,
+			Expired: 6,
+			Oldest:  time.Unix(0, 7),
+			Newest:  time.Unix(0, 8),
+		}))
+		Expect(sourceIds).To(HaveKeyWithValue("source-3", store.MetaInfo{
+			Count:   9,
+			Expired: 10,
+			Oldest:  time.Unix(0, 11),
+			Newest:  time.Unix(0, 12),
+		}))
 
 		Expect(egressClient.metaRequests).To(HaveLen(1))
 		Expect(egressClient.metaRequests[0].LocalOnly).To(BeTrue())
@@ -152,7 +202,7 @@ type spyLocalStore struct {
 	limit        int
 	descending   bool
 	result       []*loggregator_v2.Envelope
-	metaResult   []string
+	metaResult   map[string]store.MetaInfo
 }
 
 func newSpyGetter() *spyLocalStore {
@@ -176,7 +226,7 @@ func (s *spyLocalStore) Get(
 	return s.result
 }
 
-func (s *spyLocalStore) Meta() []string {
+func (s *spyLocalStore) Meta() map[string]store.MetaInfo {
 	return s.metaResult
 }
 
@@ -184,7 +234,7 @@ type spyEgressClient struct {
 	requests     []*rpc.ReadRequest
 	results      []*loggregator_v2.Envelope
 	metaRequests []*rpc.MetaRequest
-	metaResults  []string
+	metaResults  map[string]*rpc.MetaInfo
 	metaErr      error
 }
 
@@ -204,8 +254,8 @@ func (s *spyEgressClient) Read(ctx context.Context, in *rpc.ReadRequest, opts ..
 func (s *spyEgressClient) Meta(ctx context.Context, r *rpc.MetaRequest, opts ...grpc.CallOption) (*rpc.MetaResponse, error) {
 	s.metaRequests = append(s.metaRequests, r)
 	metaInfo := make(map[string]*rpc.MetaInfo)
-	for _, id := range s.metaResults {
-		metaInfo[id] = &rpc.MetaInfo{}
+	for id, m := range s.metaResults {
+		metaInfo[id] = m
 	}
 
 	return &rpc.MetaResponse{

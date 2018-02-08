@@ -34,7 +34,7 @@ type LogCacheProxy interface {
 	) []*loggregator_v2.Envelope
 
 	// Meta gets the metadata from Log Cache instances in the cluster.
-	Meta(localOnly bool) []string
+	Meta(localOnly bool) map[string]store.MetaInfo
 }
 
 // NewPeerReader creates and returns a new PeerReader.
@@ -92,8 +92,13 @@ func (r *PeerReader) Meta(ctx context.Context, req *rpc.MetaRequest) (*rpc.MetaR
 	sourceIds := r.proxy.Meta(req.LocalOnly)
 
 	metaInfo := make(map[string]*rpc.MetaInfo)
-	for _, sourceId := range sourceIds {
-		metaInfo[sourceId] = &rpc.MetaInfo{}
+	for sourceId, m := range sourceIds {
+		metaInfo[sourceId] = &rpc.MetaInfo{
+			Count:           int64(m.Count),
+			Expired:         int64(m.Expired),
+			NewestTimestamp: m.Newest.UnixNano(),
+			OldestTimestamp: m.Oldest.UnixNano(),
+		}
 	}
 
 	return &rpc.MetaResponse{

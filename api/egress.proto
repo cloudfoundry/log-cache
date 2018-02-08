@@ -50,4 +50,8 @@ message MetaResponse {
 }
 
 message MetaInfo {
+    int64 count = 1;
+    int64 expired = 2;
+    int64 oldest_timestamp = 3;
+    int64 newest_timestamp = 4;
 }

@@ -31,7 +31,7 @@ type LocalStore interface {
 	) []*loggregator_v2.Envelope
 
 	// Meta gets local metadata.
-	Meta() []string
+	Meta() map[string]MetaInfo
 }
 
 // NewProxyStore creates and returns a ProxyStore.
@@ -90,20 +90,22 @@ func (s *ProxyStore) Get(
 }
 
 // Meta reads the LogCache Metadata from all log-cache peers
-func (p *ProxyStore) Meta(localOnly bool) []string {
+func (p *ProxyStore) Meta(localOnly bool) map[string]MetaInfo {
 	meta := p.local.Meta()
 	if localOnly {
 		return meta
 	}
 
 	for _, r := range p.remotes {
-		meta = append(meta, p.metaFromRemote(r)...)
+		for k, v := range p.metaFromRemote(r) {
+			meta[k] = v
+		}
 	}
 
 	return meta
 }
 
-func (p *ProxyStore) metaFromRemote(remote rpc.EgressClient) []string {
+func (p *ProxyStore) metaFromRemote(remote rpc.EgressClient) map[string]MetaInfo {
 	if remote == nil {
 		return nil
 	}
@@ -112,14 +114,19 @@ func (p *ProxyStore) metaFromRemote(remote rpc.EgressClient) []string {
 		LocalOnly: true,
 	}
 
-	var meta []string
+	meta := make(map[string]MetaInfo)
 	remoteMeta, err := remote.Meta(context.Background(), req)
 	if err != nil {
 		return nil
 	}
 
-	for id, _ := range remoteMeta.Meta {
-		meta = append(meta, id)
+	for id, m := range remoteMeta.Meta {
+		meta[id] = MetaInfo{
+			Count:   int(m.Count),
+			Expired: int(m.Expired),
+			Newest:  time.Unix(0, m.NewestTimestamp),
+			Oldest:  time.Unix(0, m.OldestTimestamp),
+		}
 	}
 
 	return meta

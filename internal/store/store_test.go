@@ -192,7 +192,7 @@ var _ = Describe("Store", func() {
 		Expect(sm.values["StoreSize"]).To(Equal(5.0))
 
 		// Ensure b was removed fully
-		for _, s := range s.Meta() {
+		for s := range s.Meta() {
 			Expect(s).To(Equal("a"))
 		}
 	})
@@ -245,11 +245,38 @@ var _ = Describe("Store", func() {
 
 	It("returns the indices in the store", func() {
 		s = store.NewStore(2, 2, sp, sm)
-		s.Put(buildTypedEnvelope(0, "source-id", &loggregator_v2.Log{}), "index-1")
-		s.Put(buildTypedEnvelope(1, "another-source-id", &loggregator_v2.Log{}), "index-2")
+
+		// Will be pruned by pruner
+		s.Put(buildTypedEnvelope(0, "index-0", &loggregator_v2.Log{}), "index-0")
+		s.Put(buildTypedEnvelope(1, "index-1", &loggregator_v2.Log{}), "index-1")
+
+		// Timestamp 2 should be pruned as we exceed the max per source of 2.
+		s.Put(buildTypedEnvelope(2, "index-2", &loggregator_v2.Log{}), "index-2")
+		s.Put(buildTypedEnvelope(3, "index-2", &loggregator_v2.Log{}), "index-2")
+		s.Put(buildTypedEnvelope(4, "index-2", &loggregator_v2.Log{}), "index-2")
+
+		// Prune first 2 entries (timestamp 0 and 1)
+		sp.result = 2
+		s.Put(buildTypedEnvelope(5, "index-1", &loggregator_v2.Log{}), "index-1")
 
 		meta := s.Meta()
-		Expect(meta).To(ConsistOf("index-1", "index-2"))
+
+		// Does not contain index-0
+		Expect(meta).To(HaveLen(2))
+
+		Expect(meta).To(HaveKeyWithValue("index-1", store.MetaInfo{
+			Count:   1,
+			Expired: 1,
+			Oldest:  time.Unix(0, 5),
+			Newest:  time.Unix(0, 5),
+		}))
+
+		Expect(meta).To(HaveKeyWithValue("index-2", store.MetaInfo{
+			Count:   2,
+			Expired: 1,
+			Oldest:  time.Unix(0, 3),
+			Newest:  time.Unix(0, 4),
+		}))
 	})
 })
 

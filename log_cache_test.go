@@ -218,9 +218,15 @@ var _ = Describe("LogCache", func() {
 
 	It("returns all meta information", func() {
 		peer := newSpyLogCache(tlsConfig)
-		peer.metaResponses = []string{
-			"source-1",
+		peer.metaResponses = map[string]*rpc.MetaInfo{
+			"source-1": &rpc.MetaInfo{
+				Count:           1,
+				Expired:         2,
+				OldestTimestamp: 3,
+				NewestTimestamp: 4,
+			},
 		}
+
 		peerAddr := peer.start()
 
 		myAddr := "127.0.0.1:0"
@@ -253,18 +259,24 @@ var _ = Describe("LogCache", func() {
 		}
 
 		ingressClient.Send(context.Background(), sendRequest)
-		Eventually(func() []string {
+		Eventually(func() map[string]*rpc.MetaInfo {
 			resp, err := egressClient.Meta(context.Background(), &rpc.MetaRequest{})
 			if err != nil {
 				return nil
 			}
 
-			var sourceIDs []string
-			for k := range resp.Meta {
-				sourceIDs = append(sourceIDs, k)
-			}
-			return sourceIDs
-		}).Should(ConsistOf("source-0", "source-1"))
+			return resp.Meta
+		}).Should(And(
+			HaveKeyWithValue("source-0", &rpc.MetaInfo{
+				Count: 1,
+			}),
+			HaveKeyWithValue("source-1", &rpc.MetaInfo{
+				Count:           1,
+				Expired:         2,
+				OldestTimestamp: 3,
+				NewestTimestamp: 4,
+			}),
+		))
 	})
 })
 
@@ -309,7 +321,7 @@ type spyLogCache struct {
 	envelopes     []*loggregator_v2.Envelope
 	readRequests  []*rpc.ReadRequest
 	readEnvelopes map[string]func() []*loggregator_v2.Envelope
-	metaResponses []string
+	metaResponses map[string]*rpc.MetaInfo
 	tlsConfig     *tls.Config
 }
 
@@ -384,13 +396,8 @@ func (s *spyLogCache) Read(ctx context.Context, r *rpc.ReadRequest) (*rpc.ReadRe
 }
 
 func (s *spyLogCache) Meta(ctx context.Context, r *rpc.MetaRequest) (*rpc.MetaResponse, error) {
-	metaInfo := make(map[string]*rpc.MetaInfo)
-	for _, sourceId := range s.metaResponses {
-		metaInfo[sourceId] = &rpc.MetaInfo{}
-	}
-
 	return &rpc.MetaResponse{
-		Meta: metaInfo,
+		Meta: s.metaResponses,
 	}, nil
 }
 
