@@ -2,6 +2,7 @@ package logcache_test
 
 import (
 	"crypto/tls"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"time"
@@ -13,6 +14,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gbytes"
 )
 
 var _ = Describe("ExpvarForwarder", func() {
@@ -25,6 +27,7 @@ var _ = Describe("ExpvarForwarder", func() {
 		server3   *httptest.Server
 		logCache  *spyLogCache
 		tlsConfig *tls.Config
+		sbuffer   *gbytes.Buffer
 	)
 
 	BeforeEach(func() {
@@ -72,8 +75,11 @@ var _ = Describe("ExpvarForwarder", func() {
 		logCache = newSpyLogCache(tlsConfig)
 		addr = logCache.start()
 
+		sbuffer = gbytes.NewBuffer()
+
 		r = logcache.NewExpvarForwarder(addr,
 			logcache.WithExpvarInterval(time.Millisecond),
+			logcache.WithExpvarStructuredLogger(log.New(sbuffer, "", 0)),
 			logcache.AddExpvarGaugeTemplate(
 				server1.URL,
 				"CachePeriod",
@@ -135,6 +141,14 @@ var _ = Describe("ExpvarForwarder", func() {
 		Expect(e.GetGauge().Metrics["CachePeriod"].Value).To(Equal(68644.0))
 		Expect(e.GetGauge().Metrics["CachePeriod"].Unit).To(Equal("mS"))
 		Expect(e.Tags).To(Equal(map[string]string{"a": "some-value"}))
+	})
+
+	It("writes the expvar counters to the Structured Logger", func() {
+		Eventually(sbuffer).Should(gbytes.Say(`{"timestamp":[0-9]+,"name":"Egress","value":999,"source_id":"log-cache-nozzle","type":"counter"}`))
+	})
+
+	It("writes the expvar gauges to the Structured Logger", func() {
+		Eventually(sbuffer).Should(gbytes.Say(`{"timestamp":[0-9]+,"name":"CachePeriod","value":68644.000000,"source_id":"log-cache","type":"gauge"}`))
 	})
 
 	It("panics if there is not a counter or gauge configured", func() {

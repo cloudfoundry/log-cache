@@ -23,6 +23,10 @@ func main() {
 		logcache.WithExpvarDialOpts(grpc.WithTransportCredentials(cfg.LogCacheTLS.Credentials("log-cache"))),
 	}
 
+	if cfg.StructuredLogging {
+		opts = append(opts, logcache.WithExpvarStructuredLogger(log.New(os.Stdout, "", 0)))
+	}
+
 	for _, c := range cfg.Counters.Descriptions {
 		opts = append(opts, logcache.AddExpvarCounterTemplate(
 			c.Addr,

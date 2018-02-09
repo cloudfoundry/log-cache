@@ -21,6 +21,7 @@ import (
 // ExpvarForwarder reads from an expvar and write them to LogCache.
 type ExpvarForwarder struct {
 	log      *log.Logger
+	slog     *log.Logger
 	interval time.Duration
 
 	// LogCache
@@ -34,6 +35,7 @@ type ExpvarForwarder struct {
 func NewExpvarForwarder(logCacheAddr string, opts ...ExpvarForwarderOption) *ExpvarForwarder {
 	f := &ExpvarForwarder{
 		log:      log.New(ioutil.Discard, "", 0),
+		slog:     log.New(ioutil.Discard, "", 0),
 		interval: time.Minute,
 
 		logCacheAddr: logCacheAddr,
@@ -61,6 +63,18 @@ type ExpvarForwarderOption func(*ExpvarForwarder)
 func WithExpvarLogger(l *log.Logger) ExpvarForwarderOption {
 	return func(f *ExpvarForwarder) {
 		f.log = l
+	}
+}
+
+// WithExpvarLogger returns an ExpvarForwarderOption that configures the
+// structured logger used for the ExpvarForwarder. Defaults to silent logger.
+// Structured logging is used to capture the values from the health endpoints.
+//
+// Normally this would be dumped to stdout so that an operator can see a
+// history of metrics.
+func WithExpvarStructuredLogger(l *log.Logger) ExpvarForwarderOption {
+	return func(f *ExpvarForwarder) {
+		f.slog = l
 	}
 }
 
@@ -163,6 +177,8 @@ func (f *ExpvarForwarder) Start() {
 					continue
 				}
 
+				now := time.Now().UnixNano()
+
 				if metric.counter {
 					value, err := strconv.ParseUint(b.String(), 10, 64)
 					if err != nil {
@@ -172,7 +188,7 @@ func (f *ExpvarForwarder) Start() {
 
 					e = append(e, &loggregator_v2.Envelope{
 						SourceId:  metric.sourceID,
-						Timestamp: time.Now().UnixNano(),
+						Timestamp: now,
 						Tags:      metric.tags,
 						Message: &loggregator_v2.Envelope_Counter{
 							Counter: &loggregator_v2.Counter{
@@ -181,6 +197,9 @@ func (f *ExpvarForwarder) Start() {
 							},
 						},
 					})
+
+					f.slog.Printf(`{"timestamp":%d,"name":%q,"value":%d,"source_id":%q,"type":"counter"}`, now, metric.name, value, metric.sourceID)
+
 					continue
 				}
 
@@ -205,6 +224,8 @@ func (f *ExpvarForwarder) Start() {
 						},
 					},
 				})
+
+				f.slog.Printf(`{"timestamp":%d,"name":%q,"value":%f,"source_id":%q,"type":"gauge"}`, now, metric.name, value, metric.sourceID)
 			}
 		}
 

@@ -10,10 +10,11 @@ import (
 
 // Config is the configuration for a LogCache.
 type Config struct {
-	LogCacheAddr string              `env:"LOG_CACHE_ADDR, required"`
-	Interval     time.Duration       `env:"INTERVAL"`
-	Counters     CounterDescriptions `env:"COUNTERS_JSON"`
-	Gauges       GaugeDescriptions   `env:"GAUGES_JSON"`
+	LogCacheAddr      string              `env:"LOG_CACHE_ADDR, required"`
+	Interval          time.Duration       `env:"INTERVAL"`
+	Counters          CounterDescriptions `env:"COUNTERS_JSON"`
+	Gauges            GaugeDescriptions   `env:"GAUGES_JSON"`
+	StructuredLogging bool                `env:"STRUCTURED_LOGGING"`
 
 	LogCacheTLS tls.TLS
 }
