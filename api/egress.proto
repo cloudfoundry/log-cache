@@ -24,7 +24,7 @@ message ReadRequest {
     int64 start_time = 2;
     int64 end_time = 3;
     int64 limit = 4;
-    EnvelopeTypes envelope_type = 5;
+    repeated EnvelopeTypes envelope_types = 5;
     bool descending = 6;
 }
 
