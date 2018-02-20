@@ -1,11 +1,11 @@
-package ingress_test
+package routing_test
 
 import (
 	"time"
 
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"code.cloudfoundry.org/log-cache/internal/ingress"
+	"code.cloudfoundry.org/log-cache/internal/routing"
 	"code.cloudfoundry.org/log-cache/internal/store"
 	"golang.org/x/net/context"
 
@@ -14,39 +14,21 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("PeerReader", func() {
+var _ = Describe("LocalStoreReader", func() {
 	var (
-		r                *ingress.PeerReader
-		spyEnvelopeStore *spyEnvelopeStore
+		r              *routing.LocalStoreReader
+		spyStoreReader *spyStoreReader
 	)
 
 	BeforeEach(func() {
-		spyEnvelopeStore = newSpyEnvelopeStore()
-		r = ingress.NewPeerReader(
-			spyEnvelopeStore.Put,
-			spyEnvelopeStore,
+		spyStoreReader = newSpyStoreReader()
+		r = routing.NewLocalStoreReader(
+			spyStoreReader,
 		)
 	})
 
-	It("writes the envelope to the store", func() {
-		resp, err := r.Send(context.Background(), &logcache.SendRequest{
-			Envelopes: &loggregator_v2.EnvelopeBatch{
-				Batch: []*loggregator_v2.Envelope{
-					{Timestamp: 1},
-					{Timestamp: 2},
-				},
-			},
-		})
-
-		Expect(resp).ToNot(BeNil())
-		Expect(err).ToNot(HaveOccurred())
-		Expect(spyEnvelopeStore.putEnvelopes).To(HaveLen(2))
-		Expect(spyEnvelopeStore.putEnvelopes[0].Timestamp).To(Equal(int64(1)))
-		Expect(spyEnvelopeStore.putEnvelopes[1].Timestamp).To(Equal(int64(2)))
-	})
-
 	It("reads envelopes from the store", func() {
-		spyEnvelopeStore.getEnvelopes = []*loggregator_v2.Envelope{
+		spyStoreReader.getEnvelopes = []*loggregator_v2.Envelope{
 			{Timestamp: 1},
 			{Timestamp: 2},
 		}
@@ -61,12 +43,12 @@ var _ = Describe("PeerReader", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		Expect(resp.Envelopes.Batch).To(HaveLen(2))
-		Expect(spyEnvelopeStore.sourceID).To(Equal("some-source"))
-		Expect(spyEnvelopeStore.start.UnixNano()).To(Equal(int64(99)))
-		Expect(spyEnvelopeStore.end.UnixNano()).To(Equal(int64(100)))
-		Expect(spyEnvelopeStore.envelopeType).To(Equal(&loggregator_v2.Log{}))
-		Expect(spyEnvelopeStore.limit).To(Equal(101))
-		Expect(spyEnvelopeStore.descending).To(BeTrue())
+		Expect(spyStoreReader.sourceID).To(Equal("some-source"))
+		Expect(spyStoreReader.start.UnixNano()).To(Equal(int64(99)))
+		Expect(spyStoreReader.end.UnixNano()).To(Equal(int64(100)))
+		Expect(spyStoreReader.envelopeType).To(Equal(&loggregator_v2.Log{}))
+		Expect(spyStoreReader.limit).To(Equal(101))
+		Expect(spyStoreReader.descending).To(BeTrue())
 	})
 
 	DescribeTable("envelope types", func(t logcache.EnvelopeTypes, expected store.EnvelopeType) {
@@ -78,7 +60,7 @@ var _ = Describe("PeerReader", func() {
 			EnvelopeType: t,
 		})
 		Expect(err).ToNot(HaveOccurred())
-		Expect(spyEnvelopeStore.envelopeType).To(Equal(expected))
+		Expect(spyStoreReader.envelopeType).To(Equal(expected))
 	},
 		Entry("log", logcache.EnvelopeTypes_LOG, &loggregator_v2.Log{}),
 		Entry("counter", logcache.EnvelopeTypes_COUNTER, &loggregator_v2.Counter{}),
@@ -95,7 +77,7 @@ var _ = Describe("PeerReader", func() {
 			EnvelopeType: logcache.EnvelopeTypes_ANY,
 		})
 		Expect(err).ToNot(HaveOccurred())
-		Expect(spyEnvelopeStore.envelopeType).To(BeNil())
+		Expect(spyStoreReader.envelopeType).To(BeNil())
 	})
 
 	It("defaults StartTime to 0, EndTime to now, limit to 100 and EnvelopeType to ANY", func() {
@@ -104,11 +86,11 @@ var _ = Describe("PeerReader", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(spyEnvelopeStore.sourceID).To(Equal("some-source"))
-		Expect(spyEnvelopeStore.start.UnixNano()).To(Equal(int64(0)))
-		Expect(spyEnvelopeStore.end.UnixNano()).To(BeNumerically("~", time.Now().UnixNano(), time.Second))
-		Expect(spyEnvelopeStore.envelopeType).To(BeNil())
-		Expect(spyEnvelopeStore.limit).To(Equal(100))
+		Expect(spyStoreReader.sourceID).To(Equal("some-source"))
+		Expect(spyStoreReader.start.UnixNano()).To(Equal(int64(0)))
+		Expect(spyStoreReader.end.UnixNano()).To(BeNumerically("~", time.Now().UnixNano(), time.Second))
+		Expect(spyStoreReader.envelopeType).To(BeNil())
+		Expect(spyStoreReader.limit).To(Equal(100))
 	})
 
 	It("returns an error if the end time is before the start time", func() {
@@ -143,7 +125,7 @@ var _ = Describe("PeerReader", func() {
 	})
 
 	It("returns local source IDs from the store", func() {
-		spyEnvelopeStore.metaResponse = map[string]store.MetaInfo{
+		spyStoreReader.metaResponse = map[string]store.MetaInfo{
 			"source-1": {
 				Count:   1,
 				Expired: 2,
@@ -162,7 +144,6 @@ var _ = Describe("PeerReader", func() {
 			LocalOnly: true,
 		})
 		Expect(err).ToNot(HaveOccurred())
-		Expect(spyEnvelopeStore.metaLocalOnly).To(BeTrue())
 
 		Expect(metaInfo).To(Equal(&logcache.MetaResponse{
 			Meta: map[string]*logcache.MetaInfo{
@@ -183,29 +164,23 @@ var _ = Describe("PeerReader", func() {
 	})
 })
 
-type spyEnvelopeStore struct {
-	putEnvelopes []*loggregator_v2.Envelope
+type spyStoreReader struct {
 	getEnvelopes []*loggregator_v2.Envelope
 
-	sourceID      string
-	start         time.Time
-	end           time.Time
-	envelopeType  store.EnvelopeType
-	limit         int
-	descending    bool
-	metaLocalOnly bool
-	metaResponse  map[string]store.MetaInfo
+	sourceID     string
+	start        time.Time
+	end          time.Time
+	envelopeType store.EnvelopeType
+	limit        int
+	descending   bool
+	metaResponse map[string]store.MetaInfo
 }
 
-func newSpyEnvelopeStore() *spyEnvelopeStore {
-	return &spyEnvelopeStore{}
+func newSpyStoreReader() *spyStoreReader {
+	return &spyStoreReader{}
 }
 
-func (s *spyEnvelopeStore) Put(e *loggregator_v2.Envelope) {
-	s.putEnvelopes = append(s.putEnvelopes, e)
-}
-
-func (s *spyEnvelopeStore) Get(
+func (s *spyStoreReader) Get(
 	sourceID string,
 	start time.Time,
 	end time.Time,
@@ -223,7 +198,6 @@ func (s *spyEnvelopeStore) Get(
 	return s.getEnvelopes
 }
 
-func (s *spyEnvelopeStore) Meta(localOnly bool) map[string]store.MetaInfo {
-	s.metaLocalOnly = localOnly
+func (s *spyStoreReader) Meta() map[string]store.MetaInfo {
 	return s.metaResponse
 }

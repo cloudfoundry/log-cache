@@ -5,13 +5,13 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"time"
 
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
-	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"code.cloudfoundry.org/log-cache/internal/egress"
-	"code.cloudfoundry.org/log-cache/internal/ingress"
+	"code.cloudfoundry.org/log-cache/internal/routing"
 	"code.cloudfoundry.org/log-cache/internal/store"
 )
 
@@ -24,7 +24,6 @@ type LogCache struct {
 
 	maxPerSource int
 	min          int
-	proxy        *store.ProxyStore
 
 	// Cluster Properties
 	addr     string
@@ -46,14 +45,16 @@ func New(opts ...LogCacheOption) *LogCache {
 		maxPerSource: 100000,
 		min:          500000,
 
-		// Defaults to a single entry. The default does not route data.
-		nodeAddrs: []string{"bogus-address"},
-		nodeIndex: 0,
-		addr:      ":8080",
+		addr:     ":8080",
+		dialOpts: []grpc.DialOption{grpc.WithInsecure()},
 	}
 
 	for _, o := range opts {
 		o(cache)
+	}
+
+	if len(cache.nodeAddrs) == 0 {
+		cache.nodeAddrs = []string{cache.addr}
 	}
 
 	return cache
@@ -159,8 +160,7 @@ func (c *LogCache) setupRouting(s *store.Store) {
 		return crc64.Checksum([]byte(s), tableECMA)
 	}
 
-	lookup := ingress.NewStaticLookup(len(c.nodeAddrs), hasher)
-	ps := ingress.NewPubsub(lookup.Lookup)
+	lookup := routing.NewStaticLookup(len(c.nodeAddrs), hasher)
 
 	// gRPC
 	lis, err := net.Listen("tcp", c.addr)
@@ -170,29 +170,54 @@ func (c *LogCache) setupRouting(s *store.Store) {
 	c.lis = lis
 	c.log.Printf("listening on %s...", c.Addr())
 
-	egressClients := make(map[int]logcache.EgressClient)
+	var (
+		ingressClients []logcache.IngressClient
+		egressClients  []logcache.EgressClient
+		localIdx       int
+	)
+
+	lcr := routing.NewLocalStoreReader(s)
 
 	// Register peers and current node
 	for i, addr := range c.nodeAddrs {
-		if i == c.nodeIndex {
-			ps.Subscribe(i, func(e *loggregator_v2.Envelope) {
-				s.Put(e, e.GetSourceId())
-			})
+		if i != c.nodeIndex {
+			conn, err := grpc.Dial(addr, c.dialOpts...)
+			if err != nil {
+				log.Printf("failed to dial %s: %s", addr, err)
+				continue
+			}
+
+			bw := routing.NewBatchedIngressClient(
+				100,
+				250*time.Millisecond,
+				logcache.NewIngressClient(conn),
+				c.log,
+			)
+
+			ingressClients = append(ingressClients, bw)
+			egressClients = append(egressClients, logcache.NewEgressClient(conn))
+
 			continue
 		}
 
-		writer := egress.NewPeerWriter(addr, c.dialOpts...)
-		ps.Subscribe(i, writer.Write)
-		egressClients[i] = writer
+		localIdx = i
+		ingressClients = append(ingressClients, routing.IngressClientFunc(func(ctx context.Context, r *logcache.SendRequest, opts ...grpc.CallOption) (*logcache.SendResponse, error) {
+			for _, e := range r.GetEnvelopes().GetBatch() {
+				s.Put(e, e.GetSourceId())
+			}
+
+			return &logcache.SendResponse{}, nil
+		}))
+		egressClients = append(egressClients, lcr)
 	}
 
-	c.proxy = store.NewProxyStore(s, c.nodeIndex, egressClients, lookup.Lookup)
+	ingressReverseProxy := routing.NewIngressReverseProxy(lookup.Lookup, ingressClients, c.log)
+	egressReverseProxy := routing.NewEgressReverseProxy(lookup.Lookup, egressClients, localIdx, c.log)
 
 	go func() {
-		peerReader := ingress.NewPeerReader(ps.Publish, c.proxy)
 		srv := grpc.NewServer(c.serverOpts...)
-		logcache.RegisterIngressServer(srv, peerReader)
-		logcache.RegisterEgressServer(srv, peerReader)
+		logcache.RegisterIngressServer(srv, ingressReverseProxy)
+		logcache.RegisterEgressServer(srv, egressReverseProxy)
 		if err := srv.Serve(lis); err != nil {
 			log.Fatalf("failed to serve gRPC ingress server: %s", err)
 		}

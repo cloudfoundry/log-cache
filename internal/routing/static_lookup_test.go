@@ -1,7 +1,7 @@
-package ingress_test
+package routing_test
 
 import (
-	"code.cloudfoundry.org/log-cache/internal/ingress"
+	"code.cloudfoundry.org/log-cache/internal/routing"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -9,14 +9,14 @@ import (
 
 var _ = Describe("StaticLookup", func() {
 	var (
-		l *ingress.StaticLookup
+		l *routing.StaticLookup
 
 		sourceId string
 		hash     uint64
 	)
 
 	BeforeEach(func() {
-		l = ingress.NewStaticLookup(4, func(s string) uint64 {
+		l = routing.NewStaticLookup(4, func(s string) uint64 {
 			sourceId = s
 			return hash
 		})

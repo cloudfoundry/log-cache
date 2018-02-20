@@ -16,7 +16,6 @@ import (
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache"
-	"code.cloudfoundry.org/log-cache/internal/egress"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -132,13 +131,10 @@ var _ = Describe("LogCache", func() {
 		)
 		cache.Start()
 
-		peerWriter := egress.NewPeerWriter(
-			cache.Addr(),
-			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
-		)
-
 		// source-0 hashes to 7700738999732113484 (route to node 0)
-		peerWriter.Write(&loggregator_v2.Envelope{SourceId: "source-0", Timestamp: 1})
+		writeEnvelopes(cache.Addr(), []*loggregator_v2.Envelope{
+			{SourceId: "source-0", Timestamp: 1},
+		})
 
 		conn, err := grpc.Dial(cache.Addr(),
 			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
