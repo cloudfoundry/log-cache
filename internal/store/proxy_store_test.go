@@ -86,13 +86,13 @@ var _ = Describe("ProxyStore", func() {
 	It("gets sourceIds from the local store", func() {
 		lookup.result = localIndex
 		local.metaResult = map[string]store.MetaInfo{
-			"source-1": store.MetaInfo{
+			"source-1": {
 				Count:   1,
 				Expired: 2,
 				Oldest:  time.Unix(0, 3),
 				Newest:  time.Unix(0, 4),
 			},
-			"source-2": store.MetaInfo{
+			"source-2": {
 				Count:   5,
 				Expired: 6,
 				Oldest:  time.Unix(0, 7),
@@ -119,13 +119,13 @@ var _ = Describe("ProxyStore", func() {
 
 	It("gets sourceIds from the remote store and the local store", func() {
 		local.metaResult = map[string]store.MetaInfo{
-			"source-1": store.MetaInfo{
+			"source-1": {
 				Count:   1,
 				Expired: 2,
 				Oldest:  time.Unix(0, 3),
 				Newest:  time.Unix(0, 4),
 			},
-			"source-2": store.MetaInfo{
+			"source-2": {
 				Count:   5,
 				Expired: 6,
 				Oldest:  time.Unix(0, 7),
@@ -135,7 +135,7 @@ var _ = Describe("ProxyStore", func() {
 
 		lookup.result = remoteIndex
 		egressClient.metaResults = map[string]*rpc.MetaInfo{
-			"source-3": &rpc.MetaInfo{
+			"source-3": {
 				Count:           9,
 				Expired:         10,
 				OldestTimestamp: 11,

@@ -219,7 +219,7 @@ var _ = Describe("LogCache", func() {
 	It("returns all meta information", func() {
 		peer := newSpyLogCache(tlsConfig)
 		peer.metaResponses = map[string]*rpc.MetaInfo{
-			"source-1": &rpc.MetaInfo{
+			"source-1": {
 				Count:           1,
 				Expired:         2,
 				OldestTimestamp: 3,

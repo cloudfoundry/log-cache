@@ -147,7 +147,7 @@ func NewWebHook(
 					total += float64(x.Counter.Total)
 				case *loggregator_v2.Envelope_Gauge:
 					for _, v := range x.Gauge.Metrics {
-						total += float64(v.GetValue())
+						total += v.GetValue()
 					}
 				}
 			}
@@ -223,8 +223,6 @@ func (h *WebHook) Start() {
 		ww := logcache.BuildWalker(
 			h.sourceID,
 			logcache.Reader(h.reader),
-			h.interval,
-			3600,
 		)
 
 		logcache.Window(

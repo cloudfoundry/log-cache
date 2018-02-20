@@ -144,13 +144,13 @@ var _ = Describe("PeerReader", func() {
 
 	It("returns local source IDs from the store", func() {
 		spyEnvelopeStore.metaResponse = map[string]store.MetaInfo{
-			"source-1": store.MetaInfo{
+			"source-1": {
 				Count:   1,
 				Expired: 2,
 				Oldest:  time.Unix(0, 3),
 				Newest:  time.Unix(0, 4),
 			},
-			"source-2": store.MetaInfo{
+			"source-2": {
 				Count:   5,
 				Expired: 6,
 				Oldest:  time.Unix(0, 7),
@@ -166,13 +166,13 @@ var _ = Describe("PeerReader", func() {
 
 		Expect(metaInfo).To(Equal(&logcache.MetaResponse{
 			Meta: map[string]*logcache.MetaInfo{
-				"source-1": &logcache.MetaInfo{
+				"source-1": {
 					Count:           1,
 					Expired:         2,
 					OldestTimestamp: 3,
 					NewestTimestamp: 4,
 				},
-				"source-2": &logcache.MetaInfo{
+				"source-2": {
 					Count:           5,
 					Expired:         6,
 					OldestTimestamp: 7,
