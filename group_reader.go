@@ -10,7 +10,7 @@ import (
 	"code.cloudfoundry.org/go-log-cache"
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
 	"code.cloudfoundry.org/log-cache/internal/groups"
-	"code.cloudfoundry.org/log-cache/internal/ingress"
+	"code.cloudfoundry.org/log-cache/internal/routing"
 	"code.cloudfoundry.org/log-cache/internal/store"
 	"google.golang.org/grpc"
 )
@@ -135,7 +135,7 @@ func (g *GroupReader) reverseProxy() rpc.GroupReaderServer {
 		return crc64.Checksum([]byte(s), tableECMA)
 	}
 
-	lookup := ingress.NewStaticLookup(len(g.nodeAddrs), hasher)
+	lookup := routing.NewStaticLookup(len(g.nodeAddrs), hasher)
 
 	return groups.NewRPCReverseProxy(gs, lookup, g.log)
 }
