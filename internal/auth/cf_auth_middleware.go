@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 
@@ -135,14 +136,15 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 			return
 		}
 
-		r.URL.Path = fmt.Sprintf(
-			"/v1/group/%s-%s-%s",
-			c.ClientID,
-			c.UserID,
-			vars["name"],
-		)
+		prefixedName := fmt.Sprintf("%s-%s-%s", c.ClientID, c.UserID, vars["name"])
+		r.URL.Path = "/v1/group/" + prefixedName
 
-		h.ServeHTTP(w, r)
+		interceptor := &interceptingResponseWriter{
+			ResponseWriter: w,
+			search:         []byte(prefixedName),
+			replace:        []byte(vars["name"]),
+		}
+		h.ServeHTTP(interceptor, r)
 	}).Methods("GET")
 
 	router.HandleFunc("/v1/group/{name}/meta", func(w http.ResponseWriter, r *http.Request) {
@@ -215,4 +217,25 @@ func (m CFAuthMiddlewareProvider) onlyAuthorized(authToken string, meta map[stri
 	}
 
 	return intersection
+}
+
+type interceptingResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+	search     []byte
+	replace    []byte
+}
+
+func (w *interceptingResponseWriter) WriteHeader(n int) {
+	w.statusCode = n
+
+	w.ResponseWriter.WriteHeader(n)
+}
+
+func (w *interceptingResponseWriter) Write(b []byte) (int, error) {
+	if w.statusCode >= 400 {
+		return w.ResponseWriter.Write(bytes.Replace(b, w.search, w.replace, -1))
+	}
+
+	return w.ResponseWriter.Write(b)
 }

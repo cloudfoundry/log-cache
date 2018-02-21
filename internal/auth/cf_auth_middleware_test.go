@@ -285,8 +285,10 @@ var _ = Describe("CfAuthMiddleware", func() {
 				request.Header.Set("Authorization", "valid-token")
 
 				var req *http.Request
-				baseHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				baseHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					req = r
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte(`{"group": "some-client-id-some-user-id-some-name"}`))
 				})
 				authHandler := provider.Middleware(baseHandler)
 
@@ -295,6 +297,38 @@ var _ = Describe("CfAuthMiddleware", func() {
 				authHandler.ServeHTTP(recorder, request)
 
 				Expect(recorder.Code).To(Equal(http.StatusOK))
+				Expect(recorder.Body.String()).To(MatchJSON(`{
+					"group": "some-client-id-some-user-id-some-name"
+				}`))
+
+				Expect(req.URL.Path).To(Equal("/v1/group/some-client-id-some-user-id-some-name"))
+				Expect(spyOauth2ClientReader.token).To(Equal("valid-token"))
+			})
+
+			It("removes prefixes from group name on error", func() {
+				request.Header.Set("Authorization", "valid-token")
+
+				var req *http.Request
+				baseHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					req = r
+					w.WriteHeader(http.StatusNotFound)
+					w.Write([]byte(`{
+						"error":"unknown group name: some-client-id-some-user-id-some-name",
+						"code":5
+					}`))
+				})
+
+				authHandler := provider.Middleware(baseHandler)
+
+				spyLogAuthorizer.result = true
+
+				authHandler.ServeHTTP(recorder, request)
+
+				Expect(recorder.Code).To(Equal(http.StatusNotFound))
+				Expect(recorder.Body.String()).To(MatchJSON(`{
+					"error":"unknown group name: some-name",
+					"code":5
+				}`))
 
 				Expect(req.URL.Path).To(Equal("/v1/group/some-client-id-some-user-id-some-name"))
 				Expect(spyOauth2ClientReader.token).To(Equal("valid-token"))
