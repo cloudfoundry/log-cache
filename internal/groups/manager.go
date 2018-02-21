@@ -57,7 +57,9 @@ func NewManager(s DataStorage, timeout time.Duration) *Manager {
 }
 
 // AddToGroup creates the given group if it does not exist or adds the
-// sourceID if it does.
+// sourceID if it does. The source ID will expire after a configurable amount
+// of time. Therefore, the source ID should be constantly added. It is a NOP
+// to add a source ID to a group if the source ID already exists.
 func (m *Manager) AddToGroup(ctx context.Context, r *logcache.AddToGroupRequest, _ ...grpc.CallOption) (*logcache.AddToGroupResponse, error) {
 	if r.GetName() == "" || r.GetSourceId() == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "name and source_id fields are required")
@@ -72,24 +74,20 @@ func (m *Manager) AddToGroup(ctx context.Context, r *logcache.AddToGroupRequest,
 
 	gi, ok := m.m[r.Name]
 	if !ok {
-		gi.expire = time.AfterFunc(m.timeout, func() {
-			m.mu.Lock()
-			defer m.mu.Unlock()
-			delete(m.m, r.Name)
-		})
+		gi.sourceIDs = make(map[string]*time.Timer)
 		gi.requesterIDs = make(map[uint64]time.Time)
 	}
 
-	m.resetExpire(gi)
-
 	// Ensure that sourceID is not already tracked.
-	for _, ID := range gi.sourceIDs {
-		if ID == r.SourceId {
-			return &logcache.AddToGroupResponse{}, nil
-		}
+	if expire, ok := gi.sourceIDs[r.SourceId]; ok {
+		m.resetExpire(expire)
+		return &logcache.AddToGroupResponse{}, nil
 	}
 
-	gi.sourceIDs = append(gi.sourceIDs, r.SourceId)
+	gi.sourceIDs[r.SourceId] = time.AfterFunc(m.timeout, func() {
+		m.removeFromGroup(r.Name, r.SourceId)
+	})
+
 	m.m[r.Name] = gi
 	m.s.Add(r.Name, r.SourceId)
 
@@ -98,30 +96,30 @@ func (m *Manager) AddToGroup(ctx context.Context, r *logcache.AddToGroupRequest,
 
 // RemoveFromGroup removes a source ID from the given group. If that was the
 // last entry, then the group is removed. If the group already didn't exist,
-// then it is a nop.
+// then it is a NOP.
 func (m *Manager) RemoveFromGroup(ctx context.Context, r *logcache.RemoveFromGroupRequest, _ ...grpc.CallOption) (*logcache.RemoveFromGroupResponse, error) {
+	m.removeFromGroup(r.Name, r.SourceId)
+	return &logcache.RemoveFromGroupResponse{}, nil
+}
+
+func (m *Manager) removeFromGroup(name, sourceID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	a, ok := m.m[r.Name]
+	a, ok := m.m[name]
 	if !ok {
-		return &logcache.RemoveFromGroupResponse{}, nil
+		return
 	}
-	m.resetExpire(a)
 
-	for i, x := range a.sourceIDs {
-		if x == r.SourceId {
-			a.sourceIDs = append(a.sourceIDs[:i], a.sourceIDs[i+1:]...)
-			m.s.Remove(r.Name, r.SourceId)
-			break
-		}
+	if _, ok := a.sourceIDs[sourceID]; ok {
+		delete(a.sourceIDs, sourceID)
+		m.s.Remove(name, sourceID)
 	}
-	m.m[r.Name] = a
+	m.m[name] = a
 
-	if len(m.m[r.Name].sourceIDs) == 0 {
-		delete(m.m, r.Name)
+	if len(m.m[name].sourceIDs) == 0 {
+		delete(m.m, name)
 	}
-	return &logcache.RemoveFromGroupResponse{}, nil
 }
 
 // Read reads from a group. As a side effect, this first prunes any expired
@@ -135,7 +133,6 @@ func (m *Manager) Read(ctx context.Context, r *logcache.GroupReadRequest, _ ...g
 	if !ok {
 		return nil, grpc.Errorf(codes.NotFound, "unknown group name: %s", r.GetName())
 	}
-	m.resetExpire(gi)
 
 	if _, ok := gi.requesterIDs[r.RequesterId]; !ok {
 		m.s.AddRequester(r.Name, r.RequesterId)
@@ -177,7 +174,7 @@ func (m *Manager) Read(ctx context.Context, r *logcache.GroupReadRequest, _ ...g
 
 // Group returns information about the given group. If the group does not
 // exist, the returned sourceID slice will be empty, but an error will not be
-// returned. It does not keep the group alive.
+// returned.
 func (m *Manager) Group(ctx context.Context, r *logcache.GroupRequest, _ ...grpc.CallOption) (*logcache.GroupResponse, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -188,17 +185,22 @@ func (m *Manager) Group(ctx context.Context, r *logcache.GroupRequest, _ ...grpc
 		reqIds = append(reqIds, k)
 	}
 
+	var sourceIDs []string
+	for sourceID := range a.sourceIDs {
+		sourceIDs = append(sourceIDs, sourceID)
+	}
+
 	return &logcache.GroupResponse{
-		SourceIds:    a.sourceIDs,
+		SourceIds:    sourceIDs,
 		RequesterIds: reqIds,
 	}, nil
 }
 
-func (m *Manager) resetExpire(gi groupInfo) {
-	if !gi.expire.Stop() && len(gi.expire.C) != 0 {
-		<-gi.expire.C
+func (m *Manager) resetExpire(t *time.Timer) {
+	if !t.Stop() && len(t.C) != 0 {
+		<-t.C
 	}
-	gi.expire.Reset(m.timeout)
+	t.Reset(m.timeout)
 }
 
 func (m *Manager) convertEnvelopeType(t logcache.EnvelopeTypes) store.EnvelopeType {
@@ -219,7 +221,6 @@ func (m *Manager) convertEnvelopeType(t logcache.EnvelopeTypes) store.EnvelopeTy
 }
 
 type groupInfo struct {
-	sourceIDs    []string
+	sourceIDs    map[string]*time.Timer
 	requesterIDs map[uint64]time.Time
-	expire       *time.Timer
 }
