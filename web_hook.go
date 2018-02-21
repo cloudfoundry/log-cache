@@ -223,8 +223,6 @@ func (h *WebHook) Start() {
 		ww := logcache.BuildWalker(
 			h.sourceID,
 			logcache.Reader(h.reader),
-			h.interval,
-			0,
 		)
 
 		logcache.Window(
