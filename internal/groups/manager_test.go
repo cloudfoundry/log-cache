@@ -135,7 +135,7 @@ var _ = Describe("Manager", func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		go func() {
 			defer GinkgoRecover()
-			for range time.Tick(time.Millisecond) {
+			for range time.Tick(100 * time.Microsecond) {
 				_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 					Name:     "a",
 					SourceId: "1",
@@ -150,7 +150,7 @@ var _ = Describe("Manager", func() {
 
 		go func() {
 			defer GinkgoRecover()
-			for range time.Tick(time.Millisecond) {
+			for range time.Tick(100 * time.Microsecond) {
 				_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 					Name:     "a",
 					SourceId: "2",
