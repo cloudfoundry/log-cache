@@ -128,89 +128,74 @@ var _ = Describe("Manager", func() {
 		Expect(spyDataStorage.getRequestIDs).To(ContainElement(uint64(2)))
 	})
 
-	It("expires groups after a given time", func() {
-		m = groups.NewManager(spyDataStorage, 10*time.Millisecond)
+	It("expires source IDs from group", func() {
+		// Shadow m to protect against race conditions
+		m := groups.NewManager(spyDataStorage, 10*time.Millisecond)
 
-		_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
-			Name:     "a",
-			SourceId: "1",
-		})
-		Expect(err).ToNot(HaveOccurred())
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			defer GinkgoRecover()
+			for range time.Tick(time.Millisecond) {
+				_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+					Name:     "a",
+					SourceId: "1",
+				})
+				Expect(err).ToNot(HaveOccurred())
 
-		Eventually(func() int {
+				if ctx.Err() != nil {
+					return
+				}
+			}
+		}()
+
+		go func() {
+			defer GinkgoRecover()
+			for range time.Tick(time.Millisecond) {
+				_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+					Name:     "a",
+					SourceId: "2",
+				})
+				Expect(err).ToNot(HaveOccurred())
+			}
+		}()
+
+		f := func() int {
 			r, err := m.Group(context.Background(), &logcache.GroupRequest{Name: "a"})
 			Expect(err).ToNot(HaveOccurred())
 			return len(r.SourceIds)
-		}).Should(BeZero())
+		}
 
-		By("keeping groups alive via AddToGroup()")
-		Consistently(func() int {
-			_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
-				Name:     "a",
-				SourceId: "1",
-			})
-			Expect(err).ToNot(HaveOccurred())
-
-			r, err := m.Group(context.Background(), &logcache.GroupRequest{Name: "a"})
-			Expect(err).ToNot(HaveOccurred())
-			return len(r.SourceIds)
-		}, "100ms", "100us").Should(Equal(1))
-
-		By("keeping groups alive via RemoveFromGroup()")
-		_, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
-			Name:     "a",
-			SourceId: "1",
-		})
-		Expect(err).ToNot(HaveOccurred())
-
-		Consistently(func() int {
-			_, err := m.RemoveFromGroup(context.Background(), &logcache.RemoveFromGroupRequest{
-				Name:     "a",
-				SourceId: "2",
-			})
-			Expect(err).ToNot(HaveOccurred())
-
-			r, err := m.Group(context.Background(), &logcache.GroupRequest{Name: "a"})
-			Expect(err).ToNot(HaveOccurred())
-			return len(r.SourceIds)
-		}, "100ms", "100us").Should(Equal(1))
-
-		By("keeping groups alive via Read()")
-		_, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
-			Name:     "a",
-			SourceId: "1",
-		})
-		Expect(err).ToNot(HaveOccurred())
-
-		Consistently(func() int {
-			_, err := m.Read(context.Background(), &logcache.GroupReadRequest{
-				Name: "a",
-			})
-			Expect(err).ToNot(HaveOccurred())
-
-			r, err := m.Group(context.Background(), &logcache.GroupRequest{Name: "a"})
-			Expect(err).ToNot(HaveOccurred())
-			return len(r.SourceIds)
-		}, "100ms", "100us").Should(Equal(1))
+		Eventually(f).Should(Equal(2))
+		cancel()
+		Eventually(f).Should(Equal(1))
+		Consistently(f).Should(Equal(1))
 	})
 
 	It("expires requester IDs after a given time", func() {
-		m = groups.NewManager(spyDataStorage, 10*time.Millisecond)
+		// Shadow m to protect against race conditions
+		m := groups.NewManager(spyDataStorage, 10*time.Millisecond)
 
-		_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
-			Name:     "a",
-			SourceId: "1",
-		})
-		Expect(err).ToNot(HaveOccurred())
+		go func() {
+			for range time.Tick(time.Microsecond) {
+				_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+					Name:     "a",
+					SourceId: "1",
+				})
+				Expect(err).ToNot(HaveOccurred())
+			}
+		}()
 
-		_, err = m.Read(context.Background(), &logcache.GroupReadRequest{
-			Name:        "a",
-			RequesterId: 1,
-		})
-		Expect(err).ToNot(HaveOccurred())
+		f := func() error {
+			_, err := m.Read(context.Background(), &logcache.GroupReadRequest{
+				Name:        "a",
+				RequesterId: 1,
+			})
+			return err
+		}
+		Eventually(f).ShouldNot(HaveOccurred())
 
-		f := func() []uint64 {
-			_, err = m.Read(context.Background(), &logcache.GroupReadRequest{
+		ff := func() []uint64 {
+			_, err := m.Read(context.Background(), &logcache.GroupReadRequest{
 				Name:        "a",
 				RequesterId: 2,
 			})
@@ -222,7 +207,7 @@ var _ = Describe("Manager", func() {
 			Expect(err).ToNot(HaveOccurred())
 			return resp.RequesterIds
 		}
-		Eventually(f, "1s", "100us").Should(ConsistOf(uint64(2)))
+		Eventually(ff, "1s", "100us").Should(ConsistOf(uint64(2)))
 
 		Expect(spyDataStorage.removeReqNames).To(ConsistOf("a"))
 		Expect(spyDataStorage.removeReqIDs).To(ConsistOf(uint64(1)))
