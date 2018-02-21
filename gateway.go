@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"google.golang.org/grpc"
 
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
@@ -111,7 +111,7 @@ func (g *Gateway) Addr() string {
 func (g *Gateway) listenAndServe() {
 	mux := runtime.NewServeMux()
 
-	err := logcache.RegisterEgressHandlerFromEndpoint(
+	err := logcache_v1.RegisterEgressHandlerFromEndpoint(
 		context.Background(),
 		mux,
 		g.logCacheAddr,
@@ -121,7 +121,7 @@ func (g *Gateway) listenAndServe() {
 		g.log.Fatalf("failed to register LogCache handler: %s", err)
 	}
 
-	err = logcache.RegisterGroupReaderHandlerFromEndpoint(
+	err = logcache_v1.RegisterGroupReaderHandlerFromEndpoint(
 		context.Background(),
 		mux,
 		g.groupReaderAddr,

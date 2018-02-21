@@ -10,7 +10,7 @@ import (
 
 	"context"
 
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"github.com/golang/protobuf/jsonpb"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

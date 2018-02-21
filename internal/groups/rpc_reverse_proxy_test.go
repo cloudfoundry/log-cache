@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log"
 
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/log-cache/internal/groups"
 	"google.golang.org/grpc"
 
@@ -26,7 +26,7 @@ var _ = Describe("RPCReverseProxy", func() {
 		s2 = newSpyGroupReaderClient()
 		l = newSpyLookup()
 		r = groups.NewRPCReverseProxy(
-			[]logcache.GroupReaderClient{s1, s2},
+			[]logcache_v1.GroupReaderClient{s1, s2},
 			l,
 			log.New(GinkgoWriter, "", 0),
 		)
@@ -34,7 +34,7 @@ var _ = Describe("RPCReverseProxy", func() {
 
 	It("proxies AddToGroupRequests to the correct nodes", func() {
 		l.result = 0
-		req := &logcache.AddToGroupRequest{
+		req := &logcache_v1.AddToGroupRequest{
 			Name: "some-name-0",
 		}
 		s1.addErr = errors.New("some-err")
@@ -50,7 +50,7 @@ var _ = Describe("RPCReverseProxy", func() {
 
 	It("proxies RemoveFromGroupRequests to the correct nodes", func() {
 		l.result = 0
-		req := &logcache.RemoveFromGroupRequest{
+		req := &logcache_v1.RemoveFromGroupRequest{
 			Name: "some-name-0",
 		}
 		s1.removeErr = errors.New("some-err")
@@ -66,7 +66,7 @@ var _ = Describe("RPCReverseProxy", func() {
 
 	It("proxies ReadRequests to the correct nodes", func() {
 		l.result = 0
-		req := &logcache.GroupReadRequest{
+		req := &logcache_v1.GroupReadRequest{
 			Name: "some-name-0",
 		}
 		s1.readErr = errors.New("some-err")
@@ -82,7 +82,7 @@ var _ = Describe("RPCReverseProxy", func() {
 
 	It("proxies GroupRequests to the correct nodes", func() {
 		l.result = 0
-		req := &logcache.GroupRequest{
+		req := &logcache_v1.GroupRequest{
 			Name: "some-name-0",
 		}
 		s1.groupErr = errors.New("some-err")
@@ -112,10 +112,10 @@ func (s *spyLookup) Lookup(name string) int {
 }
 
 type spyGroupReaderClient struct {
-	addToGroupRequests      []*logcache.AddToGroupRequest
-	removeFromGroupRequests []*logcache.RemoveFromGroupRequest
-	groupReadRequests       []*logcache.GroupReadRequest
-	groupRequests           []*logcache.GroupRequest
+	addToGroupRequests      []*logcache_v1.AddToGroupRequest
+	removeFromGroupRequests []*logcache_v1.RemoveFromGroupRequest
+	groupReadRequests       []*logcache_v1.GroupReadRequest
+	groupRequests           []*logcache_v1.GroupRequest
 
 	addErr    error
 	removeErr error
@@ -127,22 +127,22 @@ func newSpyGroupReaderClient() *spyGroupReaderClient {
 	return &spyGroupReaderClient{}
 }
 
-func (s *spyGroupReaderClient) AddToGroup(c context.Context, r *logcache.AddToGroupRequest, _ ...grpc.CallOption) (*logcache.AddToGroupResponse, error) {
+func (s *spyGroupReaderClient) AddToGroup(c context.Context, r *logcache_v1.AddToGroupRequest, _ ...grpc.CallOption) (*logcache_v1.AddToGroupResponse, error) {
 	s.addToGroupRequests = append(s.addToGroupRequests, r)
-	return &logcache.AddToGroupResponse{}, s.addErr
+	return &logcache_v1.AddToGroupResponse{}, s.addErr
 }
 
-func (s *spyGroupReaderClient) RemoveFromGroup(c context.Context, r *logcache.RemoveFromGroupRequest, _ ...grpc.CallOption) (*logcache.RemoveFromGroupResponse, error) {
+func (s *spyGroupReaderClient) RemoveFromGroup(c context.Context, r *logcache_v1.RemoveFromGroupRequest, _ ...grpc.CallOption) (*logcache_v1.RemoveFromGroupResponse, error) {
 	s.removeFromGroupRequests = append(s.removeFromGroupRequests, r)
-	return &logcache.RemoveFromGroupResponse{}, s.removeErr
+	return &logcache_v1.RemoveFromGroupResponse{}, s.removeErr
 }
 
-func (s *spyGroupReaderClient) Read(c context.Context, r *logcache.GroupReadRequest, _ ...grpc.CallOption) (*logcache.GroupReadResponse, error) {
+func (s *spyGroupReaderClient) Read(c context.Context, r *logcache_v1.GroupReadRequest, _ ...grpc.CallOption) (*logcache_v1.GroupReadResponse, error) {
 	s.groupReadRequests = append(s.groupReadRequests, r)
-	return &logcache.GroupReadResponse{}, s.readErr
+	return &logcache_v1.GroupReadResponse{}, s.readErr
 }
 
-func (s *spyGroupReaderClient) Group(c context.Context, r *logcache.GroupRequest, _ ...grpc.CallOption) (*logcache.GroupResponse, error) {
+func (s *spyGroupReaderClient) Group(c context.Context, r *logcache_v1.GroupRequest, _ ...grpc.CallOption) (*logcache_v1.GroupResponse, error) {
 	s.groupRequests = append(s.groupRequests, r)
-	return &logcache.GroupResponse{}, s.groupErr
+	return &logcache_v1.GroupResponse{}, s.groupErr
 }

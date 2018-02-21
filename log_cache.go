@@ -10,7 +10,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/log-cache/internal/routing"
 	"code.cloudfoundry.org/log-cache/internal/store"
 )
@@ -171,8 +171,8 @@ func (c *LogCache) setupRouting(s *store.Store) {
 	c.log.Printf("listening on %s...", c.Addr())
 
 	var (
-		ingressClients []logcache.IngressClient
-		egressClients  []logcache.EgressClient
+		ingressClients []logcache_v1.IngressClient
+		egressClients  []logcache_v1.EgressClient
 		localIdx       int
 	)
 
@@ -190,23 +190,23 @@ func (c *LogCache) setupRouting(s *store.Store) {
 			bw := routing.NewBatchedIngressClient(
 				100,
 				250*time.Millisecond,
-				logcache.NewIngressClient(conn),
+				logcache_v1.NewIngressClient(conn),
 				c.log,
 			)
 
 			ingressClients = append(ingressClients, bw)
-			egressClients = append(egressClients, logcache.NewEgressClient(conn))
+			egressClients = append(egressClients, logcache_v1.NewEgressClient(conn))
 
 			continue
 		}
 
 		localIdx = i
-		ingressClients = append(ingressClients, routing.IngressClientFunc(func(ctx context.Context, r *logcache.SendRequest, opts ...grpc.CallOption) (*logcache.SendResponse, error) {
+		ingressClients = append(ingressClients, routing.IngressClientFunc(func(ctx context.Context, r *logcache_v1.SendRequest, opts ...grpc.CallOption) (*logcache_v1.SendResponse, error) {
 			for _, e := range r.GetEnvelopes().GetBatch() {
 				s.Put(e, e.GetSourceId())
 			}
 
-			return &logcache.SendResponse{}, nil
+			return &logcache_v1.SendResponse{}, nil
 		}))
 		egressClients = append(egressClients, lcr)
 	}
@@ -216,8 +216,8 @@ func (c *LogCache) setupRouting(s *store.Store) {
 
 	go func() {
 		srv := grpc.NewServer(c.serverOpts...)
-		logcache.RegisterIngressServer(srv, ingressReverseProxy)
-		logcache.RegisterEgressServer(srv, egressReverseProxy)
+		logcache_v1.RegisterIngressServer(srv, ingressReverseProxy)
+		logcache_v1.RegisterEgressServer(srv, egressReverseProxy)
 		if err := srv.Serve(lis); err != nil {
 			log.Fatalf("failed to serve gRPC ingress server: %s", err)
 		}

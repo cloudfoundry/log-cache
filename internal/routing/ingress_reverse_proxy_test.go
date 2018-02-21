@@ -7,7 +7,7 @@ import (
 	"log"
 	"sync"
 
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/routing"
 	"google.golang.org/grpc"

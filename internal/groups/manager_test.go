@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/groups"
 	"code.cloudfoundry.org/log-cache/internal/store"
@@ -29,7 +29,7 @@ var _ = Describe("Manager", func() {
 	})
 
 	It("keeps track of source IDs for groups", func() {
-		r, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+		r, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 			Name:     "a",
 			SourceId: "1",
 		})
@@ -38,21 +38,21 @@ var _ = Describe("Manager", func() {
 		Expect(spyDataStorage.addNames).To(ContainElement("a"))
 
 		// Add sourceID 1 twice to ensure it is only reported once
-		r, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+		r, err = m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 			Name:     "a",
 			SourceId: "1",
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r).ToNot(BeNil())
 
-		r, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+		r, err = m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 			Name:     "a",
 			SourceId: "2",
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r).ToNot(BeNil())
 
-		r, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+		r, err = m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 			Name:     "b",
 			SourceId: "1",
 		})
@@ -60,13 +60,13 @@ var _ = Describe("Manager", func() {
 		Expect(r).ToNot(BeNil())
 		Expect(spyDataStorage.addNames).To(ContainElement("b"))
 
-		resp, err := m.Group(context.Background(), &logcache.GroupRequest{
+		resp, err := m.Group(context.Background(), &logcache_v1.GroupRequest{
 			Name: "a",
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.SourceIds).To(ConsistOf("1", "2"))
 
-		rr, err := m.RemoveFromGroup(context.Background(), &logcache.RemoveFromGroupRequest{
+		rr, err := m.RemoveFromGroup(context.Background(), &logcache_v1.RemoveFromGroupRequest{
 			Name:     "a",
 			SourceId: "1",
 		})
@@ -75,13 +75,13 @@ var _ = Describe("Manager", func() {
 		Expect(spyDataStorage.removes).To(ConsistOf("1"))
 		Expect(spyDataStorage.removeNames).To(ContainElement("a"))
 
-		resp, err = m.Group(context.Background(), &logcache.GroupRequest{
+		resp, err = m.Group(context.Background(), &logcache_v1.GroupRequest{
 			Name: "a",
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.SourceIds).To(ConsistOf("2"))
 
-		rr, err = m.RemoveFromGroup(context.Background(), &logcache.RemoveFromGroupRequest{
+		rr, err = m.RemoveFromGroup(context.Background(), &logcache_v1.RemoveFromGroupRequest{
 			Name:     "a",
 			SourceId: "2",
 		})
@@ -90,32 +90,32 @@ var _ = Describe("Manager", func() {
 	})
 
 	It("keeps track of requester IDs for a group", func() {
-		_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+		_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 			Name:     "a",
 			SourceId: "1",
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = m.Read(context.Background(), &logcache.GroupReadRequest{
+		_, err = m.Read(context.Background(), &logcache_v1.GroupReadRequest{
 			Name:        "a",
 			RequesterId: 1,
 		})
 		Expect(err).ToNot(HaveOccurred())
 
 		// Do RequestId 1 twice to ensure it is only reported once.
-		_, err = m.Read(context.Background(), &logcache.GroupReadRequest{
+		_, err = m.Read(context.Background(), &logcache_v1.GroupReadRequest{
 			Name:        "a",
 			RequesterId: 1,
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = m.Read(context.Background(), &logcache.GroupReadRequest{
+		_, err = m.Read(context.Background(), &logcache_v1.GroupReadRequest{
 			Name:        "a",
 			RequesterId: 2,
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		resp, err := m.Group(context.Background(), &logcache.GroupRequest{
+		resp, err := m.Group(context.Background(), &logcache_v1.GroupRequest{
 			Name: "a",
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -136,7 +136,7 @@ var _ = Describe("Manager", func() {
 		go func() {
 			defer GinkgoRecover()
 			for range time.Tick(time.Millisecond) {
-				_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+				_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 					Name:     "a",
 					SourceId: "1",
 				})
@@ -151,7 +151,7 @@ var _ = Describe("Manager", func() {
 		go func() {
 			defer GinkgoRecover()
 			for range time.Tick(time.Millisecond) {
-				_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+				_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 					Name:     "a",
 					SourceId: "2",
 				})
@@ -160,7 +160,7 @@ var _ = Describe("Manager", func() {
 		}()
 
 		f := func() int {
-			r, err := m.Group(context.Background(), &logcache.GroupRequest{Name: "a"})
+			r, err := m.Group(context.Background(), &logcache_v1.GroupRequest{Name: "a"})
 			Expect(err).ToNot(HaveOccurred())
 			return len(r.SourceIds)
 		}
@@ -177,7 +177,7 @@ var _ = Describe("Manager", func() {
 
 		go func() {
 			for range time.Tick(time.Microsecond) {
-				_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+				_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 					Name:     "a",
 					SourceId: "1",
 				})
@@ -186,7 +186,7 @@ var _ = Describe("Manager", func() {
 		}()
 
 		f := func() error {
-			_, err := m.Read(context.Background(), &logcache.GroupReadRequest{
+			_, err := m.Read(context.Background(), &logcache_v1.GroupReadRequest{
 				Name:        "a",
 				RequesterId: 1,
 			})
@@ -195,13 +195,13 @@ var _ = Describe("Manager", func() {
 		Eventually(f).ShouldNot(HaveOccurred())
 
 		ff := func() []uint64 {
-			_, err := m.Read(context.Background(), &logcache.GroupReadRequest{
+			_, err := m.Read(context.Background(), &logcache_v1.GroupReadRequest{
 				Name:        "a",
 				RequesterId: 2,
 			})
 			Expect(err).ToNot(HaveOccurred())
 
-			resp, err := m.Group(context.Background(), &logcache.GroupRequest{
+			resp, err := m.Group(context.Background(), &logcache_v1.GroupRequest{
 				Name: "a",
 			})
 			Expect(err).ToNot(HaveOccurred())
@@ -219,19 +219,19 @@ var _ = Describe("Manager", func() {
 			{Timestamp: 2},
 		}
 
-		_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+		_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 			Name:     "a",
 			SourceId: "1",
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+		_, err = m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 			Name:     "a",
 			SourceId: "2",
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		resp, err := m.Read(context.Background(), &logcache.GroupReadRequest{
+		resp, err := m.Read(context.Background(), &logcache_v1.GroupReadRequest{
 			Name: "a",
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -245,12 +245,12 @@ var _ = Describe("Manager", func() {
 	})
 
 	It("defaults startTime to 0, endTime to now, envelopeType to nil and limit to 100", func() {
-		m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+		m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 			Name:     "a",
 			SourceId: "1",
 		})
 
-		m.Read(context.Background(), &logcache.GroupReadRequest{
+		m.Read(context.Background(), &logcache_v1.GroupReadRequest{
 			Name: "a",
 		})
 
@@ -261,7 +261,7 @@ var _ = Describe("Manager", func() {
 	})
 
 	It("returns an error for unknown groups", func() {
-		_, err := m.Read(context.Background(), &logcache.GroupReadRequest{
+		_, err := m.Read(context.Background(), &logcache_v1.GroupReadRequest{
 			Name: "unknown-name",
 		})
 		Expect(err).To(HaveOccurred())
@@ -269,28 +269,28 @@ var _ = Describe("Manager", func() {
 	})
 
 	It("rejects empty group names and source IDs or either that are too long", func() {
-		_, err := m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+		_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 			Name:     "",
 			SourceId: "1",
 		})
 		Expect(err).To(HaveOccurred())
 		Expect(grpc.Code(err)).To(Equal(codes.InvalidArgument))
 
-		_, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+		_, err = m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 			Name:     strings.Repeat("x", 129),
 			SourceId: "1",
 		})
 		Expect(err).To(HaveOccurred())
 		Expect(grpc.Code(err)).To(Equal(codes.InvalidArgument))
 
-		_, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+		_, err = m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 			Name:     "a",
 			SourceId: "",
 		})
 		Expect(err).To(HaveOccurred())
 		Expect(grpc.Code(err)).To(Equal(codes.InvalidArgument))
 
-		_, err = m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+		_, err = m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 			Name:     "a",
 			SourceId: strings.Repeat("x", 129),
 		})
@@ -306,7 +306,7 @@ var _ = Describe("Manager", func() {
 		go func(m *groups.Manager) {
 			defer wg.Done()
 			for i := 0; i < 100; i++ {
-				m.AddToGroup(context.Background(), &logcache.AddToGroupRequest{
+				m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 					Name:     "a",
 					SourceId: "1",
 				})
@@ -316,14 +316,14 @@ var _ = Describe("Manager", func() {
 		go func(m *groups.Manager) {
 			defer wg.Done()
 			for i := 0; i < 100; i++ {
-				m.Read(context.Background(), &logcache.GroupReadRequest{
+				m.Read(context.Background(), &logcache_v1.GroupReadRequest{
 					Name: "a",
 				})
 			}
 		}(m)
 
 		for i := 0; i < 100; i++ {
-			m.RemoveFromGroup(context.Background(), &logcache.RemoveFromGroupRequest{
+			m.RemoveFromGroup(context.Background(), &logcache_v1.RemoveFromGroupRequest{
 				Name:     "a",
 				SourceId: "1",
 			})

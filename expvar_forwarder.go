@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 
 	"google.golang.org/grpc"
@@ -143,7 +143,7 @@ func (f *ExpvarForwarder) Start() {
 	if err != nil {
 		f.log.Panicf("failed to dial LogCache (%s): %s", f.logCacheAddr, err)
 	}
-	ingressClient := logcache.NewIngressClient(client)
+	ingressClient := logcache_v1.NewIngressClient(client)
 
 	for range time.Tick(f.interval) {
 		var e []*loggregator_v2.Envelope
@@ -230,7 +230,7 @@ func (f *ExpvarForwarder) Start() {
 		}
 
 		ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-		_, err := ingressClient.Send(ctx, &logcache.SendRequest{
+		_, err := ingressClient.Send(ctx, &logcache_v1.SendRequest{
 			Envelopes: &loggregator_v2.EnvelopeBatch{
 				Batch: e,
 			},

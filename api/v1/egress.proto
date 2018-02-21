@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package logcache;
+package logcache.v1;
 
 import "v2/envelope.proto";
 import "google/api/annotations.proto";

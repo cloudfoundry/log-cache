@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/log-cache"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"

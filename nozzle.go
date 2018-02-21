@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"golang.org/x/net/context"
@@ -82,7 +82,7 @@ func (n *Nozzle) Start() {
 	if err != nil {
 		log.Fatalf("failed to dial %s: %s", n.addr, err)
 	}
-	client := logcache.NewIngressClient(conn)
+	client := logcache_v1.NewIngressClient(conn)
 
 	ingressInc := n.metrics.NewCounter("Ingress")
 	egressInc := n.metrics.NewCounter("Egress")
@@ -93,7 +93,7 @@ func (n *Nozzle) Start() {
 		ingressInc(uint64(len(batch)))
 
 		ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-		_, err := client.Send(ctx, &logcache.SendRequest{
+		_, err := client.Send(ctx, &logcache_v1.SendRequest{
 			Envelopes: &loggregator_v2.EnvelopeBatch{
 				Batch: batch,
 			},

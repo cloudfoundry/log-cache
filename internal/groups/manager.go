@@ -5,14 +5,14 @@ import (
 	"sync"
 	"time"
 
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 )
 
-// Manager manages groups. It implements logcache.GroupReader.
+// Manager manages groups. It implements logcache_v1.GroupReader.
 type Manager struct {
 	mu      sync.RWMutex
 	m       map[string]groupInfo
@@ -60,7 +60,7 @@ func NewManager(s DataStorage, timeout time.Duration) *Manager {
 // sourceID if it does. The source ID will expire after a configurable amount
 // of time. Therefore, the source ID should be constantly added. It is a NOP
 // to add a source ID to a group if the source ID already exists.
-func (m *Manager) AddToGroup(ctx context.Context, r *logcache.AddToGroupRequest, _ ...grpc.CallOption) (*logcache.AddToGroupResponse, error) {
+func (m *Manager) AddToGroup(ctx context.Context, r *logcache_v1.AddToGroupRequest, _ ...grpc.CallOption) (*logcache_v1.AddToGroupResponse, error) {
 	if r.GetName() == "" || r.GetSourceId() == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "name and source_id fields are required")
 	}
@@ -81,7 +81,7 @@ func (m *Manager) AddToGroup(ctx context.Context, r *logcache.AddToGroupRequest,
 	// Ensure that sourceID is not already tracked.
 	if expire, ok := gi.sourceIDs[r.SourceId]; ok {
 		m.resetExpire(expire)
-		return &logcache.AddToGroupResponse{}, nil
+		return &logcache_v1.AddToGroupResponse{}, nil
 	}
 
 	gi.sourceIDs[r.SourceId] = time.AfterFunc(m.timeout, func() {
@@ -91,15 +91,15 @@ func (m *Manager) AddToGroup(ctx context.Context, r *logcache.AddToGroupRequest,
 	m.m[r.Name] = gi
 	m.s.Add(r.Name, r.SourceId)
 
-	return &logcache.AddToGroupResponse{}, nil
+	return &logcache_v1.AddToGroupResponse{}, nil
 }
 
 // RemoveFromGroup removes a source ID from the given group. If that was the
 // last entry, then the group is removed. If the group already didn't exist,
 // then it is a NOP.
-func (m *Manager) RemoveFromGroup(ctx context.Context, r *logcache.RemoveFromGroupRequest, _ ...grpc.CallOption) (*logcache.RemoveFromGroupResponse, error) {
+func (m *Manager) RemoveFromGroup(ctx context.Context, r *logcache_v1.RemoveFromGroupRequest, _ ...grpc.CallOption) (*logcache_v1.RemoveFromGroupResponse, error) {
 	m.removeFromGroup(r.Name, r.SourceId)
-	return &logcache.RemoveFromGroupResponse{}, nil
+	return &logcache_v1.RemoveFromGroupResponse{}, nil
 }
 
 func (m *Manager) removeFromGroup(name, sourceID string) {
@@ -125,7 +125,7 @@ func (m *Manager) removeFromGroup(name, sourceID string) {
 // Read reads from a group. As a side effect, this first prunes any expired
 // requesters for the group. This is to ensure that the current read will read
 // from the most sourceIDs necessary.
-func (m *Manager) Read(ctx context.Context, r *logcache.GroupReadRequest, _ ...grpc.CallOption) (*logcache.GroupReadResponse, error) {
+func (m *Manager) Read(ctx context.Context, r *logcache_v1.GroupReadRequest, _ ...grpc.CallOption) (*logcache_v1.GroupReadResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -165,7 +165,7 @@ func (m *Manager) Read(ctx context.Context, r *logcache.GroupReadRequest, _ ...g
 		r.RequesterId,
 	)
 
-	return &logcache.GroupReadResponse{
+	return &logcache_v1.GroupReadResponse{
 		Envelopes: &loggregator_v2.EnvelopeBatch{
 			Batch: batch,
 		},
@@ -175,7 +175,7 @@ func (m *Manager) Read(ctx context.Context, r *logcache.GroupReadRequest, _ ...g
 // Group returns information about the given group. If the group does not
 // exist, the returned sourceID slice will be empty, but an error will not be
 // returned.
-func (m *Manager) Group(ctx context.Context, r *logcache.GroupRequest, _ ...grpc.CallOption) (*logcache.GroupResponse, error) {
+func (m *Manager) Group(ctx context.Context, r *logcache_v1.GroupRequest, _ ...grpc.CallOption) (*logcache_v1.GroupResponse, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	a := m.m[r.Name]
@@ -190,7 +190,7 @@ func (m *Manager) Group(ctx context.Context, r *logcache.GroupRequest, _ ...grpc
 		sourceIDs = append(sourceIDs, sourceID)
 	}
 
-	return &logcache.GroupResponse{
+	return &logcache_v1.GroupResponse{
 		SourceIds:    sourceIDs,
 		RequesterIds: reqIds,
 	}, nil
@@ -203,17 +203,17 @@ func (m *Manager) resetExpire(t *time.Timer) {
 	t.Reset(m.timeout)
 }
 
-func (m *Manager) convertEnvelopeType(t logcache.EnvelopeTypes) store.EnvelopeType {
+func (m *Manager) convertEnvelopeType(t logcache_v1.EnvelopeTypes) store.EnvelopeType {
 	switch t {
-	case logcache.EnvelopeTypes_LOG:
+	case logcache_v1.EnvelopeTypes_LOG:
 		return &loggregator_v2.Log{}
-	case logcache.EnvelopeTypes_COUNTER:
+	case logcache_v1.EnvelopeTypes_COUNTER:
 		return &loggregator_v2.Counter{}
-	case logcache.EnvelopeTypes_GAUGE:
+	case logcache_v1.EnvelopeTypes_GAUGE:
 		return &loggregator_v2.Gauge{}
-	case logcache.EnvelopeTypes_TIMER:
+	case logcache_v1.EnvelopeTypes_TIMER:
 		return &loggregator_v2.Timer{}
-	case logcache.EnvelopeTypes_EVENT:
+	case logcache_v1.EnvelopeTypes_EVENT:
 		return &loggregator_v2.Event{}
 	default:
 		return nil

@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache"
+	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 )
 
 // EgressReverseProxy is a reverse proxy for Egress requests.
