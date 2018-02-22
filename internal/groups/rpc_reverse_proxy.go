@@ -3,8 +3,11 @@ package groups
 import (
 	"context"
 	"log"
+	"time"
 
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 )
 
 // RPCReverseProxy routes group reader requests to the correct location. This
@@ -33,20 +36,44 @@ func NewRPCReverseProxy(s []logcache_v1.GroupReaderClient, l Lookup, log *log.Lo
 
 // AddToGroup implements logcache_v1.GroupReaderServer.
 func (r *RPCReverseProxy) AddToGroup(c context.Context, req *logcache_v1.AddToGroupRequest) (*logcache_v1.AddToGroupResponse, error) {
-	return r.s[r.l.Lookup(req.GetName())].AddToGroup(c, req)
+	idx := r.l.Lookup(req.GetName())
+	if idx < 0 {
+		return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
+	}
+	c, _ = context.WithTimeout(c, 3*time.Second)
+
+	return r.s[idx].AddToGroup(c, req)
 }
 
 // RemoveFromGroup implements logcache_v1.GroupReaderServer.
 func (r *RPCReverseProxy) RemoveFromGroup(c context.Context, req *logcache_v1.RemoveFromGroupRequest) (*logcache_v1.RemoveFromGroupResponse, error) {
-	return r.s[r.l.Lookup(req.GetName())].RemoveFromGroup(c, req)
+	idx := r.l.Lookup(req.GetName())
+	if idx < 0 {
+		return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
+	}
+	c, _ = context.WithTimeout(c, 3*time.Second)
+
+	return r.s[idx].RemoveFromGroup(c, req)
 }
 
 // Read implements logcache_v1.GroupReaderServer.
 func (r *RPCReverseProxy) Read(c context.Context, req *logcache_v1.GroupReadRequest) (*logcache_v1.GroupReadResponse, error) {
-	return r.s[r.l.Lookup(req.GetName())].Read(c, req)
+	idx := r.l.Lookup(req.GetName())
+	if idx < 0 {
+		return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
+	}
+	c, _ = context.WithTimeout(c, 3*time.Second)
+
+	return r.s[idx].Read(c, req)
 }
 
 // Group implements logcache_v1.GroupReaderServer.
 func (r *RPCReverseProxy) Group(c context.Context, req *logcache_v1.GroupRequest) (*logcache_v1.GroupResponse, error) {
-	return r.s[r.l.Lookup(req.GetName())].Group(c, req)
+	idx := r.l.Lookup(req.GetName())
+	if idx < 0 {
+		return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
+	}
+	c, _ = context.WithTimeout(c, 3*time.Second)
+
+	return r.s[idx].Group(c, req)
 }

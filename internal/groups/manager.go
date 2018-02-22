@@ -196,6 +196,19 @@ func (m *Manager) Group(ctx context.Context, r *logcache_v1.GroupRequest, _ ...g
 	}, nil
 }
 
+// ListGroups returns all the group names.
+func (m *Manager) ListGroups() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var results []string
+	for name := range m.m {
+		results = append(results, name)
+	}
+
+	return results
+}
+
 func (m *Manager) resetExpire(t *time.Timer) {
 	if !t.Stop() && len(t.C) != 0 {
 		<-t.C

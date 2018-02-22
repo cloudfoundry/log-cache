@@ -19,6 +19,8 @@ import (
 // from many different source IDs much like it would read from one.
 type GroupReader struct {
 	addr    string
+	extAddr string
+
 	lis     net.Listener
 	log     *log.Logger
 	client  *logcache.Client
@@ -35,12 +37,17 @@ type GroupReader struct {
 // every node in the cluster (including its own). The nodeIndex is the address
 // of the current node.
 func NewGroupReader(logCacheAddr string, nodeAddrs []string, nodeIndex int, opts ...GroupReaderOption) *GroupReader {
-	r := &GroupReader{
-		addr:    nodeAddrs[nodeIndex],
-		log:     log.New(ioutil.Discard, "", 0),
-		metrics: nopMetrics{},
+	// Copy nodeAddrs to ensure we can manipulate without fear
+	na := make([]string, len(nodeAddrs))
+	copy(na, nodeAddrs)
 
-		nodeAddrs: nodeAddrs,
+	r := &GroupReader{
+		addr:     nodeAddrs[nodeIndex],
+		log:      log.New(ioutil.Discard, "", 0),
+		metrics:  nopMetrics{},
+		dialOpts: []grpc.DialOption{grpc.WithInsecure()},
+
+		nodeAddrs: na,
 		nodeIndex: nodeIndex,
 	}
 
@@ -56,8 +63,8 @@ func NewGroupReader(logCacheAddr string, nodeAddrs []string, nodeIndex int, opts
 // GroupReaderOption configures a GroupReader.
 type GroupReaderOption func(*GroupReader)
 
-// WithGroupReaderLogger returns a GroupReaderOption that configures the logger used for
-// the GroupReader. Defaults to silent logger.
+// WithGroupReaderLogger returns a GroupReaderOption that configures the
+// logger used for the GroupReader. Defaults to silent logger.
 func WithGroupReaderLogger(l *log.Logger) GroupReaderOption {
 	return func(r *GroupReader) {
 		r.log = l
@@ -88,6 +95,16 @@ func WithGroupReaderDialOpts(opts ...grpc.DialOption) GroupReaderOption {
 	}
 }
 
+// WithGroupReaderExternalAddr returns a GroupReaderOption that sets
+// address the scheduler will refer to the given node as. This is required
+// when the set address won't match what the scheduler will refer to the node
+// as (e.g. :0). Defaults to the resulting address from the listener.
+func WithGroupReaderExternalAddr(addr string) GroupReaderOption {
+	return func(g *GroupReader) {
+		g.extAddr = addr
+	}
+}
+
 // Start starts servicing for group requests. It does not block.
 func (g *GroupReader) Start() {
 	lis, err := net.Listen("tcp", g.addr)
@@ -96,13 +113,40 @@ func (g *GroupReader) Start() {
 	}
 	g.lis = lis
 
+	if g.extAddr == "" {
+		g.extAddr = lis.Addr().String()
+	}
+
+	// Ensure that everything that will receive the list of addresses, looks
+	// for the external address of this node and not the condensed address
+	// (e.g., :0).
+	g.nodeAddrs[g.nodeIndex] = g.extAddr
+
 	go func() {
-		s := grpc.NewServer(g.serverOpts...)
+		tableECMA := crc64.MakeTable(crc64.ECMA)
+		hasher := func(s string) uint64 {
+			return crc64.Checksum([]byte(s), tableECMA)
+		}
 
-		rp := g.reverseProxy()
+		p := store.NewPruneConsultant(2, 70, NewMemoryAnalyzer(g.metrics))
+		s := groups.NewStorage(g.client.Read, time.Second, p, g.metrics, g.log)
 
-		rpc.RegisterGroupReaderServer(s, rp)
-		if err := s.Serve(lis); err != nil {
+		m := groups.NewManager(s, time.Minute)
+		lookup := routing.NewRoutingTable(g.nodeAddrs, hasher)
+		orch := routing.NewOrchestrator(
+			g.extAddr,
+			hasher,
+			routing.MetaFetcherFunc(func() []string { return nil }),
+			lookup,
+		)
+
+		srv := grpc.NewServer(g.serverOpts...)
+
+		rp := g.reverseProxy(lookup, m)
+
+		rpc.RegisterGroupReaderServer(srv, rp)
+		rpc.RegisterOrchestrationServer(srv, orch)
+		if err := srv.Serve(lis); err != nil {
 			g.log.Fatalf("failed to serve: %v", err)
 		}
 	}()
@@ -113,13 +157,11 @@ func (g *GroupReader) Addr() string {
 	return g.lis.Addr().String()
 }
 
-func (g *GroupReader) reverseProxy() rpc.GroupReaderServer {
-	p := store.NewPruneConsultant(2, 70, NewMemoryAnalyzer(g.metrics))
+func (g *GroupReader) reverseProxy(lookup groups.Lookup, m *groups.Manager) rpc.GroupReaderServer {
 	var gs []rpc.GroupReaderClient
 	for i, a := range g.nodeAddrs {
 		if i == g.nodeIndex {
-			s := groups.NewStorage(g.client.Read, time.Second, p, g.metrics, g.log)
-			gs = append(gs, groups.NewManager(s, time.Minute))
+			gs = append(gs, m)
 			continue
 		}
 
@@ -129,13 +171,6 @@ func (g *GroupReader) reverseProxy() rpc.GroupReaderServer {
 		}
 		gs = append(gs, rpc.NewGroupReaderClient(conn))
 	}
-
-	tableECMA := crc64.MakeTable(crc64.ECMA)
-	hasher := func(s string) uint64 {
-		return crc64.Checksum([]byte(s), tableECMA)
-	}
-
-	lookup := routing.NewStaticLookup(len(g.nodeAddrs), hasher)
 
 	return groups.NewRPCReverseProxy(gs, lookup, g.log)
 }

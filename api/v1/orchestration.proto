@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package logcache.v1;
+
+service Orchestration {
+    rpc AddRange(AddRangeRequest) returns (AddRangeResponse) {}
+    rpc ListRanges(ListRangesRequest) returns (ListRangesResponse) {}
+    rpc SetRanges(SetRangesRequest) returns (SetRangesResponse) {}
+}
+
+message Range {
+    // start is the first hash within the given range. [start..end]
+    uint64 start = 1;
+
+    // end is the last hash within the given range. [start..end]
+    uint64 end = 2;
+
+    // term is the term that the range was applied to. The term is ever
+    // incrementing (managed by the scheduler algorithm). A range with a
+    // larger term is preferred.
+    uint64 term = 3;
+}
+
+message Ranges {
+    repeated Range ranges = 1;
+}
+
+message AddRangeRequest {
+    Range range = 1;
+}
+
+message AddRangeResponse {
+}
+
+message ListRangesRequest {
+}
+
+message ListRangesResponse {
+    repeated Range ranges = 1;
+}
+
+message SetRangesRequest {
+    // The key is the address of the Log Cache node.
+    map<string, Ranges> ranges = 1;
+}
+
+message SetRangesResponse {
+}

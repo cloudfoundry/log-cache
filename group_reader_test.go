@@ -18,8 +18,9 @@ import (
 
 var _ = Describe("GroupReader", func() {
 	var (
-		g *logcache.GroupReader
-		c rpc.GroupReaderClient
+		g  *logcache.GroupReader
+		c  rpc.GroupReaderClient
+		oc rpc.OrchestrationClient
 
 		spy         *spyGroupReader
 		spyLogCache *spyLogCache
@@ -53,7 +54,29 @@ var _ = Describe("GroupReader", func() {
 		)
 		g.Start()
 
-		c = newGroupReaderClient(g.Addr(), tlsConfig)
+		c, oc = newGroupReaderClient(g.Addr(), tlsConfig)
+
+		_, err = oc.SetRanges(context.Background(), &rpc.SetRangesRequest{
+			Ranges: map[string]*rpc.Ranges{
+				g.Addr(): &rpc.Ranges{
+					Ranges: []*rpc.Range{
+						{
+							Start: 0,
+							End:   9223372036854775807,
+						},
+					},
+				},
+				spyAddr: &rpc.Ranges{
+					Ranges: []*rpc.Range{
+						{
+							Start: 9223372036854775808,
+							End:   18446744073709551615,
+						},
+					},
+				},
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	It("reads data from a group of sourceIDs", func() {
@@ -105,7 +128,6 @@ var _ = Describe("GroupReader", func() {
 	})
 
 	It("shards data from a group of sourceIDs", func() {
-
 		i := int64(99)
 		j := int64(100)
 
@@ -258,9 +280,21 @@ var _ = Describe("GroupReader", func() {
 			&loggregator_v2.Envelope{Timestamp: 2},
 		))
 	})
+
+	It("lists ranges", func() {
+		resp, err := oc.ListRanges(context.Background(), &rpc.ListRangesRequest{})
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resp.Ranges).To(ConsistOf([]*rpc.Range{
+			{
+				Start: 0,
+				End:   9223372036854775807,
+			},
+		}))
+	})
 })
 
-func newGroupReaderClient(addr string, tlsConfig *tls.Config) rpc.GroupReaderClient {
+func newGroupReaderClient(addr string, tlsConfig *tls.Config) (rpc.GroupReaderClient, rpc.OrchestrationClient) {
 	conn, err := grpc.Dial(
 		addr,
 		grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
@@ -269,7 +303,7 @@ func newGroupReaderClient(addr string, tlsConfig *tls.Config) rpc.GroupReaderCli
 		panic(err)
 	}
 
-	return rpc.NewGroupReaderClient(conn)
+	return rpc.NewGroupReaderClient(conn), rpc.NewOrchestrationClient(conn)
 }
 
 type spyGroupReader struct {
