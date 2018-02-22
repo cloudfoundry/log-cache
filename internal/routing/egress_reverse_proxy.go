@@ -2,6 +2,7 @@ package routing
 
 import (
 	"context"
+	"errors"
 	"log"
 
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
@@ -51,17 +52,23 @@ func (e *EgressReverseProxy) Meta(ctx context.Context, in *rpc.MetaRequest) (*rp
 		Meta: make(map[string]*rpc.MetaInfo),
 	}
 
+	var errs []error
 	for _, c := range e.clients {
 		resp, err := c.Meta(context.Background(), req)
 		if err != nil {
 			// TODO: Metric
 			e.log.Printf("failed to read meta data from remote node: %s", err)
-			return nil, err
+			errs = append(errs, err)
 		}
 
 		for sourceID, mi := range resp.Meta {
 			result.Meta[sourceID] = mi
 		}
+
+	}
+
+	if len(errs) == len(e.clients) {
+		return nil, errors.New("failed to read meta data from remote node")
 	}
 
 	return result, nil

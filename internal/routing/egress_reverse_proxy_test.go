@@ -191,7 +191,16 @@ var _ = Describe("EgressReverseProxy", func() {
 		Expect(spyEgressClient1.ctxs[0].Done()).To(BeClosed())
 	})
 
-	It("returns an error if one of the remotes returns an error", func() {
+	It("returns partial results if some of the remotes return an error", func() {
+		spyEgressClient2.metaErr = errors.New("errors")
+
+		result, err := p.Meta(context.Background(), &rpc.MetaRequest{})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result).ToNot(BeNil())
+	})
+
+	It("returns an error if all of the remotes returns an error", func() {
+		spyEgressClient1.metaErr = errors.New("errors")
 		spyEgressClient2.metaErr = errors.New("errors")
 
 		_, err := p.Meta(context.Background(), &rpc.MetaRequest{})
