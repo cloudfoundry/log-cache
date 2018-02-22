@@ -184,6 +184,21 @@ and posts based on if the count is 1 or if the average comes to 100.
 {{end}}
 ```
 
+##### Available Template Functions
+
+WebHooks provide a set of built-in functions that can be used in templates.
+- `.GetCounter` - Gets the counter from an envelope
+- `.GetCounter.GetName` - Gets the counter name from an envelope
+- `.GetGauge` - Gets the gauge from an envelope
+- `.GetGauge.GetMetrics` - Gets the gauge metrics from an envelope
+- `sliceInit` - converts arguments to a slice
+- `sliceAppend` - adds arguments to a slice
+- `mapInit` - creates a map
+- `mapAdd` - adds key and value to a map
+- `countEnvelopes` - returns the length of the passed envelope slice
+- `averageEnvelopes` - return the average of metric values in the passed envelopes
+- `nsToTime` - converts nanoseconds to `time.Time`
+
 [slack-badge]:              https://slack.cloudfoundry.org/badge.svg
 [loggregator-slack]:        https://cloudfoundry.slack.com/archives/loggregator
 [log-cache]:                https://code.cloudfoundry.org/log-cache
