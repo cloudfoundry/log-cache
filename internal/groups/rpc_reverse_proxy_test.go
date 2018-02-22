@@ -8,6 +8,7 @@ import (
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/log-cache/internal/groups"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -46,6 +47,16 @@ var _ = Describe("RPCReverseProxy", func() {
 		_, err = r.AddToGroup(context.Background(), req)
 		Expect(s2.addToGroupRequests).To(ConsistOf(req))
 		Expect(err).ToNot(HaveOccurred())
+		Expect(l.names).To(ConsistOf("some-name-0", "some-name-0"))
+	})
+
+	It("AddToGroupRequests returns Unavailable when request is unroutable", func() {
+		l.result = -1
+		req := &logcache_v1.AddToGroupRequest{
+			Name: "some-name-0",
+		}
+		_, err := r.AddToGroup(context.Background(), req)
+		Expect(grpc.Code(err)).To(Equal(codes.Unavailable))
 	})
 
 	It("proxies RemoveFromGroupRequests to the correct nodes", func() {
@@ -64,6 +75,15 @@ var _ = Describe("RPCReverseProxy", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
+	It("RemoveFromGroupRequests returns Unavailable when request is unroutable", func() {
+		l.result = -1
+		req := &logcache_v1.RemoveFromGroupRequest{
+			Name: "some-name-0",
+		}
+		_, err := r.RemoveFromGroup(context.Background(), req)
+		Expect(grpc.Code(err)).To(Equal(codes.Unavailable))
+	})
+
 	It("proxies ReadRequests to the correct nodes", func() {
 		l.result = 0
 		req := &logcache_v1.GroupReadRequest{
@@ -80,6 +100,15 @@ var _ = Describe("RPCReverseProxy", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
+	It("Read returns Unavailable when request is unroutable", func() {
+		l.result = -1
+		req := &logcache_v1.GroupReadRequest{
+			Name: "some-name-0",
+		}
+		_, err := r.Read(context.Background(), req)
+		Expect(grpc.Code(err)).To(Equal(codes.Unavailable))
+	})
+
 	It("proxies GroupRequests to the correct nodes", func() {
 		l.result = 0
 		req := &logcache_v1.GroupRequest{
@@ -94,6 +123,15 @@ var _ = Describe("RPCReverseProxy", func() {
 		_, err = r.Group(context.Background(), req)
 		Expect(s2.groupRequests).To(ConsistOf(req))
 		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("Group returns Unavailable when request is unroutable", func() {
+		l.result = -1
+		req := &logcache_v1.GroupRequest{
+			Name: "some-name-0",
+		}
+		_, err := r.Group(context.Background(), req)
+		Expect(grpc.Code(err)).To(Equal(codes.Unavailable))
 	})
 })
 

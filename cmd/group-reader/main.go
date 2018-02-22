@@ -27,11 +27,13 @@ func main() {
 
 	// GroupReader uses the slice to figure out its address. We want to bind
 	// to the given one.
+	extAddr := cfg.NodeAddrs[cfg.NodeIndex]
 	cfg.NodeAddrs[cfg.NodeIndex] = cfg.Addr
 
 	reader := logcache.NewGroupReader(cfg.LogCacheAddr, cfg.NodeAddrs, cfg.NodeIndex,
 		logcache.WithGroupReaderLogger(log.New(os.Stderr, "[GROUP-READER] ", log.LstdFlags)),
 		logcache.WithGroupReaderMetrics(metrics.New(expvar.NewMap("GroupReader"))),
+		logcache.WithGroupReaderExternalAddr(extAddr),
 		logcache.WithGroupReaderServerOpts(
 			grpc.Creds(cfg.LogCacheTLS.Credentials("log-cache")),
 		),

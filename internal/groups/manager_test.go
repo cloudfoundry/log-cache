@@ -87,6 +87,8 @@ var _ = Describe("Manager", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(rr).ToNot(BeNil())
+
+		Expect(m.ListGroups()).To(ConsistOf("b"))
 	})
 
 	It("keeps track of requester IDs for a group", func() {
@@ -302,7 +304,7 @@ var _ = Describe("Manager", func() {
 		var wg sync.WaitGroup
 		defer wg.Wait()
 
-		wg.Add(2)
+		wg.Add(3)
 		go func(m *groups.Manager) {
 			defer wg.Done()
 			for i := 0; i < 100; i++ {
@@ -319,6 +321,13 @@ var _ = Describe("Manager", func() {
 				m.Read(context.Background(), &logcache_v1.GroupReadRequest{
 					Name: "a",
 				})
+			}
+		}(m)
+
+		go func(m *groups.Manager) {
+			defer wg.Done()
+			for i := 0; i < 100; i++ {
+				m.ListGroups()
 			}
 		}(m)
 
