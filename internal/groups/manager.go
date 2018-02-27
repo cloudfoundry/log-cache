@@ -38,7 +38,7 @@ type DataStorage interface {
 	Add(name, sourceID string)
 
 	// AddRequester adds a requester ID for a given group.
-	AddRequester(name string, requesterID uint64)
+	AddRequester(name string, requesterID uint64, remoteOnly bool)
 
 	// Remove stops fetching data for the given sourceID.
 	Remove(name, sourceID string)
@@ -135,7 +135,9 @@ func (m *Manager) Read(ctx context.Context, r *logcache_v1.GroupReadRequest, _ .
 	}
 
 	if _, ok := gi.requesterIDs[r.RequesterId]; !ok {
-		m.s.AddRequester(r.Name, r.RequesterId)
+		// Negative limit implies that we are only pinging the requester ID
+		// and don't want any data.
+		m.s.AddRequester(r.Name, r.RequesterId, r.GetLimit() < 0)
 	}
 	gi.requesterIDs[r.RequesterId] = time.Now()
 
@@ -149,6 +151,16 @@ func (m *Manager) Read(ctx context.Context, r *logcache_v1.GroupReadRequest, _ .
 
 	if r.GetEndTime() == 0 {
 		r.EndTime = time.Now().UnixNano()
+	}
+
+	if r.GetLimit() < 0 {
+		// Negative limit implies that we are only pinging the requester ID
+		// and don't want any data.
+		return &logcache_v1.GroupReadResponse{
+			Envelopes: &loggregator_v2.EnvelopeBatch{
+				Batch: nil,
+			},
+		}, nil
 	}
 
 	if r.GetLimit() == 0 {

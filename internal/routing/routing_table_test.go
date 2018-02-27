@@ -18,7 +18,7 @@ var _ = Describe("RoutingTable", func() {
 
 	BeforeEach(func() {
 		spyHasher = newSpyHasher()
-		r = routing.NewRoutingTable([]string{"a", "b", "c"}, spyHasher.Hash)
+		r = routing.NewRoutingTable([]string{"a", "b", "c", "d"}, spyHasher.Hash)
 	})
 
 	It("returns the correct index for the node", func() {
@@ -42,6 +42,11 @@ var _ = Describe("RoutingTable", func() {
 						{Start: 201, End: 300, Term: 1},
 					},
 				},
+				"d": {
+					Ranges: []*rpc.Range{
+						{Start: 101, End: 200, Term: 1},
+					},
+				},
 			},
 		})
 
@@ -49,7 +54,7 @@ var _ = Describe("RoutingTable", func() {
 
 		i := r.Lookup("some-id")
 		Expect(spyHasher.ids).To(ConsistOf("some-id"))
-		Expect(i).To(Equal(1))
+		Expect(i).To(Equal([]int{3, 1}))
 	})
 
 	It("returns the correct index for the node", func() {
@@ -78,12 +83,12 @@ var _ = Describe("RoutingTable", func() {
 
 		i := r.LookupAll("some-id")
 		Expect(spyHasher.ids).To(ConsistOf("some-id"))
-		Expect(i).To(ConsistOf(0, 1))
+		Expect(i).To(Equal([]int{1, 0}))
 	})
 
-	It("returns -1 for a non-routable hash", func() {
+	It("returns an empty slice for a non-routable hash", func() {
 		i := r.Lookup("some-id")
-		Expect(i).To(Equal(-1))
+		Expect(i).To(BeEmpty())
 	})
 
 	It("survives the race detector", func() {

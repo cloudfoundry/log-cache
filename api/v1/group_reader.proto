@@ -37,6 +37,7 @@ service GroupReader {
 message AddToGroupRequest {
     string name = 1;
     string source_id = 2;
+    bool local_only = 3;
 }
 
 message AddToGroupResponse {
@@ -45,6 +46,7 @@ message AddToGroupResponse {
 message RemoveFromGroupRequest {
     string name = 1;
     string source_id = 2;
+    bool local_only = 3;
 }
 
 message RemoveFromGroupResponse {
@@ -58,6 +60,7 @@ message GroupReadRequest {
     int64 end_time = 4;
     int64 limit = 5;
     EnvelopeTypes envelope_type = 6;
+    bool local_only = 7;
 }
 
 message GroupReadResponse {
@@ -66,6 +69,7 @@ message GroupReadResponse {
 
 message GroupRequest {
     string name = 1;
+    bool local_only = 2;
 }
 
 message GroupResponse {

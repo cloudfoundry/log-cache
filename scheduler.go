@@ -32,13 +32,16 @@ func NewScheduler(addrs []string, opts ...SchedulerOption) *Scheduler {
 		metrics:  nopMetrics{},
 		interval: time.Minute,
 		count:    100,
-		orch:     orchestrator.New(&comm{}),
 		dialOpts: []grpc.DialOption{grpc.WithInsecure()},
 	}
 
 	for _, o := range opts {
 		o(s)
 	}
+
+	s.orch = orchestrator.New(&comm{
+		log: s.log,
+	})
 
 	for _, addr := range addrs {
 		conn, err := grpc.Dial(addr, s.dialOpts...)
@@ -108,14 +111,18 @@ func (s *Scheduler) Start() {
 		s.orch.AddTask(rpc.Range{
 			Start: start,
 			End:   start + x,
-		})
+		},
+			orchestrator.WithTaskInstances(5),
+		)
 		start += x + 1
 	}
 
 	s.orch.AddTask(rpc.Range{
 		Start: start,
 		End:   maxHash,
-	})
+	},
+		orchestrator.WithTaskInstances(5),
+	)
 
 	go func() {
 		for range time.Tick(s.interval) {
@@ -169,6 +176,7 @@ type clientInfo struct {
 type comm struct {
 	mu   sync.Mutex
 	term uint64
+	log  *log.Logger
 }
 
 // List implements orchestrator.Communicator.
@@ -177,9 +185,11 @@ func (c *comm) List(ctx context.Context, worker interface{}) ([]interface{}, err
 	defer c.mu.Unlock()
 
 	lc := worker.(clientInfo)
+	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
 
 	resp, err := lc.l.ListRanges(ctx, &rpc.ListRangesRequest{})
 	if err != nil {
+		c.log.Printf("failed to list ranges from %s: %s", lc.addr, err)
 		return nil, err
 	}
 
@@ -206,12 +216,18 @@ func (c *comm) Add(ctx context.Context, worker interface{}, task interface{}) er
 	lc := worker.(clientInfo)
 	r := task.(rpc.Range)
 	r.Term = c.term
+	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
 
 	_, err := lc.l.AddRange(ctx, &rpc.AddRangeRequest{
 		Range: &r,
 	})
 
-	return err
+	if err != nil {
+		c.log.Printf("failed to add range to %s: %s", lc.addr, err)
+		return err
+	}
+
+	return nil
 }
 
 // Remvoe implements orchestrator.Communicator.

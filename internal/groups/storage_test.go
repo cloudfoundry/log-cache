@@ -18,35 +18,35 @@ var _ = Describe("Storage", func() {
 	var (
 		s          *groups.Storage
 		spyMetrics *spyMetrics
-		spyReader  *spyReader
+		reader     *spyReader
 		spyPruner  *spyPruner
 	)
 
 	BeforeEach(func() {
 		spyMetrics = newSpyMetrics()
-		spyReader = newSpyReader()
+		reader = newSpyReader()
 		spyPruner = newSpyPruner()
-		s = groups.NewStorage(spyReader.Read, time.Millisecond, spyPruner, spyMetrics, log.New(GinkgoWriter, "", 0))
+		s = groups.NewStorage(reader.Read, time.Millisecond, spyPruner, spyMetrics, log.New(GinkgoWriter, "", 0))
 	})
 
 	It("returns data sorted by timestamp", func() {
-		spyReader.addEnvelopes("a", []*loggregator_v2.Envelope{
+		reader.addEnvelopes("a", []*loggregator_v2.Envelope{
 			{Timestamp: 99, SourceId: "a"},
 			{Timestamp: 101, SourceId: "a"},
 			{Timestamp: 103, SourceId: "a"},
 		})
 
-		spyReader.addEnvelopes("b", []*loggregator_v2.Envelope{
+		reader.addEnvelopes("b", []*loggregator_v2.Envelope{
 			{Timestamp: 100, SourceId: "b"},
 			{Timestamp: 102, SourceId: "b"},
 			{Timestamp: 104, SourceId: "b"},
 		})
 
-		s.AddRequester("some-name", 0)
+		s.AddRequester("some-name", 0, false)
 		s.Add("some-name", "a")
 		s.Add("some-name", "b")
 		// Ensure we don't "clear" the existing state
-		s.AddRequester("some-name", 0)
+		s.AddRequester("some-name", 0, false)
 
 		var ts []int64
 
@@ -70,14 +70,48 @@ var _ = Describe("Storage", func() {
 		Expect(sort.IsSorted(int64s(ts))).To(BeTrue())
 	})
 
+	It("does not read for remoteOnly requesters", func() {
+		reader.addEnvelopes("a", []*loggregator_v2.Envelope{
+			{Timestamp: 99, SourceId: "a"},
+			{Timestamp: 101, SourceId: "a"},
+			{Timestamp: 103, SourceId: "a"},
+		})
+
+		reader.addEnvelopes("b", []*loggregator_v2.Envelope{
+			{Timestamp: 100, SourceId: "b"},
+			{Timestamp: 102, SourceId: "b"},
+			{Timestamp: 104, SourceId: "b"},
+		})
+
+		s.Add("some-name", "a")
+		s.Add("some-name", "b")
+		s.AddRequester("some-name", 0, true)
+		s.AddRequester("some-name", 1, false)
+
+		Eventually(reader.SourceIDs).ShouldNot(BeEmpty())
+		Consistently(reader.SourceIDs).Should(
+			Or(
+				ContainElement("a"),
+				ContainElement("b"),
+			),
+		)
+
+		Expect(reader.SourceIDs()).ToNot(
+			And(
+				ContainElement("a"),
+				ContainElement("b"),
+			),
+		)
+	})
+
 	It("removes producer", func() {
-		spyReader.addEnvelopes("a", []*loggregator_v2.Envelope{
+		reader.addEnvelopes("a", []*loggregator_v2.Envelope{
 			{Timestamp: 99, SourceId: "a"},
 		})
 
 		s.Add("some-name", "a")
 		s.Remove("some-name", "a")
-		s.AddRequester("some-name", 0)
+		s.AddRequester("some-name", 0, false)
 
 		f := func() []*loggregator_v2.Envelope {
 			return s.Get("some-name", time.Unix(0, 100), time.Unix(0, 101), nil, 100, false, 0)
@@ -90,49 +124,59 @@ var _ = Describe("Storage", func() {
 	It("shards data by source ID", func() {
 		s.Add("some-name", "a")
 		s.Add("some-name", "b")
-		s.AddRequester("some-name", 0)
-		s.AddRequester("some-name", 1)
+		s.AddRequester("some-name", 0, false)
+		s.AddRequester("some-name", 1, false)
 
-		spyReader.addEnvelopes("a", []*loggregator_v2.Envelope{
-			{Timestamp: 99, SourceId: "a"},
-			{Timestamp: 101, SourceId: "a"},
-			{Timestamp: 103, SourceId: "a"},
-		})
+		go func(reader *spyReader) {
+			for range time.Tick(time.Millisecond) {
+				reader.addEnvelopes("a", []*loggregator_v2.Envelope{
+					{Timestamp: 99, SourceId: "a"},
+					{Timestamp: 101, SourceId: "a"},
+					{Timestamp: 103, SourceId: "a"},
+				})
 
-		spyReader.addEnvelopes("b", []*loggregator_v2.Envelope{
-			{Timestamp: 100, SourceId: "b"},
-			{Timestamp: 102, SourceId: "b"},
-			{Timestamp: 104, SourceId: "b"},
-		})
+				reader.addEnvelopes("b", []*loggregator_v2.Envelope{
+					{Timestamp: 100, SourceId: "b"},
+					{Timestamp: 102, SourceId: "b"},
+					{Timestamp: 104, SourceId: "b"},
+				})
+			}
+		}(reader)
 
 		Eventually(func() []string {
 			var r []string
 			// [100, 104)
-			for _, e := range s.Get("some-name", time.Unix(0, 100), time.Unix(0, 104), nil, 100, false, 0) {
+			for _, e := range s.Get(
+				"some-name",
+				time.Unix(0, 100),
+				time.Unix(0, 104),
+				nil,   // any envelope type
+				100,   // limit
+				false, // ascending
+				1,     // requesterID
+			) {
 				r = append(r, e.GetSourceId())
 			}
 			return r
 		}).Should(
-			Or(
-				And(ContainElement("a"), Not(ContainElement("b"))),
-				And(ContainElement("b"), Not(ContainElement("a"))),
-			))
+			And(ContainElement("b"), Not(ContainElement("a"))),
+		)
 	})
 
 	It("ensures each source ID is serviced when a requester is removed", func() {
 		s.Add("some-name", "a")
 		s.Add("some-name", "b")
-		s.AddRequester("some-name", 0)
-		s.AddRequester("some-name", 1)
+		s.AddRequester("some-name", 0, false)
+		s.AddRequester("some-name", 1, false)
 		s.RemoveRequester("some-name", 1)
 
-		spyReader.addEnvelopes("a", []*loggregator_v2.Envelope{
+		reader.addEnvelopes("a", []*loggregator_v2.Envelope{
 			{Timestamp: 99, SourceId: "a"},
 			{Timestamp: 101, SourceId: "a"},
 			{Timestamp: 103, SourceId: "a"},
 		})
 
-		spyReader.addEnvelopes("b", []*loggregator_v2.Envelope{
+		reader.addEnvelopes("b", []*loggregator_v2.Envelope{
 			{Timestamp: 100, SourceId: "b"},
 			{Timestamp: 102, SourceId: "b"},
 			{Timestamp: 104, SourceId: "b"},
@@ -141,7 +185,7 @@ var _ = Describe("Storage", func() {
 		Eventually(func() []string {
 			// [100, 104)
 			s.Get("some-name", time.Unix(0, 100), time.Unix(0, 104), nil, 100, false, 0)
-			return spyReader.truncateSourceIDs()
+			return reader.truncateSourceIDs()
 		}).Should(
 			And(ContainElement("a"), ContainElement("b")),
 		)
