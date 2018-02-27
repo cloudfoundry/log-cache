@@ -137,8 +137,11 @@ func (s *Store) Put(e *loggregator_v2.Envelope, index string) {
 	if e.Timestamp > m.Newest.UnixNano() {
 		m.Newest = time.Unix(0, e.Timestamp)
 	}
-	m.Oldest = time.Unix(0, t.Left().Key.(int64))
-	s.meta[index] = m
+
+	if t.Size() > 0 {
+		m.Oldest = time.Unix(0, t.Left().Key.(int64))
+		s.meta[index] = m
+	}
 }
 
 // truncate removes the oldest envelope from the entire cache. It considers

@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"time"
 
-	gologcache "code.cloudfoundry.org/go-log-cache"
+	logcache "code.cloudfoundry.org/go-log-cache"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	orchestrator "code.cloudfoundry.org/go-orchestrator"
 	streamaggregator "code.cloudfoundry.org/go-stream-aggregator"
 	"code.cloudfoundry.org/log-cache/internal/store"
 )
@@ -35,7 +35,7 @@ type Reader func(
 	ctx context.Context,
 	sourceID string,
 	start time.Time,
-	opts ...gologcache.ReadOption,
+	opts ...logcache.ReadOption,
 ) ([]*loggregator_v2.Envelope, error)
 
 // Metrics is the client used for initializing counter and gauge metrics.
@@ -90,13 +90,12 @@ func (s *Storage) Add(name, sourceID string) {
 	agg := s.initAggregator(name)
 
 	agg.sourceIDs = append(agg.sourceIDs, sourceID)
-
-	agg.orch.AddTask(sourceID)
-	agg.orch.NextTerm(context.Background())
+	sort.Sort(sort.StringSlice(agg.sourceIDs))
+	s.assignSourceIDs(agg)
 }
 
 // AddRequester adds a request ID for sharded reading.
-func (s *Storage) AddRequester(name string, ID uint64) {
+func (s *Storage) AddRequester(name string, ID uint64, remoteOnly bool) {
 	agg := s.initAggregator(name)
 
 	if _, ok := agg.requesterIDs[ID]; !ok {
@@ -105,24 +104,33 @@ func (s *Storage) AddRequester(name string, ID uint64) {
 			agg:    streamaggregator.New(),
 			ctx:    ctx,
 			cancel: cancel,
+			ID:     ID,
 		}
-		go s.start(s.encodeName(name, ID), req)
-		agg.requesterIDs[ID] = req
-	}
 
-	agg.orch.AddWorker(ID)
-	agg.orch.NextTerm(context.Background())
+		if !remoteOnly {
+			go s.start(s.encodeName(name, ID), req)
+		}
+		agg.requesterIDs[ID] = req
+		agg.requesters = append(agg.requesters, req)
+		sort.Sort(reqs(agg.requesters))
+	}
+	s.assignSourceIDs(agg)
 }
 
 // RemoveRequester removes a request ID for sharded reading.
 func (s *Storage) RemoveRequester(name string, ID uint64) {
 	agg := s.initAggregator(name)
-
-	agg.orch.RemoveWorker(ID)
-	agg.orch.NextTerm(context.Background())
-
 	agg.requesterIDs[ID].cancel()
 	delete(agg.requesterIDs, ID)
+
+	for i, r := range agg.requesters {
+		if r.ID == ID {
+			agg.requesters = append(agg.requesters[:i], agg.requesters[i+1:]...)
+			break
+		}
+	}
+
+	s.assignSourceIDs(agg)
 }
 
 // Remove removes a SourceID from the store. The data will not be eagerly
@@ -133,19 +141,49 @@ func (s *Storage) Remove(name, sourceID string) {
 		return
 	}
 
-	agg.orch.RemoveTask(sourceID)
-	agg.orch.NextTerm(context.Background())
-
 	for i, id := range agg.sourceIDs {
 		if id == sourceID {
 			agg.sourceIDs = append(agg.sourceIDs[:i], agg.sourceIDs[i+1:]...)
 		}
 	}
 
+	s.assignSourceIDs(agg)
+
 	if len(agg.sourceIDs) == 0 {
 		agg.cancel()
 		delete(s.m, name)
 		return
+	}
+}
+
+func (s *Storage) assignSourceIDs(agg *aggregator) {
+	if len(agg.requesters) == 0 {
+		return
+	}
+
+	// Setup expected
+	expected := make(map[uint64][]string)
+	for si, sourceID := range agg.sourceIDs {
+		reqID := agg.requesters[si%len(agg.requesters)].ID
+		expected[reqID] = append(expected[reqID], sourceID)
+	}
+
+	// Find Delta of sourceIds per Requester
+	for _, req := range agg.requesters {
+		// Add sourceIDs that are in expected, but not in req.sourceIDs
+		for _, sid := range expected[req.ID] {
+			if !containsSourceID(req.sourceIDs, sid) {
+				agg.add(req.ID, sid)
+			}
+		}
+
+		// Remove sourceIDs that aren't in expected, but are in req.sourceIDs
+		for _, sid := range req.sourceIDs {
+			if !containsSourceID(expected[req.ID], sid) {
+				agg.remove(req.ID, sid)
+			}
+		}
+
 	}
 }
 
@@ -160,8 +198,6 @@ func (s *Storage) initAggregator(name string) *aggregator {
 			requesterIDs: make(map[uint64]*requester),
 			backoff:      s.backoff,
 		}
-
-		agg.orch = orchestrator.New(agg)
 
 		s.m[name] = agg
 	}
@@ -180,10 +216,10 @@ func (s *Storage) encodeName(name string, requesterID uint64) string {
 }
 
 type aggregator struct {
-	orch         *orchestrator.Orchestrator
 	r            Reader
 	sourceIDs    []string
 	requesterIDs map[uint64]*requester
+	requesters   []*requester
 	backoff      time.Duration
 
 	ctx    context.Context
@@ -193,43 +229,27 @@ type aggregator struct {
 type requester struct {
 	sourceIDs []string
 	agg       *streamaggregator.StreamAggregator
+	ID        uint64
 
 	ctx    context.Context
 	cancel func()
 }
 
-// List implements orchestrator.Communicator.
-func (a *aggregator) List(ctx context.Context, worker interface{}) ([]interface{}, error) {
-	y, ok := a.requesterIDs[worker.(uint64)]
-	if !ok {
-		return nil, nil
-	}
-
-	var r []interface{}
-	for _, x := range y.sourceIDs {
-		r = append(r, x)
-	}
-
-	return r, nil
-}
-
-// Add implements orchestrator.Communicator.
-func (a *aggregator) Add(ctx context.Context, worker interface{}, task interface{}) error {
-	id := worker.(uint64)
-	sourceID := task.(string)
-	req := a.requesterIDs[id]
-
-	// Ensure we aren't already doing this sourceID
-	for _, sid := range req.sourceIDs {
-		if sourceID == sid {
-			return nil
+func containsSourceID(ids []string, sid string) bool {
+	for _, s := range ids {
+		if s == sid {
+			return true
 		}
 	}
+	return false
+}
 
+func (a *aggregator) add(id uint64, sourceID string) error {
+	req := a.requesterIDs[id]
 	req.sourceIDs = append(req.sourceIDs, sourceID)
 
 	req.agg.AddProducer(sourceID, streamaggregator.ProducerFunc(func(ctx context.Context, request interface{}, c chan<- interface{}) {
-		gologcache.Walk(ctx, sourceID,
+		logcache.Walk(ctx, sourceID,
 			func(e []*loggregator_v2.Envelope) bool {
 				for _, ee := range e {
 					select {
@@ -241,18 +261,15 @@ func (a *aggregator) Add(ctx context.Context, worker interface{}, task interface
 
 				return true
 			},
-			gologcache.Reader(a.r),
-			gologcache.WithWalkBackoff(gologcache.NewAlwaysRetryBackoff(a.backoff)),
+			logcache.Reader(a.r),
+			logcache.WithWalkBackoff(logcache.NewAlwaysRetryBackoff(a.backoff)),
 		)
 	}))
 
 	return nil
 }
 
-// Remove implements orchestrator.Communicator.
-func (a *aggregator) Remove(ctx context.Context, worker interface{}, task interface{}) error {
-	id := worker.(uint64)
-	sourceID := task.(string)
+func (a *aggregator) remove(id uint64, sourceID string) error {
 	req := a.requesterIDs[id]
 	for i, x := range req.sourceIDs {
 		if x == sourceID {
@@ -263,4 +280,20 @@ func (a *aggregator) Remove(ctx context.Context, worker interface{}, task interf
 	req.agg.RemoveProducer(sourceID)
 
 	return nil
+}
+
+type reqs []*requester
+
+func (r reqs) Len() int {
+	return len(r)
+}
+
+func (r reqs) Swap(i, j int) {
+	t := r[i]
+	r[i] = r[j]
+	r[j] = t
+}
+
+func (r reqs) Less(i, j int) bool {
+	return r[i].ID < r[j].ID
 }

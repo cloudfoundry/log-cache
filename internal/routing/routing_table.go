@@ -6,18 +6,16 @@ import (
 	"sync"
 
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
-	"github.com/emirpasic/gods/trees/avltree"
-	"github.com/emirpasic/gods/utils"
 )
 
 // RoutingTable makes decisions for where a item should be routed.
 type RoutingTable struct {
-	mu    sync.RWMutex
-	addrs map[string]int
-	h     func(string) uint64
+	mu         sync.RWMutex
+	addrs      map[string]int
+	h          func(string) uint64
+	latestTerm uint64
 
-	table    []rangeInfo
-	avlTable *avltree.Tree
+	table []rangeInfo
 }
 
 // NewRoutingTable returns a new RoutingTable.
@@ -28,39 +26,28 @@ func NewRoutingTable(addrs []string, hasher func(string) uint64) *RoutingTable {
 	}
 
 	return &RoutingTable{
-		addrs:    a,
-		h:        hasher,
-		avlTable: avltree.NewWith(utils.UInt64Comparator),
+		addrs: a,
+		h:     hasher,
 	}
 }
 
 // Lookup takes a item, hash it and determine what node it should be
 // routed to.
-func (t *RoutingTable) Lookup(item string) int {
+func (t *RoutingTable) Lookup(item string) []int {
+	h := t.h(item)
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	return t.lookup(t.h(item), t.avlTable.Root)
-}
 
-func (t *RoutingTable) lookup(hash uint64, n *avltree.Node) int {
-	if n == nil {
-		return -1
+	var result []int
+	for _, r := range t.table {
+		if r.r.Term != t.latestTerm || h < r.r.Start || h > r.r.End {
+			// Outside of range
+			continue
+		}
+		result = append(result, r.idx)
 	}
 
-	r := n.Value.(rangeInfo)
-	if hash < r.r.Start {
-		return t.lookup(hash, n.Children[0])
-	}
-
-	if hash > r.r.End {
-		return t.lookup(hash, n.Children[1])
-	}
-
-	if hash > r.r.Start && hash <= r.r.End {
-		return r.idx
-	}
-
-	return -1
+	return result
 }
 
 // LookupAll returns every index that has a range where the item would
@@ -92,7 +79,7 @@ func (t *RoutingTable) SetRanges(ctx context.Context, in *rpc.SetRangesRequest) 
 	defer t.mu.Unlock()
 
 	t.table = nil
-	var latestTerm uint64
+	t.latestTerm = 0
 	for addr, ranges := range in.Ranges {
 		for _, r := range ranges.Ranges {
 			t.table = append(t.table, rangeInfo{
@@ -100,20 +87,13 @@ func (t *RoutingTable) SetRanges(ctx context.Context, in *rpc.SetRangesRequest) 
 				r:   *r,
 			})
 
-			if latestTerm < r.Term {
-				latestTerm = r.Term
+			if t.latestTerm < r.Term {
+				t.latestTerm = r.Term
 			}
 		}
 	}
 
 	sort.Sort(rangeInfos(t.table))
-
-	t.avlTable = avltree.NewWith(utils.UInt64Comparator)
-	for _, r := range t.table {
-		if r.r.Term == latestTerm {
-			t.avlTable.Put(r.r.Start, r)
-		}
-	}
 
 	return &rpc.SetRangesResponse{}, nil
 }
@@ -143,6 +123,9 @@ func (r rangeInfos) Len() int {
 
 func (r rangeInfos) Less(i, j int) bool {
 	if r[i].r.Start == r[j].r.Start {
+		if r[i].r.Term == r[j].r.Term {
+			return r[i].idx > r[j].idx
+		}
 		return r[i].r.Term > r[j].r.Term
 	}
 

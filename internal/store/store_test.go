@@ -278,6 +278,17 @@ var _ = Describe("Store", func() {
 			Newest:  time.Unix(0, 4),
 		}))
 	})
+
+	It("survives the just added entry from being pruned", func() {
+		s = store.NewStore(2, 2, sp, sm)
+
+		s.Put(buildTypedEnvelope(0, "index-0", &loggregator_v2.Log{}), "index-0")
+		s.Put(buildTypedEnvelope(1, "index-0", &loggregator_v2.Log{}), "index-0")
+
+		sp.result = 1
+		s.Put(buildTypedEnvelope(-1, "index-1", &loggregator_v2.Log{}), "index-1")
+		Expect(s.Meta()).ToNot(HaveKey("index-1"))
+	})
 })
 
 func buildEnvelope(timestamp int64, sourceID string) *loggregator_v2.Envelope {

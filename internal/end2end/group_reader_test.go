@@ -3,7 +3,7 @@ package end2end_test
 import (
 	"context"
 	"fmt"
-	"sync"
+	"log"
 	"time"
 
 	gologcache "code.cloudfoundry.org/go-log-cache"
@@ -35,19 +35,24 @@ var _ = Describe("GroupReader", func() {
 	BeforeEach(func() {
 		run++
 		addrs = []string{
-			fmt.Sprintf("127.0.0.1:%d", 9999+(run*2)),
-			fmt.Sprintf("127.0.0.1:%d", 10000+(run*2)),
+			fmt.Sprintf("127.0.0.1:%d", 9999+(run*3)),
+			fmt.Sprintf("127.0.0.1:%d", 10000+(run*3)),
 		}
 
 		logCache = logcache.New(
-			logcache.WithAddr("127.0.0.1:0"),
+			logcache.WithAddr(fmt.Sprintf("127.0.0.1:%d", 10001+(run*3))),
+			logcache.WithLogger(log.New(GinkgoWriter, "", 0)),
 		)
 		logCache.Start()
 
 		addr := logCache.Addr()
 
-		node1 = logcache.NewGroupReader(addr, addrs, 0)
-		node2 = logcache.NewGroupReader(addr, addrs, 1)
+		node1 = logcache.NewGroupReader(addr, addrs, 0,
+			logcache.WithGroupReaderLogger(log.New(GinkgoWriter, "", 0)),
+		)
+		node2 = logcache.NewGroupReader(addr, addrs, 1,
+			logcache.WithGroupReaderLogger(log.New(GinkgoWriter, "", 0)),
+		)
 
 		scheduler = logcache.NewScheduler(
 			addrs,
@@ -129,62 +134,65 @@ var _ = Describe("GroupReader", func() {
 			}
 		}(client1, client2)
 
-		var wg sync.WaitGroup
-		wg.Add(1)
-		var once sync.Once
-
 		go func(addr string) {
-			defer GinkgoRecover()
-
-			wg.Wait()
-			_, err := ingressClient(addr).Send(context.Background(), &rpc.SendRequest{
-				Envelopes: &loggregator_v2.EnvelopeBatch{
-					Batch: []*loggregator_v2.Envelope{
-						{SourceId: "a", Timestamp: 1},
-						{SourceId: "a", Timestamp: 2},
-						{SourceId: "b", Timestamp: 3},
-						{SourceId: "b", Timestamp: 4},
-						{SourceId: "c", Timestamp: 5},
+			for i := int64(0); ; i += 5 {
+				ingressClient(addr).Send(context.Background(), &rpc.SendRequest{
+					Envelopes: &loggregator_v2.EnvelopeBatch{
+						Batch: []*loggregator_v2.Envelope{
+							{SourceId: "a", Timestamp: i + 0},
+							{SourceId: "a", Timestamp: i + 1},
+							{SourceId: "b", Timestamp: i + 2},
+							{SourceId: "b", Timestamp: i + 3},
+							{SourceId: "c", Timestamp: i + 4},
+						},
 					},
-				},
-			})
-			Expect(err).ToNot(HaveOccurred())
+				})
+			}
 		}(logCache.Addr())
 
-		Eventually(func() []int {
-			envelopes, err := client1.Read(
-				context.Background(),
-				"some-name",
-				time.Unix(0, 0),
-				0,
-			)
-			if err != nil {
-				return nil
+		consume := func(client *gologcache.GroupReaderClient, c chan<- []string, requesterID uint64) {
+			var lastTimestamp int64
+			for {
+				envelopes, _ := client.Read(
+					context.Background(),
+					"some-name",
+					time.Unix(0, lastTimestamp),
+					requesterID,
+				)
+
+				m := make(map[string]bool)
+				for _, e := range envelopes {
+					m[e.GetSourceId()] = true
+				}
+
+				var results []string
+				for k := range m {
+					results = append(results, k)
+				}
+
+				if len(results) == 0 {
+					continue
+				}
+
+				lastTimestamp = envelopes[len(envelopes)-1].GetTimestamp() + 1
+
+				c <- results
 			}
+		}
 
-			var results []int
-			for _, e := range envelopes {
-				results = append(results, int(e.GetTimestamp()))
-			}
+		reader1 := make(chan []string, 10000)
+		reader2 := make(chan []string, 10000)
 
-			envelopes, err = client2.Read(
-				context.Background(),
-				"some-name",
-				time.Unix(0, 0),
-				1,
-			)
-			if err != nil {
-				return nil
-			}
+		go consume(client2, reader1, 0)
+		go consume(client1, reader2, 1)
 
-			for _, e := range envelopes {
-				results = append(results, int(e.GetTimestamp()))
-			}
+		Eventually(reader1, 5).Should(Receive((ConsistOf("a"))))
+		Eventually(reader2, 5).Should(Receive((ConsistOf("b"))))
 
-			once.Do(wg.Done)
-
-			return results
-		}, 5).Should(ConsistOf(1, 2, 3, 4))
+		var later1, later2 []string
+		Eventually(reader1).Should(Receive(&later1))
+		Eventually(reader2).Should(Receive(&later2))
+		Expect(later1).ToNot(Equal(later2))
 	})
 })
 

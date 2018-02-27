@@ -125,9 +125,29 @@ var _ = Describe("Manager", func() {
 
 		Expect(spyDataStorage.addReqNames).To(ContainElement("a"))
 		Expect(spyDataStorage.addReqIDs).To(ConsistOf(uint64(1), (uint64(2))))
+		Expect(spyDataStorage.addReqRemoteOnly).To(ConsistOf(false, false))
 
 		Expect(spyDataStorage.getRequestIDs).To(ContainElement(uint64(1)))
 		Expect(spyDataStorage.getRequestIDs).To(ContainElement(uint64(2)))
+	})
+
+	It("uses remoteOnly requesters for requests with negative limits", func() {
+		_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+			Name:     "a",
+			SourceId: "1",
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		_, err = m.Read(context.Background(), &logcache_v1.GroupReadRequest{
+			Name:        "a",
+			RequesterId: 2,
+			Limit:       -1,
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(spyDataStorage.addReqNames).To(ContainElement("a"))
+		Expect(spyDataStorage.addReqIDs).To(ConsistOf((uint64(2))))
+		Expect(spyDataStorage.addReqRemoteOnly).To(ConsistOf(true))
 	})
 
 	It("expires source IDs from group", func() {
@@ -347,8 +367,9 @@ type spyDataStorage struct {
 	removes     []string
 	removeNames []string
 
-	addReqNames []string
-	addReqIDs   []uint64
+	addReqNames      []string
+	addReqIDs        []uint64
+	addReqRemoteOnly []bool
 
 	removeReqNames []string
 	removeReqIDs   []uint64
@@ -392,9 +413,10 @@ func (s *spyDataStorage) Add(name, sourceID string) {
 	s.adds = append(s.adds, sourceID)
 }
 
-func (s *spyDataStorage) AddRequester(name string, requesterID uint64) {
+func (s *spyDataStorage) AddRequester(name string, requesterID uint64, remoteOnly bool) {
 	s.addReqNames = append(s.addReqNames, name)
 	s.addReqIDs = append(s.addReqIDs, requesterID)
+	s.addReqRemoteOnly = append(s.addReqRemoteOnly, remoteOnly)
 }
 
 func (s *spyDataStorage) Remove(name, sourceID string) {

@@ -172,5 +172,5 @@ func (g *GroupReader) reverseProxy(lookup groups.Lookup, m *groups.Manager) rpc.
 		gs = append(gs, rpc.NewGroupReaderClient(conn))
 	}
 
-	return groups.NewRPCReverseProxy(gs, lookup, g.log)
+	return groups.NewRPCReverseProxy(gs, g.nodeIndex, lookup, g.log)
 }
