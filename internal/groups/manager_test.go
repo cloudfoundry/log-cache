@@ -156,13 +156,11 @@ var _ = Describe("Manager", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		go func() {
-			defer GinkgoRecover()
-			for range time.Tick(100 * time.Microsecond) {
-				_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+			for range time.Tick(time.Microsecond) {
+				m.AddToGroup(ctx, &logcache_v1.AddToGroupRequest{
 					Name:     "a",
 					SourceId: "1",
 				})
-				Expect(err).ToNot(HaveOccurred())
 
 				if ctx.Err() != nil {
 					return
@@ -171,13 +169,11 @@ var _ = Describe("Manager", func() {
 		}()
 
 		go func() {
-			defer GinkgoRecover()
-			for range time.Tick(100 * time.Microsecond) {
-				_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+			for range time.Tick(time.Microsecond) {
+				m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
 					Name:     "a",
 					SourceId: "2",
 				})
-				Expect(err).ToNot(HaveOccurred())
 			}
 		}()
 
