@@ -92,17 +92,17 @@ var _ = Describe("RoutingTable", func() {
 	})
 
 	It("survives the race detector", func() {
-		go func() {
+		go func(r *routing.RoutingTable) {
 			for i := 0; i < 100; i++ {
 				r.Lookup("a")
 			}
-		}()
+		}(r)
 
-		go func() {
+		go func(r *routing.RoutingTable) {
 			for i := 0; i < 100; i++ {
 				r.LookupAll("a")
 			}
-		}()
+		}(r)
 
 		for i := 0; i < 100; i++ {
 			r.SetRanges(context.Background(), &rpc.SetRangesRequest{})
