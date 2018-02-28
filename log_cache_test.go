@@ -196,10 +196,10 @@ var _ = Describe("LogCache", func() {
 
 		// source-1 hashes to 15704273932878139171 (route to node 1)
 		resp, err := client.Read(context.Background(), &rpc.ReadRequest{
-			SourceId:     "source-1",
-			StartTime:    99,
-			EndTime:      101,
-			EnvelopeType: rpc.EnvelopeTypes_LOG,
+			SourceId:      "source-1",
+			StartTime:     99,
+			EndTime:       101,
+			EnvelopeTypes: []rpc.EnvelopeType{rpc.EnvelopeType_LOG},
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.Envelopes.Batch).To(HaveLen(2))
@@ -209,7 +209,7 @@ var _ = Describe("LogCache", func() {
 		Expect(req.SourceId).To(Equal("source-1"))
 		Expect(req.StartTime).To(Equal(int64(99)))
 		Expect(req.EndTime).To(Equal(int64(101)))
-		Expect(req.EnvelopeType).To(Equal(rpc.EnvelopeTypes_LOG))
+		Expect(req.EnvelopeTypes).To(ConsistOf(rpc.EnvelopeType_LOG))
 	})
 
 	It("returns all meta information", func() {

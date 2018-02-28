@@ -199,7 +199,7 @@ func (s *Store) Get(
 	index string,
 	start time.Time,
 	end time.Time,
-	envelopeType EnvelopeType,
+	envelopeTypes []EnvelopeType,
 	limit int,
 	descending bool,
 ) []*loggregator_v2.Envelope {
@@ -218,8 +218,7 @@ func (s *Store) Get(
 
 	var res []*loggregator_v2.Envelope
 	traverser(t.Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope, idx string) bool {
-		if idx == index &&
-			s.checkEnvelopeType(e, envelopeType) {
+		if idx == index && s.validEnvelopeType(e, envelopeTypes) {
 			res = append(res, e)
 		}
 
@@ -229,6 +228,18 @@ func (s *Store) Get(
 
 	s.incEgress(uint64(len(res)))
 	return res
+}
+
+func (s *Store) validEnvelopeType(e *loggregator_v2.Envelope, types []EnvelopeType) bool {
+	if types == nil {
+		return true
+	}
+	for _, t := range types {
+		if s.checkEnvelopeType(e, t) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) treeAscTraverse(

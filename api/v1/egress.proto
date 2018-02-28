@@ -24,11 +24,11 @@ message ReadRequest {
     int64 start_time = 2;
     int64 end_time = 3;
     int64 limit = 4;
-    EnvelopeTypes envelope_type = 5;
+    repeated EnvelopeType envelope_types = 5;
     bool descending = 6;
 }
 
-enum EnvelopeTypes {
+enum EnvelopeType {
     ANY = 0;
     LOG = 1;
     COUNTER = 2;

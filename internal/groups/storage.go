@@ -76,13 +76,13 @@ func (s *Storage) Get(
 	name string,
 	start time.Time,
 	end time.Time,
-	envelopeType store.EnvelopeType,
+	envelopeTypes []store.EnvelopeType,
 	limit int,
 	descending bool,
 	requesterID uint64,
 ) []*loggregator_v2.Envelope {
 	encodedName := s.encodeName(name, requesterID)
-	return s.store.Get(encodedName, start, end, envelopeType, limit, descending)
+	return s.store.Get(encodedName, start, end, envelopeTypes, limit, descending)
 }
 
 // Add adds a SourceID for the storage to fetch.

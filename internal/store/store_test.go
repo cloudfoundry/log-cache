@@ -89,7 +89,7 @@ var _ = Describe("Store", func() {
 	})
 
 	DescribeTable("fetches data based on envelope type",
-		func(envelopeType, envelopeWrapper interface{}) {
+		func(envelopeType store.EnvelopeType, envelopeWrapper interface{}) {
 			e1 := buildTypedEnvelope(0, "a", &loggregator_v2.Log{})
 			e2 := buildTypedEnvelope(1, "a", &loggregator_v2.Counter{})
 			e3 := buildTypedEnvelope(2, "a", &loggregator_v2.Gauge{})
@@ -104,7 +104,7 @@ var _ = Describe("Store", func() {
 
 			start := time.Unix(0, 0)
 			end := time.Unix(0, 9999)
-			envelopes := s.Get("a", start, end, envelopeType, 5, false)
+			envelopes := s.Get("a", start, end, []store.EnvelopeType{envelopeType}, 5, false)
 			Expect(envelopes).To(HaveLen(1))
 			Expect(envelopes[0].Message).To(BeAssignableToTypeOf(envelopeWrapper))
 

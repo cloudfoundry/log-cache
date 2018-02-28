@@ -79,7 +79,7 @@ func BenchmarkStoreGetLogType(b *testing.B) {
 		s.Put(e, e.GetSourceId())
 	}
 
-	logType := &loggregator_v2.Log{}
+	logType := []store.EnvelopeType{&loggregator_v2.Log{}}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

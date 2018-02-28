@@ -59,7 +59,7 @@ message GroupReadRequest {
     int64 start_time = 3;
     int64 end_time = 4;
     int64 limit = 5;
-    EnvelopeTypes envelope_type = 6;
+    repeated EnvelopeType envelope_types = 6;
     bool local_only = 7;
 }
 

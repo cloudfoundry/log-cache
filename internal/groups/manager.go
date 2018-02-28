@@ -28,7 +28,7 @@ type DataStorage interface {
 		name string,
 		start time.Time,
 		end time.Time,
-		envelopeType store.EnvelopeType,
+		envelopeTypes []store.EnvelopeType,
 		limit int,
 		descending bool,
 		requesterID uint64,
@@ -166,12 +166,15 @@ func (m *Manager) Read(ctx context.Context, r *logcache_v1.GroupReadRequest, _ .
 	if r.GetLimit() == 0 {
 		r.Limit = 100
 	}
-
+	var t []store.EnvelopeType
+	for _, e := range r.GetEnvelopeTypes() {
+		t = append(t, m.convertEnvelopeType(e))
+	}
 	batch := m.s.Get(
 		r.GetName(),
 		time.Unix(0, r.GetStartTime()),
 		time.Unix(0, r.GetEndTime()),
-		m.convertEnvelopeType(r.GetEnvelopeType()),
+		t,
 		int(r.GetLimit()),
 		false,
 		r.RequesterId,
@@ -228,17 +231,17 @@ func (m *Manager) resetExpire(t *time.Timer) {
 	t.Reset(m.timeout)
 }
 
-func (m *Manager) convertEnvelopeType(t logcache_v1.EnvelopeTypes) store.EnvelopeType {
+func (m *Manager) convertEnvelopeType(t logcache_v1.EnvelopeType) store.EnvelopeType {
 	switch t {
-	case logcache_v1.EnvelopeTypes_LOG:
+	case logcache_v1.EnvelopeType_LOG:
 		return &loggregator_v2.Log{}
-	case logcache_v1.EnvelopeTypes_COUNTER:
+	case logcache_v1.EnvelopeType_COUNTER:
 		return &loggregator_v2.Counter{}
-	case logcache_v1.EnvelopeTypes_GAUGE:
+	case logcache_v1.EnvelopeType_GAUGE:
 		return &loggregator_v2.Gauge{}
-	case logcache_v1.EnvelopeTypes_TIMER:
+	case logcache_v1.EnvelopeType_TIMER:
 		return &loggregator_v2.Timer{}
-	case logcache_v1.EnvelopeTypes_EVENT:
+	case logcache_v1.EnvelopeType_EVENT:
 		return &loggregator_v2.Event{}
 	default:
 		return nil

@@ -33,12 +33,12 @@ var _ = Describe("LocalStoreReader", func() {
 			{Timestamp: 2},
 		}
 		resp, err := r.Read(context.Background(), &logcache_v1.ReadRequest{
-			SourceId:     "some-source",
-			StartTime:    99,
-			EndTime:      100,
-			Limit:        101,
-			EnvelopeType: logcache_v1.EnvelopeTypes_LOG,
-			Descending:   true,
+			SourceId:      "some-source",
+			StartTime:     99,
+			EndTime:       100,
+			Limit:         101,
+			EnvelopeTypes: []logcache_v1.EnvelopeType{logcache_v1.EnvelopeType_LOG},
+			Descending:    true,
 		})
 		Expect(err).ToNot(HaveOccurred())
 
@@ -46,38 +46,38 @@ var _ = Describe("LocalStoreReader", func() {
 		Expect(spyStoreReader.sourceID).To(Equal("some-source"))
 		Expect(spyStoreReader.start.UnixNano()).To(Equal(int64(99)))
 		Expect(spyStoreReader.end.UnixNano()).To(Equal(int64(100)))
-		Expect(spyStoreReader.envelopeType).To(Equal(&loggregator_v2.Log{}))
+		Expect(spyStoreReader.envelopeTypes).To(ConsistOf(&loggregator_v2.Log{}))
 		Expect(spyStoreReader.limit).To(Equal(101))
 		Expect(spyStoreReader.descending).To(BeTrue())
 	})
 
-	DescribeTable("envelope types", func(t logcache_v1.EnvelopeTypes, expected store.EnvelopeType) {
+	DescribeTable("envelope types", func(t logcache_v1.EnvelopeType, expected store.EnvelopeType) {
 		_, err := r.Read(context.Background(), &logcache_v1.ReadRequest{
-			SourceId:     "some-source",
-			StartTime:    99,
-			EndTime:      100,
-			Limit:        101,
-			EnvelopeType: t,
+			SourceId:      "some-source",
+			StartTime:     99,
+			EndTime:       100,
+			Limit:         101,
+			EnvelopeTypes: []logcache_v1.EnvelopeType{t},
 		})
 		Expect(err).ToNot(HaveOccurred())
-		Expect(spyStoreReader.envelopeType).To(Equal(expected))
+		Expect(spyStoreReader.envelopeTypes).To(ConsistOf(expected))
 	},
-		Entry("log", logcache_v1.EnvelopeTypes_LOG, &loggregator_v2.Log{}),
-		Entry("counter", logcache_v1.EnvelopeTypes_COUNTER, &loggregator_v2.Counter{}),
-		Entry("gauge", logcache_v1.EnvelopeTypes_GAUGE, &loggregator_v2.Gauge{}),
-		Entry("timer", logcache_v1.EnvelopeTypes_TIMER, &loggregator_v2.Timer{}),
-		Entry("event", logcache_v1.EnvelopeTypes_EVENT, &loggregator_v2.Event{}))
+		Entry("log", logcache_v1.EnvelopeType_LOG, &loggregator_v2.Log{}),
+		Entry("counter", logcache_v1.EnvelopeType_COUNTER, &loggregator_v2.Counter{}),
+		Entry("gauge", logcache_v1.EnvelopeType_GAUGE, &loggregator_v2.Gauge{}),
+		Entry("timer", logcache_v1.EnvelopeType_TIMER, &loggregator_v2.Timer{}),
+		Entry("event", logcache_v1.EnvelopeType_EVENT, &loggregator_v2.Event{}))
 
 	It("does not set the envelope type for an ANY", func() {
 		_, err := r.Read(context.Background(), &logcache_v1.ReadRequest{
-			SourceId:     "some-source",
-			StartTime:    99,
-			EndTime:      100,
-			Limit:        101,
-			EnvelopeType: logcache_v1.EnvelopeTypes_ANY,
+			SourceId:      "some-source",
+			StartTime:     99,
+			EndTime:       100,
+			Limit:         101,
+			EnvelopeTypes: []logcache_v1.EnvelopeType{logcache_v1.EnvelopeType_ANY},
 		})
 		Expect(err).ToNot(HaveOccurred())
-		Expect(spyStoreReader.envelopeType).To(BeNil())
+		Expect(spyStoreReader.envelopeTypes).To(BeNil())
 	})
 
 	It("defaults StartTime to 0, EndTime to now, limit to 100 and EnvelopeType to ANY", func() {
@@ -89,37 +89,37 @@ var _ = Describe("LocalStoreReader", func() {
 		Expect(spyStoreReader.sourceID).To(Equal("some-source"))
 		Expect(spyStoreReader.start.UnixNano()).To(Equal(int64(0)))
 		Expect(spyStoreReader.end.UnixNano()).To(BeNumerically("~", time.Now().UnixNano(), time.Second))
-		Expect(spyStoreReader.envelopeType).To(BeNil())
+		Expect(spyStoreReader.envelopeTypes).To(BeNil())
 		Expect(spyStoreReader.limit).To(Equal(100))
 	})
 
 	It("returns an error if the end time is before the start time", func() {
 		_, err := r.Read(context.Background(), &logcache_v1.ReadRequest{
-			SourceId:     "some-source",
-			StartTime:    100,
-			EndTime:      99,
-			Limit:        101,
-			EnvelopeType: logcache_v1.EnvelopeTypes_ANY,
+			SourceId:      "some-source",
+			StartTime:     100,
+			EndTime:       99,
+			Limit:         101,
+			EnvelopeTypes: []logcache_v1.EnvelopeType{logcache_v1.EnvelopeType_ANY},
 		})
 		Expect(err).To(HaveOccurred())
 
 		// Don't return an error if end is left out
 		_, err = r.Read(context.Background(), &logcache_v1.ReadRequest{
-			SourceId:     "some-source",
-			StartTime:    100,
-			Limit:        101,
-			EnvelopeType: logcache_v1.EnvelopeTypes_ANY,
+			SourceId:      "some-source",
+			StartTime:     100,
+			Limit:         101,
+			EnvelopeTypes: []logcache_v1.EnvelopeType{logcache_v1.EnvelopeType_ANY},
 		})
 		Expect(err).ToNot(HaveOccurred())
 	})
 
 	It("returns an error if the limit is greater than 1000", func() {
 		_, err := r.Read(context.Background(), &logcache_v1.ReadRequest{
-			SourceId:     "some-source",
-			StartTime:    99,
-			EndTime:      100,
-			Limit:        1001,
-			EnvelopeType: logcache_v1.EnvelopeTypes_ANY,
+			SourceId:      "some-source",
+			StartTime:     99,
+			EndTime:       100,
+			Limit:         1001,
+			EnvelopeTypes: []logcache_v1.EnvelopeType{logcache_v1.EnvelopeType_ANY},
 		})
 		Expect(err).To(HaveOccurred())
 	})
@@ -167,13 +167,13 @@ var _ = Describe("LocalStoreReader", func() {
 type spyStoreReader struct {
 	getEnvelopes []*loggregator_v2.Envelope
 
-	sourceID     string
-	start        time.Time
-	end          time.Time
-	envelopeType store.EnvelopeType
-	limit        int
-	descending   bool
-	metaResponse map[string]store.MetaInfo
+	sourceID      string
+	start         time.Time
+	end           time.Time
+	envelopeTypes []store.EnvelopeType
+	limit         int
+	descending    bool
+	metaResponse  map[string]store.MetaInfo
 }
 
 func newSpyStoreReader() *spyStoreReader {
@@ -184,14 +184,14 @@ func (s *spyStoreReader) Get(
 	sourceID string,
 	start time.Time,
 	end time.Time,
-	envelopeType store.EnvelopeType,
+	envelopeTypes []store.EnvelopeType,
 	limit int,
 	descending bool,
 ) []*loggregator_v2.Envelope {
 	s.sourceID = sourceID
 	s.start = start
 	s.end = end
-	s.envelopeType = envelopeType
+	s.envelopeTypes = envelopeTypes
 	s.limit = limit
 	s.descending = descending
 

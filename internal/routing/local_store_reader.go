@@ -25,7 +25,7 @@ type StoreReader interface {
 		sourceID string,
 		start time.Time,
 		end time.Time,
-		envelopeType store.EnvelopeType,
+		envelopeTypes []store.EnvelopeType,
 		limit int,
 		descending bool,
 	) []*loggregator_v2.Envelope
@@ -59,11 +59,18 @@ func (r *LocalStoreReader) Read(ctx context.Context, req *rpc.ReadRequest, opts 
 		req.Limit = 100
 	}
 
+	var t []store.EnvelopeType
+	for _, e := range req.GetEnvelopeTypes() {
+		se := r.convertEnvelopeType(e)
+		if se != nil {
+			t = append(t, se)
+		}
+	}
 	envs := r.s.Get(
 		req.SourceId,
 		time.Unix(0, req.StartTime),
 		time.Unix(0, req.EndTime),
-		r.convertEnvelopeType(req.EnvelopeType),
+		t,
 		int(req.Limit),
 		req.Descending,
 	)
@@ -94,17 +101,17 @@ func (r *LocalStoreReader) Meta(ctx context.Context, req *rpc.MetaRequest, opts 
 	}, nil
 }
 
-func (r *LocalStoreReader) convertEnvelopeType(t rpc.EnvelopeTypes) store.EnvelopeType {
+func (r *LocalStoreReader) convertEnvelopeType(t rpc.EnvelopeType) store.EnvelopeType {
 	switch t {
-	case rpc.EnvelopeTypes_LOG:
+	case rpc.EnvelopeType_LOG:
 		return &loggregator_v2.Log{}
-	case rpc.EnvelopeTypes_COUNTER:
+	case rpc.EnvelopeType_COUNTER:
 		return &loggregator_v2.Counter{}
-	case rpc.EnvelopeTypes_GAUGE:
+	case rpc.EnvelopeType_GAUGE:
 		return &loggregator_v2.Gauge{}
-	case rpc.EnvelopeTypes_TIMER:
+	case rpc.EnvelopeType_TIMER:
 		return &loggregator_v2.Timer{}
-	case rpc.EnvelopeTypes_EVENT:
+	case rpc.EnvelopeType_EVENT:
 		return &loggregator_v2.Event{}
 	default:
 		return nil

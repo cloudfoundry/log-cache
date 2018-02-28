@@ -374,7 +374,7 @@ type spyDataStorage struct {
 	getStarts        []int64
 	getEnds          []int64
 	getLimits        []int
-	getEnvelopeTypes []store.EnvelopeType
+	getEnvelopeTypes [][]store.EnvelopeType
 	getDescending    []bool
 	getRequestIDs    []uint64
 	getResult        []*loggregator_v2.Envelope
@@ -388,7 +388,7 @@ func (s *spyDataStorage) Get(
 	name string,
 	start time.Time,
 	end time.Time,
-	envelopeType store.EnvelopeType,
+	envelopeType []store.EnvelopeType,
 	limit int,
 	descending bool,
 	requesterID uint64,

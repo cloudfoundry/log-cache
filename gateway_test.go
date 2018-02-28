@@ -51,7 +51,7 @@ var _ = Describe("Gateway", func() {
 	})
 
 	It("upgrades HTTP requests for LogCache into gRPC requests", func() {
-		path := "v1/read/some-source-id?start_time=99&end_time=101&limit=103&envelope_type=LOG"
+		path := "v1/read/some-source-id?start_time=99&end_time=101&limit=103&envelope_types=LOG&envelope_types=GAUGE"
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 		resp, err := http.Get(URL)
 		Expect(err).ToNot(HaveOccurred())
@@ -63,11 +63,11 @@ var _ = Describe("Gateway", func() {
 		Expect(reqs[0].StartTime).To(Equal(int64(99)))
 		Expect(reqs[0].EndTime).To(Equal(int64(101)))
 		Expect(reqs[0].Limit).To(Equal(int64(103)))
-		Expect(reqs[0].EnvelopeType).To(Equal(rpc.EnvelopeTypes_LOG))
+		Expect(reqs[0].EnvelopeTypes).To(ConsistOf(rpc.EnvelopeType_LOG, rpc.EnvelopeType_GAUGE))
 	})
 
 	It("upgrades HTTP requests for GroupReader into gRPC requests", func() {
-		path := "v1/group/some-name?start_time=99&end_time=101&limit=103&envelope_type=LOG"
+		path := "v1/group/some-name?start_time=99&end_time=101&limit=103&envelope_types=LOG"
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 		resp, err := http.Get(URL)
 		Expect(err).ToNot(HaveOccurred())
@@ -79,6 +79,6 @@ var _ = Describe("Gateway", func() {
 		Expect(reqs[0].StartTime).To(Equal(int64(99)))
 		Expect(reqs[0].EndTime).To(Equal(int64(101)))
 		Expect(reqs[0].Limit).To(Equal(int64(103)))
-		Expect(reqs[0].EnvelopeType).To(Equal(rpc.EnvelopeTypes_LOG))
+		Expect(reqs[0].EnvelopeTypes).To(ConsistOf(rpc.EnvelopeType_LOG))
 	})
 })
