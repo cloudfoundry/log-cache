@@ -11,13 +11,13 @@ import "egress.proto";
 service GroupReader {
     rpc AddToGroup(AddToGroupRequest) returns (AddToGroupResponse) {
         option (google.api.http) = {
-            put: "/v1/group/{name}/{source_id}"
+            put: "/v1/group/{name}/{source_id=**}"
         };
     }
 
     rpc RemoveFromGroup(RemoveFromGroupRequest) returns (RemoveFromGroupResponse) {
         option (google.api.http) = {
-            delete: "/v1/group/{name}/{source_id}"
+            delete: "/v1/group/{name}/{source_id=**}"
         };
     }
 

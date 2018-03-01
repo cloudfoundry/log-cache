@@ -307,10 +307,11 @@ func newGroupReaderClient(addr string, tlsConfig *tls.Config) (rpc.GroupReaderCl
 }
 
 type spyGroupReader struct {
-	mu        sync.Mutex
-	addReqs   []*rpc.AddToGroupRequest
-	readReqs  []*rpc.GroupReadRequest
-	tlsConfig *tls.Config
+	mu         sync.Mutex
+	addReqs    []*rpc.AddToGroupRequest
+	removeReqs []*rpc.RemoveFromGroupRequest
+	readReqs   []*rpc.GroupReadRequest
+	tlsConfig  *tls.Config
 }
 
 func newSpyGroupReader(tlsConfig *tls.Config) *spyGroupReader {
@@ -376,8 +377,20 @@ func (s *spyGroupReader) getReadRequests() []*rpc.GroupReadRequest {
 	return r
 }
 
-func (s *spyGroupReader) RemoveFromGroup(context.Context, *rpc.RemoveFromGroupRequest) (*rpc.RemoveFromGroupResponse, error) {
-	panic("not implemented")
+func (s *spyGroupReader) RemoveFromGroup(ctx context.Context, r *rpc.RemoveFromGroupRequest) (*rpc.RemoveFromGroupResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.removeReqs = append(s.removeReqs, r)
+	return &rpc.RemoveFromGroupResponse{}, nil
+}
+
+func (s *spyGroupReader) RemoveRequests() []*rpc.RemoveFromGroupRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	r := make([]*rpc.RemoveFromGroupRequest, len(s.removeReqs))
+	copy(r, s.removeReqs)
+	return r
 }
 
 func (s *spyGroupReader) Group(context.Context, *rpc.GroupRequest) (*rpc.GroupResponse, error) {

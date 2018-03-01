@@ -111,21 +111,29 @@ func (g *Gateway) Addr() string {
 func (g *Gateway) listenAndServe() {
 	mux := runtime.NewServeMux()
 
-	err := logcache_v1.RegisterEgressHandlerFromEndpoint(
+	conn, err := grpc.Dial(g.logCacheAddr, g.logCacheDialOpts...)
+	if err != nil {
+		g.log.Fatalf("failed to dial Log Cache: %s", err)
+	}
+
+	err = logcache_v1.RegisterEgressHandlerClient(
 		context.Background(),
 		mux,
-		g.logCacheAddr,
-		g.logCacheDialOpts,
+		logcache_v1.NewEgressClient(conn),
 	)
 	if err != nil {
 		g.log.Fatalf("failed to register LogCache handler: %s", err)
 	}
 
-	err = logcache_v1.RegisterGroupReaderHandlerFromEndpoint(
+	gconn, err := grpc.Dial(g.groupReaderAddr, g.groupReaderDialOpts...)
+	if err != nil {
+		g.log.Fatalf("failed to dial Group Reader: %s", err)
+	}
+
+	err = logcache_v1.RegisterGroupReaderHandlerClient(
 		context.Background(),
 		mux,
-		g.groupReaderAddr,
-		g.groupReaderDialOpts,
+		logcache_v1.NewGroupReaderClient(gconn),
 	)
 	if err != nil {
 		g.log.Fatalf("failed to register GroupReader handler: %s", err)
