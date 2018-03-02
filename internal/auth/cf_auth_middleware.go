@@ -55,7 +55,7 @@ func NewCFAuthMiddlewareProvider(
 func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 	router := mux.NewRouter()
 
-	router.HandleFunc("/v1/read/{sourceID}", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/v1/read/{sourceID:.*}", func(w http.ResponseWriter, r *http.Request) {
 		sourceID, ok := mux.Vars(r)["sourceID"]
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
@@ -85,7 +85,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		h.ServeHTTP(w, r)
 	})
 
-	router.HandleFunc("/v1/group/{name}/{sourceID}", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/v1/group/{name}/{sourceID:.*}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 
 		sourceID, ok := mux.Vars(r)["sourceID"]

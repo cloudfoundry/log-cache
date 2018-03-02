@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 
@@ -13,6 +14,7 @@ import (
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"github.com/golang/protobuf/jsonpb"
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 )
 
@@ -65,7 +67,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 			Expect(spyOauth2ClientReader.token).To(Equal("bearer valid-token"))
 		})
 
-		It("forwards the /v1/read request to the handler if non-admin user has log access", func() {
+		DescribeTable("forwards the /v1/read request to the handler if non-admin user has log access", func(sourceID string) {
 			spyLogAuthorizer.result = true
 			var baseHandlerCalled bool
 			baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -73,6 +75,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 			})
 			authHandler := provider.Middleware(baseHandler)
 
+			request.URL.Path = fmt.Sprintf("/v1/read/%s", sourceID)
 			request.Header.Set("Authorization", "valid-token")
 
 			// Call result
@@ -82,8 +85,12 @@ var _ = Describe("CfAuthMiddleware", func() {
 
 			//verify CAPI called with correct info
 			Expect(spyLogAuthorizer.token).To(Equal("valid-token"))
-			Expect(spyLogAuthorizer.sourceID).To(Equal("12345"))
-		})
+			Expect(spyLogAuthorizer.sourceID).To(Equal(sourceID))
+		},
+			Entry("without slash", "12345"),
+			Entry("with slash", "12/345"),
+			Entry("with encoded slash", "12%2F345"),
+		)
 
 		It("returns 404 if there's no authorization header present", func() {
 			var baseHandlerCalled bool
@@ -227,7 +234,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 				request.Method = "PUT"
 			})
 
-			It("prefixes group name for GET request with the client_id and user_id", func() {
+			DescribeTable("prefixes group name for GET request with the client_id and user_id", func(sourceID string) {
 				request.Header.Set("Authorization", "valid-token")
 
 				var req *http.Request
@@ -237,17 +244,22 @@ var _ = Describe("CfAuthMiddleware", func() {
 				authHandler := provider.Middleware(baseHandler)
 
 				spyLogAuthorizer.result = true
+				request.URL.Path = fmt.Sprintf("/v1/group/some-name/%s", sourceID)
 
 				authHandler.ServeHTTP(recorder, request)
 
 				Expect(recorder.Code).To(Equal(http.StatusOK))
 
-				Expect(req.URL.Path).To(Equal("/v1/group/some-client-id-some-user-id-some-name/some-id"))
+				Expect(req.URL.Path).To(Equal(fmt.Sprintf("/v1/group/some-client-id-some-user-id-some-name/%s", sourceID)))
 				Expect(spyOauth2ClientReader.token).To(Equal("valid-token"))
 
-				Expect(spyLogAuthorizer.sourceID).To(Equal("some-id"))
+				Expect(spyLogAuthorizer.sourceID).To(Equal(sourceID))
 				Expect(spyLogAuthorizer.token).To(Equal("valid-token"))
-			})
+			},
+				Entry("without slash", "12345"),
+				Entry("with slash", "12/345"),
+				Entry("with encoded slash", "12%2F345"),
+			)
 
 			It("returns 404 if Oauth2ClientReader returns an error", func() {
 				spyOauth2ClientReader.err = errors.New("some-error")
