@@ -66,6 +66,8 @@ Reads from the given group. The group's source-ids are merged and sorted.
 
 Query Parameters:
 
+- **requester_id** is a string used to shard data across multiple clients. This
+  string should be unique for each client reading from the group.
 - **start_time** is UNIX timestamp in nanoseconds. It defaults to the start of the
   cache (e.g. `date +%s`). Start time is inclusive. `[starttime..endtime)`
 - **end_time** is UNIX timestamp in nanoseconds. It defaults to current time of the
