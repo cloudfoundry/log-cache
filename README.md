@@ -79,7 +79,7 @@ Query Parameters:
   is 1000 and defaults to 100.
 
 ```
-curl "http://<log-cache-addr>:8080/v1/group/<group-name>/?start_time=<start time>&end_time=<end time>" -XDELETE
+curl "http://<log-cache-addr>:8080/v1/group/<group-name>/?start_time=<start time>&end_time=<end time>&requester_id=<requester_id>"
 ```
 
 ##### Response Body
