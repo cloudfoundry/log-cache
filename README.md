@@ -3,14 +3,23 @@ Log Cache
 [![GoDoc][go-doc-badge]][go-doc] [![travis][travis-badge]][travis] [![slack.cloudfoundry.org][slack-badge]][loggregator-slack]
 
 
-Log Cache persists data in memory from the [Loggregator
-System](https://github.com/cloudfoundry/loggregator).
+Log Cache persists data in memory from the [Loggregator System][loggregator].
 
 ## Usage
 
 This repository should be imported as:
 
 `import logcache "code.cloudfoundry.org/log-cache"`
+
+## Source IDs
+
+Log Cache indexes everything by the `source_id` field on the [Loggregator Envelope][loggregator_v2]. The source ID should distinguish the cluster from other clusters. It should not distinguish a specific instance. 
+
+### Cloud Foundry 
+
+In terms of Cloud Foundry, the source ID can either represent an application guid (e.g. `cf app <app-name> --guid`), or a component name (e.g. `doppler`).
+
+Source IDs are used to authorize any attempt to read from Log Cache. Each request must have the `Authorization` header set with a UAA provided token. If the given scope has `doppler.firehose`, then it may see any Source ID. Otherwise, the CloudController is consuled to see if the token can read logs for the given Source ID. In the latter case, the Source ID must be an app guid.
 
 ## Restful API via Gateway
 
@@ -147,3 +156,5 @@ template.
 [go-doc]:                   https://godoc.org/code.cloudfoundry.org/log-cache
 [travis-badge]:             https://travis-ci.org/cloudfoundry-incubator/log-cache.svg?branch=master
 [travis]:                   https://travis-ci.org/cloudfoundry-incubator/log-cache?branch=master
+[loggregator]:              https://github.com/cloudfoundry/loggregator
+[loggregator_v2]:           https://github.com/cloudfoundry/loggregator-api/blob/master/v2/envelope.proto
