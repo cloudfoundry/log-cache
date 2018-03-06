@@ -38,8 +38,8 @@ var _ = Describe("Scheduler", func() {
 
 	It("schedules the ranges evenly across the nodes", func() {
 		s.Start()
-		Eventually(spy1.ReqCount).Should(BeNumerically(">=", 50))
-		Eventually(spy2.ReqCount).Should(BeNumerically(">=", 50))
+		Eventually(spy1.ReqCount, 2).Should(BeNumerically(">=", 50))
+		Eventually(spy2.ReqCount, 2).Should(BeNumerically(">=", 50))
 
 		reqs := append(spy1.AddReqs(), spy2.AddReqs()...)
 
