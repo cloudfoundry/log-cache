@@ -56,7 +56,7 @@ var _ = Describe("GroupReader", func() {
 
 		scheduler = logcache.NewScheduler(
 			addrs,
-			logcache.WithSchedulerInterval(time.Millisecond),
+			logcache.WithSchedulerInterval(50*time.Millisecond),
 		)
 
 		node1.Start()
@@ -70,7 +70,7 @@ var _ = Describe("GroupReader", func() {
 
 	It("keeps track of groups", func() {
 		go func(client1, client2 *gologcache.GroupReaderClient) {
-			for range time.Tick(time.Millisecond) {
+			for range time.Tick(25 * time.Millisecond) {
 				client1.AddToGroup(context.Background(), "some-name", "a")
 				client2.AddToGroup(context.Background(), "some-name", "b")
 			}
@@ -88,7 +88,7 @@ var _ = Describe("GroupReader", func() {
 
 	It("reads from several source IDs", func() {
 		go func(client1, client2 *gologcache.GroupReaderClient) {
-			for range time.Tick(time.Millisecond) {
+			for range time.Tick(25 * time.Millisecond) {
 				client1.AddToGroup(context.Background(), "some-name", "a")
 				client2.AddToGroup(context.Background(), "some-name", "b")
 			}
@@ -128,7 +128,7 @@ var _ = Describe("GroupReader", func() {
 
 	It("shards data via requester_id", func() {
 		go func(client1, client2 *gologcache.GroupReaderClient) {
-			for range time.Tick(time.Millisecond) {
+			for range time.Tick(25 * time.Millisecond) {
 				client1.AddToGroup(context.Background(), "some-name", "a")
 				client2.AddToGroup(context.Background(), "some-name", "b")
 			}
