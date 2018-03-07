@@ -3,6 +3,7 @@ package logcache_test
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/log-cache"
@@ -88,9 +89,13 @@ var _ = Describe("Gateway", func() {
 	})
 
 	It("upgrades HTTP requests for ShardGroupReader PUTs into gRPC requests", func() {
-		path := "v1/shard_group/some-name/some-source/id"
+		path := "v1/shard_group/some-name"
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
-		req, _ := http.NewRequest("PUT", URL, nil)
+		req, _ := http.NewRequest("PUT", URL, strings.NewReader(`{
+			"subGroup": {
+				"sourceId": "some-source/id"
+			}
+		}`))
 
 		resp, err := http.DefaultClient.Do(req)
 		Expect(err).ToNot(HaveOccurred())
@@ -99,6 +104,6 @@ var _ = Describe("Gateway", func() {
 		reqs := spyShardGroupReader.AddRequests()
 		Expect(reqs).To(HaveLen(1))
 		Expect(reqs[0].Name).To(Equal("some-name"))
-		Expect(reqs[0].SourceId).To(Equal("some-source/id"))
+		Expect(reqs[0].GetSubGroup().GetSourceId()).To(Equal("some-source/id"))
 	})
 })

@@ -11,7 +11,8 @@ import "egress.proto";
 service ShardGroupReader {
     rpc SetShardGroup(SetShardGroupRequest) returns (SetShardGroupResponse) {
         option (google.api.http) = {
-            put: "/v1/shard_group/{name}/{source_id=**}"
+            put: "/v1/shard_group/{name}"
+            body: "*"
         };
     }
 
@@ -30,8 +31,15 @@ service ShardGroupReader {
 
 message SetShardGroupRequest {
     string name = 1;
-    string source_id = 2;
+
+    GroupedSourceIds sub_group = 2;
+
+    // local_only is used for internals only. A client should not set this.
     bool local_only = 3;
+}
+
+message GroupedSourceIds {
+    string source_id = 1;
 }
 
 message SetShardGroupResponse {
@@ -45,6 +53,8 @@ message ShardGroupReadRequest {
     int64 end_time = 4;
     int64 limit = 5;
     repeated EnvelopeType envelope_types = 6;
+
+    // local_only is used for internals only. A client should not set this.
     bool local_only = 7;
 }
 
@@ -54,6 +64,8 @@ message ShardGroupReadResponse {
 
 message ShardGroupRequest {
     string name = 1;
+
+    // local_only is used for internals only. A client should not set this.
     bool local_only = 2;
 }
 

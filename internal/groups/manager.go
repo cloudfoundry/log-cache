@@ -61,11 +61,11 @@ func NewManager(s DataStorage, timeout time.Duration) *Manager {
 // of time. Therefore, the source ID should be constantly added. It is a NOP
 // to add a source ID to a group if the source ID already exists.
 func (m *Manager) SetShardGroup(ctx context.Context, r *logcache_v1.SetShardGroupRequest, _ ...grpc.CallOption) (*logcache_v1.SetShardGroupResponse, error) {
-	if r.GetName() == "" || r.GetSourceId() == "" {
+	if r.GetName() == "" || r.GetSubGroup().GetSourceId() == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "name and source_id fields are required")
 	}
 
-	if len(r.GetName()) > 128 || len(r.GetSourceId()) > 128 {
+	if len(r.GetName()) > 128 || len(r.GetSubGroup().GetSourceId()) > 128 {
 		return nil, grpc.Errorf(codes.InvalidArgument, "name and source_id fields can only be 128 bytes long")
 	}
 
@@ -79,17 +79,17 @@ func (m *Manager) SetShardGroup(ctx context.Context, r *logcache_v1.SetShardGrou
 	}
 
 	// Ensure that sourceID is not already tracked.
-	if expire, ok := gi.sourceIDs[r.SourceId]; ok {
+	if expire, ok := gi.sourceIDs[r.GetSubGroup().GetSourceId()]; ok {
 		m.resetExpire(expire)
 		return &logcache_v1.SetShardGroupResponse{}, nil
 	}
 
-	gi.sourceIDs[r.SourceId] = time.AfterFunc(m.timeout, func() {
-		m.removeFromGroup(r.Name, r.SourceId)
+	gi.sourceIDs[r.GetSubGroup().GetSourceId()] = time.AfterFunc(m.timeout, func() {
+		m.removeFromGroup(r.GetName(), r.GetSubGroup().GetSourceId())
 	})
 
 	m.m[r.Name] = gi
-	m.s.Add(r.Name, r.SourceId)
+	m.s.Add(r.GetName(), r.GetSubGroup().GetSourceId())
 
 	return &logcache_v1.SetShardGroupResponse{}, nil
 }
