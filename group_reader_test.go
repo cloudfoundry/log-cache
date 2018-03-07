@@ -235,19 +235,6 @@ var _ = Describe("GroupReader", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		Expect(resp.SourceIds).To(ConsistOf("some-other-id"))
-
-		_, err = c.RemoveFromGroup(context.Background(), &rpc.RemoveFromGroupRequest{
-			Name:     "some-name-b",
-			SourceId: "some-other-id",
-		})
-		Expect(err).ToNot(HaveOccurred())
-
-		resp, err = c.Group(context.Background(), &rpc.GroupRequest{
-			Name: "some-name-b",
-		})
-		Expect(err).ToNot(HaveOccurred())
-
-		Expect(resp.SourceIds).To(BeEmpty())
 	})
 
 	It("routes requests to the correct node", func() {
@@ -307,11 +294,10 @@ func newGroupReaderClient(addr string, tlsConfig *tls.Config) (rpc.GroupReaderCl
 }
 
 type spyGroupReader struct {
-	mu         sync.Mutex
-	addReqs    []*rpc.AddToGroupRequest
-	removeReqs []*rpc.RemoveFromGroupRequest
-	readReqs   []*rpc.GroupReadRequest
-	tlsConfig  *tls.Config
+	mu        sync.Mutex
+	addReqs   []*rpc.AddToGroupRequest
+	readReqs  []*rpc.GroupReadRequest
+	tlsConfig *tls.Config
 }
 
 func newSpyGroupReader(tlsConfig *tls.Config) *spyGroupReader {
@@ -374,22 +360,6 @@ func (s *spyGroupReader) getReadRequests() []*rpc.GroupReadRequest {
 	r := make([]*rpc.GroupReadRequest, len(s.readReqs))
 	copy(r, s.readReqs)
 
-	return r
-}
-
-func (s *spyGroupReader) RemoveFromGroup(ctx context.Context, r *rpc.RemoveFromGroupRequest) (*rpc.RemoveFromGroupResponse, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.removeReqs = append(s.removeReqs, r)
-	return &rpc.RemoveFromGroupResponse{}, nil
-}
-
-func (s *spyGroupReader) RemoveRequests() []*rpc.RemoveFromGroupRequest {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	r := make([]*rpc.RemoveFromGroupRequest, len(s.removeReqs))
-	copy(r, s.removeReqs)
 	return r
 }
 

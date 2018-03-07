@@ -101,19 +101,4 @@ var _ = Describe("Gateway", func() {
 		Expect(reqs[0].Name).To(Equal("some-name"))
 		Expect(reqs[0].SourceId).To(Equal("some-source/id"))
 	})
-
-	It("upgrades HTTP requests for GroupReader DELETEs into gRPC requests", func() {
-		path := "v1/group/some-name/some-source/id"
-		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
-		req, _ := http.NewRequest("DELETE", URL, nil)
-
-		resp, err := http.DefaultClient.Do(req)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-		reqs := spyGroupReader.RemoveRequests()
-		Expect(reqs).To(HaveLen(1))
-		Expect(reqs[0].Name).To(Equal("some-name"))
-		Expect(reqs[0].SourceId).To(Equal("some-source/id"))
-	})
 })

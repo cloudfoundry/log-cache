@@ -65,30 +65,6 @@ var _ = Describe("Manager", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.SourceIds).To(ConsistOf("1", "2"))
-
-		rr, err := m.RemoveFromGroup(context.Background(), &logcache_v1.RemoveFromGroupRequest{
-			Name:     "a",
-			SourceId: "1",
-		})
-		Expect(err).ToNot(HaveOccurred())
-		Expect(rr).ToNot(BeNil())
-		Expect(spyDataStorage.removes).To(ConsistOf("1"))
-		Expect(spyDataStorage.removeNames).To(ContainElement("a"))
-
-		resp, err = m.Group(context.Background(), &logcache_v1.GroupRequest{
-			Name: "a",
-		})
-		Expect(err).ToNot(HaveOccurred())
-		Expect(resp.SourceIds).To(ConsistOf("2"))
-
-		rr, err = m.RemoveFromGroup(context.Background(), &logcache_v1.RemoveFromGroupRequest{
-			Name:     "a",
-			SourceId: "2",
-		})
-		Expect(err).ToNot(HaveOccurred())
-		Expect(rr).ToNot(BeNil())
-
-		Expect(m.ListGroups()).To(ConsistOf("b"))
 	})
 
 	It("keeps track of requester IDs for a group", func() {
@@ -320,7 +296,7 @@ var _ = Describe("Manager", func() {
 		var wg sync.WaitGroup
 		defer wg.Wait()
 
-		wg.Add(3)
+		wg.Add(2)
 		go func(m *groups.Manager) {
 			defer wg.Done()
 			for i := 0; i < 100; i++ {
@@ -340,18 +316,8 @@ var _ = Describe("Manager", func() {
 			}
 		}(m)
 
-		go func(m *groups.Manager) {
-			defer wg.Done()
-			for i := 0; i < 100; i++ {
-				m.ListGroups()
-			}
-		}(m)
-
 		for i := 0; i < 100; i++ {
-			m.RemoveFromGroup(context.Background(), &logcache_v1.RemoveFromGroupRequest{
-				Name:     "a",
-				SourceId: "1",
-			})
+			m.ListGroups()
 		}
 	})
 })

@@ -15,12 +15,6 @@ service GroupReader {
         };
     }
 
-    rpc RemoveFromGroup(RemoveFromGroupRequest) returns (RemoveFromGroupResponse) {
-        option (google.api.http) = {
-            delete: "/v1/group/{name}/{source_id=**}"
-        };
-    }
-
     rpc Read(GroupReadRequest) returns (GroupReadResponse) {
         option (google.api.http) = {
             get: "/v1/group/{name}"
@@ -41,15 +35,6 @@ message AddToGroupRequest {
 }
 
 message AddToGroupResponse {
-}
-
-message RemoveFromGroupRequest {
-    string name = 1;
-    string source_id = 2;
-    bool local_only = 3;
-}
-
-message RemoveFromGroupResponse {
 }
 
 message GroupReadRequest {

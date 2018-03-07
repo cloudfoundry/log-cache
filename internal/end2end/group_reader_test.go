@@ -88,7 +88,7 @@ var _ = Describe("GroupReader", func() {
 
 	It("reads from several source IDs", func() {
 		go func(client1, client2 *gologcache.GroupReaderClient) {
-			for range time.Tick(25 * time.Millisecond) {
+			for {
 				client1.AddToGroup(context.Background(), "some-name", "a")
 				client2.AddToGroup(context.Background(), "some-name", "b")
 			}

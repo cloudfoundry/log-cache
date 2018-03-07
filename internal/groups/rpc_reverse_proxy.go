@@ -77,44 +77,6 @@ func (r *RPCReverseProxy) AddToGroup(c context.Context, req *logcache_v1.AddToGr
 	return nil, errors.New(strings.Join(e, ", "))
 }
 
-// RemoveFromGroup implements logcache_v1.GroupReaderServer.
-func (r *RPCReverseProxy) RemoveFromGroup(c context.Context, req *logcache_v1.RemoveFromGroupRequest) (*logcache_v1.RemoveFromGroupResponse, error) {
-	nodes := r.l.Lookup(req.GetName())
-	if len(nodes) == 0 {
-		return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
-	}
-	c, _ = context.WithTimeout(c, 3*time.Second)
-
-	if req.LocalOnly {
-		if !r.contains(r.local, nodes) {
-			return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
-		}
-
-		return r.s[r.local].RemoveFromGroup(c, req)
-	}
-
-	req.LocalOnly = true
-	errs := make(chan error, len(nodes))
-	for _, n := range nodes {
-		go func(n int) {
-			_, err := r.s[n].RemoveFromGroup(c, req)
-			errs <- err
-		}(n)
-	}
-
-	var e []string
-	for i := 0; i < len(nodes); i++ {
-		err := <-errs
-		if err == nil {
-			// If even one succeeds, then we will say it worked out.
-			return &logcache_v1.RemoveFromGroupResponse{}, nil
-		}
-		e = append(e, err.Error())
-	}
-
-	return nil, errors.New(strings.Join(e, ", "))
-}
-
 // Read implements logcache_v1.GroupReaderServer.
 func (r *RPCReverseProxy) Read(c context.Context, req *logcache_v1.GroupReadRequest) (*logcache_v1.GroupReadResponse, error) {
 	nodes := r.l.Lookup(req.GetName())
@@ -135,8 +97,11 @@ func (r *RPCReverseProxy) Read(c context.Context, req *logcache_v1.GroupReadRequ
 	ping := &logcache_v1.GroupReadRequest{
 		Name:        req.GetName(),
 		RequesterId: req.GetRequesterId(),
-		Limit:       -1,
-		LocalOnly:   true,
+
+		// Limit -1 is special. It implies that we don't want to read at all
+		// and really just want to keep track of the source ID.
+		Limit:     -1,
+		LocalOnly: true,
 	}
 
 	var (
