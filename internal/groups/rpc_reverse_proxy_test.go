@@ -84,45 +84,6 @@ var _ = Describe("RPCReverseProxy", func() {
 		Expect(grpc.Code(err)).To(Equal(codes.Unavailable))
 	})
 
-	It("proxies RemoveFromGroupRequests to the correct nodes", func() {
-		l.results = []int{0, 2}
-		req := &logcache_v1.RemoveFromGroupRequest{
-			Name: "some-name-0",
-		}
-		s0.removeErr = errors.New("some-err")
-		s2.removeErr = errors.New("some-err")
-		_, err := r.RemoveFromGroup(context.Background(), req)
-		Expect(err).To(MatchError("some-err, some-err"))
-		req.LocalOnly = true
-		Expect(s0.removeFromGroupRequests).To(ConsistOf(req))
-		Expect(s2.removeFromGroupRequests).To(ConsistOf(req))
-	})
-
-	It("proxies local RemoveFromGroupRequests to the local node", func() {
-		req := &logcache_v1.RemoveFromGroupRequest{
-			Name:      "some-name-0",
-			LocalOnly: true,
-		}
-		l.results = []int{0, 2}
-		_, err := r.RemoveFromGroup(context.Background(), req)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(s0.RemoveFromGroupRequests()).To(ConsistOf(req))
-		Expect(s2.RemoveFromGroupRequests()).To(BeEmpty())
-	})
-
-	It("RemoveFromGroupRequests returns Unavailable when request is unroutable", func() {
-		req := &logcache_v1.RemoveFromGroupRequest{
-			Name: "some-name-0",
-		}
-		_, err := r.RemoveFromGroup(context.Background(), req)
-		Expect(grpc.Code(err)).To(Equal(codes.Unavailable))
-
-		l.results = []int{1, 2}
-		req.LocalOnly = true
-		_, err = r.RemoveFromGroup(context.Background(), req)
-		Expect(grpc.Code(err)).To(Equal(codes.Unavailable))
-	})
-
 	It("proxies ReadRequests to the correct node based on requester ID", func() {
 		l.results = []int{0, 2}
 		req := &logcache_v1.GroupReadRequest{
@@ -253,11 +214,10 @@ func (s *spyLookup) Lookup(name string) []int {
 }
 
 type spyGroupReaderClient struct {
-	mu                      sync.Mutex
-	addToGroupRequests      []*logcache_v1.AddToGroupRequest
-	removeFromGroupRequests []*logcache_v1.RemoveFromGroupRequest
-	groupReadRequests       []*logcache_v1.GroupReadRequest
-	groupRequests           []*logcache_v1.GroupRequest
+	mu                 sync.Mutex
+	addToGroupRequests []*logcache_v1.AddToGroupRequest
+	groupReadRequests  []*logcache_v1.GroupReadRequest
+	groupRequests      []*logcache_v1.GroupRequest
 
 	groupRespSourceIDs    []string
 	groupRespRequesterIDs []uint64
@@ -291,29 +251,6 @@ func (s *spyGroupReaderClient) AddToGroupRequests() []*logcache_v1.AddToGroupReq
 
 	r := make([]*logcache_v1.AddToGroupRequest, len(s.addToGroupRequests))
 	copy(r, s.addToGroupRequests)
-
-	return r
-}
-
-func (s *spyGroupReaderClient) RemoveFromGroup(c context.Context, r *logcache_v1.RemoveFromGroupRequest, _ ...grpc.CallOption) (*logcache_v1.RemoveFromGroupResponse, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.removeFromGroupRequests = append(s.removeFromGroupRequests, r)
-	return &logcache_v1.RemoveFromGroupResponse{}, s.removeErr
-}
-
-func (s *spyGroupReaderClient) setRemoveFromGroup(r []*logcache_v1.RemoveFromGroupRequest) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.removeFromGroupRequests = r
-}
-
-func (s *spyGroupReaderClient) RemoveFromGroupRequests() []*logcache_v1.RemoveFromGroupRequest {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	r := make([]*logcache_v1.RemoveFromGroupRequest, len(s.removeFromGroupRequests))
-	copy(r, s.removeFromGroupRequests)
 
 	return r
 }

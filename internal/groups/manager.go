@@ -94,14 +94,6 @@ func (m *Manager) AddToGroup(ctx context.Context, r *logcache_v1.AddToGroupReque
 	return &logcache_v1.AddToGroupResponse{}, nil
 }
 
-// RemoveFromGroup removes a source ID from the given group. If that was the
-// last entry, then the group is removed. If the group already didn't exist,
-// then it is a NOP.
-func (m *Manager) RemoveFromGroup(ctx context.Context, r *logcache_v1.RemoveFromGroupRequest, _ ...grpc.CallOption) (*logcache_v1.RemoveFromGroupResponse, error) {
-	m.removeFromGroup(r.Name, r.SourceId)
-	return &logcache_v1.RemoveFromGroupResponse{}, nil
-}
-
 func (m *Manager) removeFromGroup(name, sourceID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
