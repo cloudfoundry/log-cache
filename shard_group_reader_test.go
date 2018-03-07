@@ -16,13 +16,13 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("GroupReader", func() {
+var _ = Describe("ShardGroupReader", func() {
 	var (
-		g  *logcache.GroupReader
-		c  rpc.GroupReaderClient
+		g  *logcache.ShardGroupReader
+		c  rpc.ShardGroupReaderClient
 		oc rpc.OrchestrationClient
 
-		spy         *spyGroupReader
+		spy         *spyShardGroupReader
 		spyLogCache *spyLogCache
 	)
 
@@ -54,7 +54,7 @@ var _ = Describe("GroupReader", func() {
 		)
 		g.Start()
 
-		c, oc = newGroupReaderClient(g.Addr(), tlsConfig)
+		c, oc = newShardGroupReaderClient(g.Addr(), tlsConfig)
 
 		_, err = oc.AddRange(context.Background(), &rpc.AddRangeRequest{
 			Range: &rpc.Range{
@@ -104,20 +104,20 @@ var _ = Describe("GroupReader", func() {
 			}
 		}
 
-		_, err := c.AddToGroup(context.Background(), &rpc.AddToGroupRequest{
+		_, err := c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name:     "some-name-a",
 			SourceId: "source-0",
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = c.AddToGroup(context.Background(), &rpc.AddToGroupRequest{
+		_, err = c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name:     "some-name-a",
 			SourceId: "source-1",
 		})
 		Expect(err).ToNot(HaveOccurred())
 
 		Eventually(func() []int64 {
-			resp, err := c.Read(context.Background(), &rpc.GroupReadRequest{
+			resp, err := c.Read(context.Background(), &rpc.ShardGroupReadRequest{
 				Name: "some-name-a",
 
 				// [99,103)
@@ -153,13 +153,13 @@ var _ = Describe("GroupReader", func() {
 			}
 		}
 
-		_, err := c.AddToGroup(context.Background(), &rpc.AddToGroupRequest{
+		_, err := c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name:     "some-name-a",
 			SourceId: "source-0",
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = c.AddToGroup(context.Background(), &rpc.AddToGroupRequest{
+		_, err = c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name:     "some-name-a",
 			SourceId: "source-1",
 		})
@@ -172,7 +172,7 @@ var _ = Describe("GroupReader", func() {
 			defer wg.Done()
 			defer GinkgoRecover()
 			Eventually(func() []int64 {
-				resp, err := c.Read(context.Background(), &rpc.GroupReadRequest{
+				resp, err := c.Read(context.Background(), &rpc.ShardGroupReadRequest{
 					Name:        "some-name-a",
 					RequesterId: 1,
 				})
@@ -192,7 +192,7 @@ var _ = Describe("GroupReader", func() {
 		}()
 
 		Eventually(func() []int64 {
-			resp, err := c.Read(context.Background(), &rpc.GroupReadRequest{
+			resp, err := c.Read(context.Background(), &rpc.ShardGroupReadRequest{
 				Name:        "some-name-a",
 				RequesterId: 0,
 			})
@@ -212,32 +212,32 @@ var _ = Describe("GroupReader", func() {
 	})
 
 	It("keeps track of groups", func() {
-		_, err := c.AddToGroup(context.Background(), &rpc.AddToGroupRequest{
+		_, err := c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name:     "some-name-a",
 			SourceId: "some-id",
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = c.AddToGroup(context.Background(), &rpc.AddToGroupRequest{
+		_, err = c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name:     "some-name-b",
 			SourceId: "some-other-id",
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = c.AddToGroup(context.Background(), &rpc.AddToGroupRequest{
+		_, err = c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name:     "some-name-a",
 			SourceId: "some-other-id",
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		resp, err := c.Group(context.Background(), &rpc.GroupRequest{
+		resp, err := c.ShardGroup(context.Background(), &rpc.ShardGroupRequest{
 			Name: "some-name-a",
 		})
 		Expect(err).ToNot(HaveOccurred())
 
 		Expect(resp.SourceIds).To(ConsistOf("some-id", "some-other-id"))
 
-		resp, err = c.Group(context.Background(), &rpc.GroupRequest{
+		resp, err = c.ShardGroup(context.Background(), &rpc.ShardGroupRequest{
 			Name: "some-name-b",
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -247,7 +247,7 @@ var _ = Describe("GroupReader", func() {
 
 	It("routes requests to the correct node", func() {
 		// some-name-a hashes to 4464231820929349922 (node 0)
-		_, err := c.AddToGroup(context.Background(), &rpc.AddToGroupRequest{
+		_, err := c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name:     "some-name-a",
 			SourceId: "some-id",
 		})
@@ -256,7 +256,7 @@ var _ = Describe("GroupReader", func() {
 		Consistently(spy.AddRequests).Should(BeEmpty())
 
 		// some-name-c hashes to 14515125134919833977 (node 1)
-		_, err = c.AddToGroup(context.Background(), &rpc.AddToGroupRequest{
+		_, err = c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name:     "some-name-c",
 			SourceId: "some-id",
 		})
@@ -266,7 +266,7 @@ var _ = Describe("GroupReader", func() {
 		Expect(spy.AddRequests()[0].Name).To(Equal("some-name-c"))
 		Expect(spy.AddRequests()[0].SourceId).To(Equal("some-id"))
 
-		resp, err := c.Read(context.Background(), &rpc.GroupReadRequest{
+		resp, err := c.Read(context.Background(), &rpc.ShardGroupReadRequest{
 			Name: "some-name-c",
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -289,7 +289,7 @@ var _ = Describe("GroupReader", func() {
 	})
 })
 
-func newGroupReaderClient(addr string, tlsConfig *tls.Config) (rpc.GroupReaderClient, rpc.OrchestrationClient) {
+func newShardGroupReaderClient(addr string, tlsConfig *tls.Config) (rpc.ShardGroupReaderClient, rpc.OrchestrationClient) {
 	conn, err := grpc.Dial(
 		addr,
 		grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
@@ -298,21 +298,21 @@ func newGroupReaderClient(addr string, tlsConfig *tls.Config) (rpc.GroupReaderCl
 		panic(err)
 	}
 
-	return rpc.NewGroupReaderClient(conn), rpc.NewOrchestrationClient(conn)
+	return rpc.NewShardGroupReaderClient(conn), rpc.NewOrchestrationClient(conn)
 }
 
-type spyGroupReader struct {
+type spyShardGroupReader struct {
 	mu        sync.Mutex
-	addReqs   []*rpc.AddToGroupRequest
-	readReqs  []*rpc.GroupReadRequest
+	addReqs   []*rpc.SetShardGroupRequest
+	readReqs  []*rpc.ShardGroupReadRequest
 	tlsConfig *tls.Config
 }
 
-func newSpyGroupReader(tlsConfig *tls.Config) *spyGroupReader {
-	return &spyGroupReader{tlsConfig: tlsConfig}
+func newSpyGroupReader(tlsConfig *tls.Config) *spyShardGroupReader {
+	return &spyShardGroupReader{tlsConfig: tlsConfig}
 }
 
-func (s *spyGroupReader) start() string {
+func (s *spyShardGroupReader) start() string {
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		panic(err)
@@ -321,7 +321,7 @@ func (s *spyGroupReader) start() string {
 	go func() {
 		srv := grpc.NewServer(grpc.Creds(credentials.NewTLS(s.tlsConfig)))
 
-		rpc.RegisterGroupReaderServer(srv, s)
+		rpc.RegisterShardGroupReaderServer(srv, s)
 		if err := srv.Serve(lis); err != nil {
 			panic(err)
 		}
@@ -330,28 +330,28 @@ func (s *spyGroupReader) start() string {
 	return lis.Addr().String()
 }
 
-func (s *spyGroupReader) AddToGroup(c context.Context, r *rpc.AddToGroupRequest) (*rpc.AddToGroupResponse, error) {
+func (s *spyShardGroupReader) SetShardGroup(c context.Context, r *rpc.SetShardGroupRequest) (*rpc.SetShardGroupResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.addReqs = append(s.addReqs, r)
-	return &rpc.AddToGroupResponse{}, nil
+	return &rpc.SetShardGroupResponse{}, nil
 }
 
-func (s *spyGroupReader) AddRequests() []*rpc.AddToGroupRequest {
+func (s *spyShardGroupReader) AddRequests() []*rpc.SetShardGroupRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	r := make([]*rpc.AddToGroupRequest, len(s.addReqs))
+	r := make([]*rpc.SetShardGroupRequest, len(s.addReqs))
 	copy(r, s.addReqs)
 	return r
 }
 
-func (s *spyGroupReader) Read(c context.Context, r *rpc.GroupReadRequest) (*rpc.GroupReadResponse, error) {
+func (s *spyShardGroupReader) Read(c context.Context, r *rpc.ShardGroupReadRequest) (*rpc.ShardGroupReadResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.readReqs = append(s.readReqs, r)
 
-	return &rpc.GroupReadResponse{
+	return &rpc.ShardGroupReadResponse{
 		Envelopes: &loggregator_v2.EnvelopeBatch{
 			Batch: []*loggregator_v2.Envelope{
 				{Timestamp: 1},
@@ -361,16 +361,16 @@ func (s *spyGroupReader) Read(c context.Context, r *rpc.GroupReadRequest) (*rpc.
 	}, nil
 }
 
-func (s *spyGroupReader) getReadRequests() []*rpc.GroupReadRequest {
+func (s *spyShardGroupReader) getReadRequests() []*rpc.ShardGroupReadRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	r := make([]*rpc.GroupReadRequest, len(s.readReqs))
+	r := make([]*rpc.ShardGroupReadRequest, len(s.readReqs))
 	copy(r, s.readReqs)
 
 	return r
 }
 
-func (s *spyGroupReader) Group(context.Context, *rpc.GroupRequest) (*rpc.GroupResponse, error) {
+func (s *spyShardGroupReader) ShardGroup(context.Context, *rpc.ShardGroupRequest) (*rpc.ShardGroupResponse, error) {
 	panic("not implemented")
 }

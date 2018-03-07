@@ -130,10 +130,10 @@ func (g *Gateway) listenAndServe() {
 		g.log.Fatalf("failed to dial Group Reader: %s", err)
 	}
 
-	err = logcache_v1.RegisterGroupReaderHandlerClient(
+	err = logcache_v1.RegisterShardGroupReaderHandlerClient(
 		context.Background(),
 		mux,
-		logcache_v1.NewGroupReaderClient(gconn),
+		logcache_v1.NewShardGroupReaderClient(gconn),
 	)
 	if err != nil {
 		g.log.Fatalf("failed to register GroupReader handler: %s", err)

@@ -30,63 +30,63 @@ var _ = Describe("RPCReverseProxy", func() {
 		s2 = newSpyGroupReaderClient()
 		l = newSpyLookup()
 		r = groups.NewRPCReverseProxy(
-			[]logcache_v1.GroupReaderClient{s0, s1, s2},
+			[]logcache_v1.ShardGroupReaderClient{s0, s1, s2},
 			0,
 			l,
 			log.New(GinkgoWriter, "", 0),
 		)
 	})
 
-	It("proxies AddToGroupRequests to the correct nodes", func() {
+	It("proxies SetShardGroupRequests to the correct nodes", func() {
 		l.results = []int{0, 2}
-		req := &logcache_v1.AddToGroupRequest{
+		req := &logcache_v1.SetShardGroupRequest{
 			Name: "some-name-0",
 		}
 		s0.addErr = errors.New("some-err")
 		s2.addErr = errors.New("some-err")
-		_, err := r.AddToGroup(context.Background(), req)
+		_, err := r.SetShardGroup(context.Background(), req)
 		Expect(err).To(MatchError("some-err, some-err"))
 		Expect(s0.addToGroupRequests).To(ConsistOf(req))
 		Expect(s2.addToGroupRequests).To(ConsistOf(req))
 
 		l.results = []int{1, 2}
 		req.LocalOnly = false
-		_, err = r.AddToGroup(context.Background(), req)
+		_, err = r.SetShardGroup(context.Background(), req)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(s1.addToGroupRequests).To(ConsistOf(req))
 		Expect(l.names).To(ConsistOf("some-name-0", "some-name-0"))
 	})
 
-	It("proxies local AddToGroupRequests to the the local node", func() {
-		req := &logcache_v1.AddToGroupRequest{
+	It("proxies local SetShardGroupRequests to the the local node", func() {
+		req := &logcache_v1.SetShardGroupRequest{
 			Name:      "some-name-0",
 			LocalOnly: true,
 		}
 
 		l.results = []int{0, 2}
 
-		_, err := r.AddToGroup(context.Background(), req)
+		_, err := r.SetShardGroup(context.Background(), req)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(s0.AddToGroupRequests()).To(ConsistOf(req))
-		Expect(s2.AddToGroupRequests()).To(BeEmpty())
+		Expect(s0.SetShardGroupRequests()).To(ConsistOf(req))
+		Expect(s2.SetShardGroupRequests()).To(BeEmpty())
 	})
 
-	It("AddToGroupRequests returns Unavailable when request is unroutable", func() {
-		req := &logcache_v1.AddToGroupRequest{
+	It("SetShardGroupRequests returns Unavailable when request is unroutable", func() {
+		req := &logcache_v1.SetShardGroupRequest{
 			Name: "some-name-0",
 		}
-		_, err := r.AddToGroup(context.Background(), req)
+		_, err := r.SetShardGroup(context.Background(), req)
 		Expect(grpc.Code(err)).To(Equal(codes.Unavailable))
 
 		l.results = []int{1, 2}
 		req.LocalOnly = true
-		_, err = r.AddToGroup(context.Background(), req)
+		_, err = r.SetShardGroup(context.Background(), req)
 		Expect(grpc.Code(err)).To(Equal(codes.Unavailable))
 	})
 
 	It("proxies ReadRequests to the correct node based on requester ID", func() {
 		l.results = []int{0, 2}
-		req := &logcache_v1.GroupReadRequest{
+		req := &logcache_v1.ShardGroupReadRequest{
 			Name:        "some-name-0",
 			RequesterId: 1,
 		}
@@ -96,7 +96,7 @@ var _ = Describe("RPCReverseProxy", func() {
 
 		// This is more of a 'ping' message to other nodes so they know to
 		// shard their data.
-		Expect(s0.groupReadRequests).To(ConsistOf(&logcache_v1.GroupReadRequest{
+		Expect(s0.groupReadRequests).To(ConsistOf(&logcache_v1.ShardGroupReadRequest{
 			Name:        "some-name-0",
 			RequesterId: 1,
 			Limit:       -1,
@@ -124,7 +124,7 @@ var _ = Describe("RPCReverseProxy", func() {
 	})
 
 	It("Read returns Unavailable when request is unroutable", func() {
-		req := &logcache_v1.GroupReadRequest{
+		req := &logcache_v1.ShardGroupReadRequest{
 			Name: "some-name-0",
 		}
 		_, err := r.Read(context.Background(), req)
@@ -138,12 +138,12 @@ var _ = Describe("RPCReverseProxy", func() {
 
 	It("proxies GroupRequests to the correct nodes", func() {
 		l.results = []int{0, 1}
-		req := &logcache_v1.GroupRequest{
+		req := &logcache_v1.ShardGroupRequest{
 			Name: "some-name-0",
 		}
 		s0.groupErr = errors.New("some-err")
 		s1.groupErr = errors.New("some-err")
-		_, err := r.Group(context.Background(), req)
+		_, err := r.ShardGroup(context.Background(), req)
 		req.LocalOnly = true
 		Expect(append(s0.groupRequests, s1.groupRequests...)).To(ConsistOf(req))
 		Expect(err).To(MatchError("some-err"))
@@ -157,7 +157,7 @@ var _ = Describe("RPCReverseProxy", func() {
 		s0.groupRespRequesterIDs = []uint64{99, 100}
 		s1.groupRespRequesterIDs = []uint64{100, 101}
 
-		resp, err := r.Group(context.Background(), req)
+		resp, err := r.ShardGroup(context.Background(), req)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Its eventually consistent, and just picks one to query
@@ -179,22 +179,22 @@ var _ = Describe("RPCReverseProxy", func() {
 		req.LocalOnly = true
 		s0.groupRequests = nil
 		s2.groupRequests = nil
-		_, err = r.Group(context.Background(), req)
+		_, err = r.ShardGroup(context.Background(), req)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(s0.groupRequests).To(ConsistOf(req))
 		Expect(s2.groupRequests).To(BeEmpty())
 	})
 
-	It("Group returns Unavailable when request is unroutable", func() {
-		req := &logcache_v1.GroupRequest{
+	It("ShardGroup returns Unavailable when request is unroutable", func() {
+		req := &logcache_v1.ShardGroupRequest{
 			Name: "some-name-0",
 		}
-		_, err := r.Group(context.Background(), req)
+		_, err := r.ShardGroup(context.Background(), req)
 		Expect(grpc.Code(err)).To(Equal(codes.Unavailable))
 
 		l.results = []int{1, 2}
 		req.LocalOnly = true
-		_, err = r.Group(context.Background(), req)
+		_, err = r.ShardGroup(context.Background(), req)
 		Expect(grpc.Code(err)).To(Equal(codes.Unavailable))
 	})
 })
@@ -215,9 +215,9 @@ func (s *spyLookup) Lookup(name string) []int {
 
 type spyGroupReaderClient struct {
 	mu                 sync.Mutex
-	addToGroupRequests []*logcache_v1.AddToGroupRequest
-	groupReadRequests  []*logcache_v1.GroupReadRequest
-	groupRequests      []*logcache_v1.GroupRequest
+	addToGroupRequests []*logcache_v1.SetShardGroupRequest
+	groupReadRequests  []*logcache_v1.ShardGroupReadRequest
+	groupRequests      []*logcache_v1.ShardGroupRequest
 
 	groupRespSourceIDs    []string
 	groupRespRequesterIDs []uint64
@@ -232,41 +232,41 @@ func newSpyGroupReaderClient() *spyGroupReaderClient {
 	return &spyGroupReaderClient{}
 }
 
-func (s *spyGroupReaderClient) AddToGroup(c context.Context, r *logcache_v1.AddToGroupRequest, _ ...grpc.CallOption) (*logcache_v1.AddToGroupResponse, error) {
+func (s *spyGroupReaderClient) SetShardGroup(c context.Context, r *logcache_v1.SetShardGroupRequest, _ ...grpc.CallOption) (*logcache_v1.SetShardGroupResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.addToGroupRequests = append(s.addToGroupRequests, r)
-	return &logcache_v1.AddToGroupResponse{}, s.addErr
+	return &logcache_v1.SetShardGroupResponse{}, s.addErr
 }
 
-func (s *spyGroupReaderClient) setAddToGroup(r []*logcache_v1.AddToGroupRequest) {
+func (s *spyGroupReaderClient) setSetShardGroup(r []*logcache_v1.SetShardGroupRequest) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.addToGroupRequests = r
 }
 
-func (s *spyGroupReaderClient) AddToGroupRequests() []*logcache_v1.AddToGroupRequest {
+func (s *spyGroupReaderClient) SetShardGroupRequests() []*logcache_v1.SetShardGroupRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	r := make([]*logcache_v1.AddToGroupRequest, len(s.addToGroupRequests))
+	r := make([]*logcache_v1.SetShardGroupRequest, len(s.addToGroupRequests))
 	copy(r, s.addToGroupRequests)
 
 	return r
 }
 
-func (s *spyGroupReaderClient) Read(c context.Context, r *logcache_v1.GroupReadRequest, _ ...grpc.CallOption) (*logcache_v1.GroupReadResponse, error) {
+func (s *spyGroupReaderClient) Read(c context.Context, r *logcache_v1.ShardGroupReadRequest, _ ...grpc.CallOption) (*logcache_v1.ShardGroupReadResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.groupReadRequests = append(s.groupReadRequests, r)
-	return &logcache_v1.GroupReadResponse{}, s.readErr
+	return &logcache_v1.ShardGroupReadResponse{}, s.readErr
 }
 
-func (s *spyGroupReaderClient) Group(c context.Context, r *logcache_v1.GroupRequest, _ ...grpc.CallOption) (*logcache_v1.GroupResponse, error) {
+func (s *spyGroupReaderClient) ShardGroup(c context.Context, r *logcache_v1.ShardGroupRequest, _ ...grpc.CallOption) (*logcache_v1.ShardGroupResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.groupRequests = append(s.groupRequests, r)
-	return &logcache_v1.GroupResponse{
+	return &logcache_v1.ShardGroupResponse{
 		SourceIds:    s.groupRespSourceIDs,
 		RequesterIds: s.groupRespRequesterIDs,
 	}, s.groupErr

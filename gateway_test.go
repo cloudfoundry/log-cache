@@ -16,8 +16,8 @@ import (
 
 var _ = Describe("Gateway", func() {
 	var (
-		spyLogCache    *spyLogCache
-		spyGroupReader *spyGroupReader
+		spyLogCache         *spyLogCache
+		spyShardGroupReader *spyShardGroupReader
 
 		gw *logcache.Gateway
 	)
@@ -34,8 +34,8 @@ var _ = Describe("Gateway", func() {
 		spyLogCache = newSpyLogCache(tlsConfig)
 		logCacheAddr := spyLogCache.start()
 
-		spyGroupReader = newSpyGroupReader(tlsConfig)
-		groupReaderAddr := spyGroupReader.start()
+		spyShardGroupReader = newSpyGroupReader(tlsConfig)
+		groupReaderAddr := spyShardGroupReader.start()
 
 		gw = logcache.NewGateway(
 			logCacheAddr,
@@ -71,14 +71,14 @@ var _ = Describe("Gateway", func() {
 		Entry("with dash", "some-source-id", "some-source-id"),
 	)
 
-	It("upgrades HTTP requests for GroupReader into gRPC requests", func() {
-		path := "v1/group/some-name?start_time=99&end_time=101&limit=103&envelope_types=LOG"
+	It("upgrades HTTP requests for ShardGroupReader into gRPC requests", func() {
+		path := "v1/shard_group/some-name?start_time=99&end_time=101&limit=103&envelope_types=LOG"
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 		resp, err := http.Get(URL)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
-		reqs := spyGroupReader.getReadRequests()
+		reqs := spyShardGroupReader.getReadRequests()
 		Expect(reqs).To(HaveLen(1))
 		Expect(reqs[0].Name).To(Equal("some-name"))
 		Expect(reqs[0].StartTime).To(Equal(int64(99)))
@@ -87,8 +87,8 @@ var _ = Describe("Gateway", func() {
 		Expect(reqs[0].EnvelopeTypes).To(ConsistOf(rpc.EnvelopeType_LOG))
 	})
 
-	It("upgrades HTTP requests for GroupReader PUTs into gRPC requests", func() {
-		path := "v1/group/some-name/some-source/id"
+	It("upgrades HTTP requests for ShardGroupReader PUTs into gRPC requests", func() {
+		path := "v1/shard_group/some-name/some-source/id"
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 		req, _ := http.NewRequest("PUT", URL, nil)
 
@@ -96,7 +96,7 @@ var _ = Describe("Gateway", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
-		reqs := spyGroupReader.AddRequests()
+		reqs := spyShardGroupReader.AddRequests()
 		Expect(reqs).To(HaveLen(1))
 		Expect(reqs[0].Name).To(Equal("some-name"))
 		Expect(reqs[0].SourceId).To(Equal("some-source/id"))

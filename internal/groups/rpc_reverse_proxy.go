@@ -20,7 +20,7 @@ import (
 type RPCReverseProxy struct {
 	log   *log.Logger
 	l     Lookup
-	s     []logcache_v1.GroupReaderClient
+	s     []logcache_v1.ShardGroupReaderClient
 	local int
 }
 
@@ -30,7 +30,7 @@ type Lookup interface {
 }
 
 // NewRequestRouter creates a new RPCReverseProxy.
-func NewRPCReverseProxy(s []logcache_v1.GroupReaderClient, local int, l Lookup, log *log.Logger) *RPCReverseProxy {
+func NewRPCReverseProxy(s []logcache_v1.ShardGroupReaderClient, local int, l Lookup, log *log.Logger) *RPCReverseProxy {
 	return &RPCReverseProxy{
 		s:     s,
 		l:     l,
@@ -39,8 +39,8 @@ func NewRPCReverseProxy(s []logcache_v1.GroupReaderClient, local int, l Lookup, 
 	}
 }
 
-// AddToGroup implements logcache_v1.GroupReaderServer.
-func (r *RPCReverseProxy) AddToGroup(c context.Context, req *logcache_v1.AddToGroupRequest) (*logcache_v1.AddToGroupResponse, error) {
+// SetShardGroup implements logcache_v1.GroupReaderServer.
+func (r *RPCReverseProxy) SetShardGroup(c context.Context, req *logcache_v1.SetShardGroupRequest) (*logcache_v1.SetShardGroupResponse, error) {
 	nodes := r.l.Lookup(req.GetName())
 	if len(nodes) == 0 {
 		return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
@@ -52,14 +52,14 @@ func (r *RPCReverseProxy) AddToGroup(c context.Context, req *logcache_v1.AddToGr
 			return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
 		}
 
-		return r.s[r.local].AddToGroup(c, req)
+		return r.s[r.local].SetShardGroup(c, req)
 	}
 
 	req.LocalOnly = true
 	errs := make(chan error, len(nodes))
 	for _, n := range nodes {
 		go func(n int) {
-			_, err := r.s[n].AddToGroup(c, req)
+			_, err := r.s[n].SetShardGroup(c, req)
 			errs <- err
 		}(n)
 	}
@@ -82,7 +82,7 @@ func (r *RPCReverseProxy) AddToGroup(c context.Context, req *logcache_v1.AddToGr
 }
 
 // Read implements logcache_v1.GroupReaderServer.
-func (r *RPCReverseProxy) Read(c context.Context, req *logcache_v1.GroupReadRequest) (*logcache_v1.GroupReadResponse, error) {
+func (r *RPCReverseProxy) Read(c context.Context, req *logcache_v1.ShardGroupReadRequest) (*logcache_v1.ShardGroupReadResponse, error) {
 	nodes := r.l.Lookup(req.GetName())
 	if len(nodes) == 0 {
 		return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
@@ -98,7 +98,7 @@ func (r *RPCReverseProxy) Read(c context.Context, req *logcache_v1.GroupReadRequ
 	}
 
 	// We want each node to know about all the requester IDs for sharding.
-	ping := &logcache_v1.GroupReadRequest{
+	ping := &logcache_v1.ShardGroupReadRequest{
 		Name:        req.GetName(),
 		RequesterId: req.GetRequesterId(),
 
@@ -109,7 +109,7 @@ func (r *RPCReverseProxy) Read(c context.Context, req *logcache_v1.GroupReadRequ
 	}
 
 	var (
-		resp *logcache_v1.GroupReadResponse
+		resp *logcache_v1.ShardGroupReadResponse
 		err  error
 	)
 
@@ -126,8 +126,8 @@ func (r *RPCReverseProxy) Read(c context.Context, req *logcache_v1.GroupReadRequ
 	return resp, err
 }
 
-// Group implements logcache_v1.GroupReaderServer.
-func (r *RPCReverseProxy) Group(c context.Context, req *logcache_v1.GroupRequest) (*logcache_v1.GroupResponse, error) {
+// ShardGroup implements logcache_v1.GroupReaderServer.
+func (r *RPCReverseProxy) ShardGroup(c context.Context, req *logcache_v1.ShardGroupRequest) (*logcache_v1.ShardGroupResponse, error) {
 	nodes := r.l.Lookup(req.GetName())
 	if len(nodes) == 0 {
 		return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
@@ -139,12 +139,12 @@ func (r *RPCReverseProxy) Group(c context.Context, req *logcache_v1.GroupRequest
 			return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
 		}
 
-		return r.s[r.local].Group(c, req)
+		return r.s[r.local].ShardGroup(c, req)
 	}
 
 	req.LocalOnly = true
 	n := nodes[rand.Intn(len(nodes))]
-	return r.s[n].Group(c, req)
+	return r.s[n].ShardGroup(c, req)
 }
 
 func (r *RPCReverseProxy) contains(a int, b []int) bool {

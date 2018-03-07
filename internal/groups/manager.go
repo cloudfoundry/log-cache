@@ -56,11 +56,11 @@ func NewManager(s DataStorage, timeout time.Duration) *Manager {
 	}
 }
 
-// AddToGroup creates the given group if it does not exist or adds the
+// SetShardGroup creates the given group if it does not exist or adds the
 // sourceID if it does. The source ID will expire after a configurable amount
 // of time. Therefore, the source ID should be constantly added. It is a NOP
 // to add a source ID to a group if the source ID already exists.
-func (m *Manager) AddToGroup(ctx context.Context, r *logcache_v1.AddToGroupRequest, _ ...grpc.CallOption) (*logcache_v1.AddToGroupResponse, error) {
+func (m *Manager) SetShardGroup(ctx context.Context, r *logcache_v1.SetShardGroupRequest, _ ...grpc.CallOption) (*logcache_v1.SetShardGroupResponse, error) {
 	if r.GetName() == "" || r.GetSourceId() == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "name and source_id fields are required")
 	}
@@ -81,7 +81,7 @@ func (m *Manager) AddToGroup(ctx context.Context, r *logcache_v1.AddToGroupReque
 	// Ensure that sourceID is not already tracked.
 	if expire, ok := gi.sourceIDs[r.SourceId]; ok {
 		m.resetExpire(expire)
-		return &logcache_v1.AddToGroupResponse{}, nil
+		return &logcache_v1.SetShardGroupResponse{}, nil
 	}
 
 	gi.sourceIDs[r.SourceId] = time.AfterFunc(m.timeout, func() {
@@ -91,7 +91,7 @@ func (m *Manager) AddToGroup(ctx context.Context, r *logcache_v1.AddToGroupReque
 	m.m[r.Name] = gi
 	m.s.Add(r.Name, r.SourceId)
 
-	return &logcache_v1.AddToGroupResponse{}, nil
+	return &logcache_v1.SetShardGroupResponse{}, nil
 }
 
 func (m *Manager) removeFromGroup(name, sourceID string) {
@@ -117,7 +117,7 @@ func (m *Manager) removeFromGroup(name, sourceID string) {
 // Read reads from a group. As a side effect, this first prunes any expired
 // requesters for the group. This is to ensure that the current read will read
 // from the most sourceIDs necessary.
-func (m *Manager) Read(ctx context.Context, r *logcache_v1.GroupReadRequest, _ ...grpc.CallOption) (*logcache_v1.GroupReadResponse, error) {
+func (m *Manager) Read(ctx context.Context, r *logcache_v1.ShardGroupReadRequest, _ ...grpc.CallOption) (*logcache_v1.ShardGroupReadResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -148,7 +148,7 @@ func (m *Manager) Read(ctx context.Context, r *logcache_v1.GroupReadRequest, _ .
 	if r.GetLimit() < 0 {
 		// Negative limit implies that we are only pinging the requester ID
 		// and don't want any data.
-		return &logcache_v1.GroupReadResponse{
+		return &logcache_v1.ShardGroupReadResponse{
 			Envelopes: &loggregator_v2.EnvelopeBatch{
 				Batch: nil,
 			},
@@ -172,17 +172,17 @@ func (m *Manager) Read(ctx context.Context, r *logcache_v1.GroupReadRequest, _ .
 		r.RequesterId,
 	)
 
-	return &logcache_v1.GroupReadResponse{
+	return &logcache_v1.ShardGroupReadResponse{
 		Envelopes: &loggregator_v2.EnvelopeBatch{
 			Batch: batch,
 		},
 	}, nil
 }
 
-// Group returns information about the given group. If the group does not
+// ShardGroup returns information about the given group. If the group does not
 // exist, the returned sourceID slice will be empty, but an error will not be
 // returned.
-func (m *Manager) Group(ctx context.Context, r *logcache_v1.GroupRequest, _ ...grpc.CallOption) (*logcache_v1.GroupResponse, error) {
+func (m *Manager) ShardGroup(ctx context.Context, r *logcache_v1.ShardGroupRequest, _ ...grpc.CallOption) (*logcache_v1.ShardGroupResponse, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	a := m.m[r.Name]
@@ -197,7 +197,7 @@ func (m *Manager) Group(ctx context.Context, r *logcache_v1.GroupRequest, _ ...g
 		sourceIDs = append(sourceIDs, sourceID)
 	}
 
-	return &logcache_v1.GroupResponse{
+	return &logcache_v1.ShardGroupResponse{
 		SourceIds:    sourceIDs,
 		RequesterIds: reqIds,
 	}, nil

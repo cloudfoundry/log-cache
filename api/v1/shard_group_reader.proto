@@ -6,38 +6,38 @@ import "google/api/annotations.proto";
 import "v2/envelope.proto";
 import "egress.proto";
 
-// The GroupReader service is used to read data from the LogCache system via
-// groups of source IDs.
-service GroupReader {
-    rpc AddToGroup(AddToGroupRequest) returns (AddToGroupResponse) {
+// The ShardGroupReader service is used to read data from the LogCache system
+// via groups of source IDs.
+service ShardGroupReader {
+    rpc SetShardGroup(SetShardGroupRequest) returns (SetShardGroupResponse) {
         option (google.api.http) = {
-            put: "/v1/group/{name}/{source_id=**}"
+            put: "/v1/shard_group/{name}/{source_id=**}"
         };
     }
 
-    rpc Read(GroupReadRequest) returns (GroupReadResponse) {
+    rpc Read(ShardGroupReadRequest) returns (ShardGroupReadResponse) {
         option (google.api.http) = {
-            get: "/v1/group/{name}"
+            get: "/v1/shard_group/{name}"
         };
     }
 
-    rpc Group(GroupRequest) returns (GroupResponse) {
+    rpc ShardGroup(ShardGroupRequest) returns (ShardGroupResponse) {
         option (google.api.http) = {
-            get: "/v1/group/{name}/meta"
+            get: "/v1/shard_group/{name}/meta"
         };
     }
 }
 
-message AddToGroupRequest {
+message SetShardGroupRequest {
     string name = 1;
     string source_id = 2;
     bool local_only = 3;
 }
 
-message AddToGroupResponse {
+message SetShardGroupResponse {
 }
 
-message GroupReadRequest {
+message ShardGroupReadRequest {
     string name = 1;
     uint64 requester_id = 2;
 
@@ -48,16 +48,16 @@ message GroupReadRequest {
     bool local_only = 7;
 }
 
-message GroupReadResponse {
+message ShardGroupReadResponse {
     loggregator.v2.EnvelopeBatch envelopes = 1;
 }
 
-message GroupRequest {
+message ShardGroupRequest {
     string name = 1;
     bool local_only = 2;
 }
 
-message GroupResponse {
+message ShardGroupResponse {
     repeated string source_ids = 1;
     repeated uint64 requester_ids = 2;
 }

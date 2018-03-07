@@ -15,9 +15,9 @@ import (
 	"google.golang.org/grpc"
 )
 
-// GroupReader gathers data for several source IDs to allow a consumer to read
+// ShardGroupReader gathers data for several source IDs to allow a consumer to read
 // from many different source IDs much like it would read from one.
-type GroupReader struct {
+type ShardGroupReader struct {
 	addr    string
 	extAddr string
 
@@ -33,15 +33,15 @@ type GroupReader struct {
 	dialOpts   []grpc.DialOption
 }
 
-// NewGroupReader creates a new GroupReader. NodeAddrs has the hostport of
+// NewGroupReader creates a new ShardGroupReader. NodeAddrs has the hostport of
 // every node in the cluster (including its own). The nodeIndex is the address
 // of the current node.
-func NewGroupReader(logCacheAddr string, nodeAddrs []string, nodeIndex int, opts ...GroupReaderOption) *GroupReader {
+func NewGroupReader(logCacheAddr string, nodeAddrs []string, nodeIndex int, opts ...GroupReaderOption) *ShardGroupReader {
 	// Copy nodeAddrs to ensure we can manipulate without fear
 	na := make([]string, len(nodeAddrs))
 	copy(na, nodeAddrs)
 
-	r := &GroupReader{
+	r := &ShardGroupReader{
 		addr:     nodeAddrs[nodeIndex],
 		log:      log.New(ioutil.Discard, "", 0),
 		metrics:  nopMetrics{},
@@ -60,37 +60,37 @@ func NewGroupReader(logCacheAddr string, nodeAddrs []string, nodeIndex int, opts
 	return r
 }
 
-// GroupReaderOption configures a GroupReader.
-type GroupReaderOption func(*GroupReader)
+// GroupReaderOption configures a ShardGroupReader.
+type GroupReaderOption func(*ShardGroupReader)
 
 // WithGroupReaderLogger returns a GroupReaderOption that configures the
-// logger used for the GroupReader. Defaults to silent logger.
+// logger used for the ShardGroupReader. Defaults to silent logger.
 func WithGroupReaderLogger(l *log.Logger) GroupReaderOption {
-	return func(r *GroupReader) {
+	return func(r *ShardGroupReader) {
 		r.log = l
 	}
 }
 
 // WithGroupReaderMetrics returns a GroupReaderOption that configures the
-// metrics for the GroupReader. It will add metrics to the given map.
+// metrics for the ShardGroupReader. It will add metrics to the given map.
 func WithGroupReaderMetrics(m Metrics) GroupReaderOption {
-	return func(r *GroupReader) {
+	return func(r *ShardGroupReader) {
 		r.metrics = m
 	}
 }
 
 // WithGroupReaderServerOpts returns a GroupReaderOption that sets
-// grpc.ServerOptions for the GroupReader server.
+// grpc.ServerOptions for the ShardGroupReader server.
 func WithGroupReaderServerOpts(opts ...grpc.ServerOption) GroupReaderOption {
-	return func(g *GroupReader) {
+	return func(g *ShardGroupReader) {
 		g.serverOpts = opts
 	}
 }
 
 // WithGroupReaderDialOpts returns a GroupReaderOption that sets
-// grpc.DialOptions for the GroupReader client.
+// grpc.DialOptions for the ShardGroupReader client.
 func WithGroupReaderDialOpts(opts ...grpc.DialOption) GroupReaderOption {
-	return func(g *GroupReader) {
+	return func(g *ShardGroupReader) {
 		g.dialOpts = opts
 	}
 }
@@ -100,13 +100,13 @@ func WithGroupReaderDialOpts(opts ...grpc.DialOption) GroupReaderOption {
 // when the set address won't match what the scheduler will refer to the node
 // as (e.g. :0). Defaults to the resulting address from the listener.
 func WithGroupReaderExternalAddr(addr string) GroupReaderOption {
-	return func(g *GroupReader) {
+	return func(g *ShardGroupReader) {
 		g.extAddr = addr
 	}
 }
 
 // Start starts servicing for group requests. It does not block.
-func (g *GroupReader) Start() {
+func (g *ShardGroupReader) Start() {
 	lis, err := net.Listen("tcp", g.addr)
 	if err != nil {
 		g.log.Fatalf("failed to listen: %v", err)
@@ -139,7 +139,7 @@ func (g *GroupReader) Start() {
 
 		rp := g.reverseProxy(lookup, m)
 
-		rpc.RegisterGroupReaderServer(srv, rp)
+		rpc.RegisterShardGroupReaderServer(srv, rp)
 		rpc.RegisterOrchestrationServer(srv, orch)
 		if err := srv.Serve(lis); err != nil {
 			g.log.Fatalf("failed to serve: %v", err)
@@ -147,13 +147,13 @@ func (g *GroupReader) Start() {
 	}()
 }
 
-// Addr returns the address of the GroupReader. Start must be invoked first.
-func (g *GroupReader) Addr() string {
+// Addr returns the address of the ShardGroupReader. Start must be invoked first.
+func (g *ShardGroupReader) Addr() string {
 	return g.lis.Addr().String()
 }
 
-func (g *GroupReader) reverseProxy(lookup groups.Lookup, m *groups.Manager) rpc.GroupReaderServer {
-	var gs []rpc.GroupReaderClient
+func (g *ShardGroupReader) reverseProxy(lookup groups.Lookup, m *groups.Manager) rpc.ShardGroupReaderServer {
+	var gs []rpc.ShardGroupReaderClient
 	for i, a := range g.nodeAddrs {
 		if i == g.nodeIndex {
 			gs = append(gs, m)
@@ -164,7 +164,7 @@ func (g *GroupReader) reverseProxy(lookup groups.Lookup, m *groups.Manager) rpc.
 		if err != nil {
 			log.Fatalf("failed to dial %s: %s", a, err)
 		}
-		gs = append(gs, rpc.NewGroupReaderClient(conn))
+		gs = append(gs, rpc.NewShardGroupReaderClient(conn))
 	}
 
 	return groups.NewRPCReverseProxy(gs, g.nodeIndex, lookup, g.log)

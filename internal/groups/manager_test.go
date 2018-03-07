@@ -29,7 +29,7 @@ var _ = Describe("Manager", func() {
 	})
 
 	It("keeps track of source IDs for groups", func() {
-		r, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+		r, err := m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name:     "a",
 			SourceId: "1",
 		})
@@ -38,21 +38,21 @@ var _ = Describe("Manager", func() {
 		Expect(spyDataStorage.addNames).To(ContainElement("a"))
 
 		// Add sourceID 1 twice to ensure it is only reported once
-		r, err = m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+		r, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name:     "a",
 			SourceId: "1",
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r).ToNot(BeNil())
 
-		r, err = m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+		r, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name:     "a",
 			SourceId: "2",
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r).ToNot(BeNil())
 
-		r, err = m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+		r, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name:     "b",
 			SourceId: "1",
 		})
@@ -60,7 +60,7 @@ var _ = Describe("Manager", func() {
 		Expect(r).ToNot(BeNil())
 		Expect(spyDataStorage.addNames).To(ContainElement("b"))
 
-		resp, err := m.Group(context.Background(), &logcache_v1.GroupRequest{
+		resp, err := m.ShardGroup(context.Background(), &logcache_v1.ShardGroupRequest{
 			Name: "a",
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -68,32 +68,32 @@ var _ = Describe("Manager", func() {
 	})
 
 	It("keeps track of requester IDs for a group", func() {
-		_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+		_, err := m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name:     "a",
 			SourceId: "1",
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = m.Read(context.Background(), &logcache_v1.GroupReadRequest{
+		_, err = m.Read(context.Background(), &logcache_v1.ShardGroupReadRequest{
 			Name:        "a",
 			RequesterId: 1,
 		})
 		Expect(err).ToNot(HaveOccurred())
 
 		// Do RequestId 1 twice to ensure it is only reported once.
-		_, err = m.Read(context.Background(), &logcache_v1.GroupReadRequest{
+		_, err = m.Read(context.Background(), &logcache_v1.ShardGroupReadRequest{
 			Name:        "a",
 			RequesterId: 1,
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = m.Read(context.Background(), &logcache_v1.GroupReadRequest{
+		_, err = m.Read(context.Background(), &logcache_v1.ShardGroupReadRequest{
 			Name:        "a",
 			RequesterId: 2,
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		resp, err := m.Group(context.Background(), &logcache_v1.GroupRequest{
+		resp, err := m.ShardGroup(context.Background(), &logcache_v1.ShardGroupRequest{
 			Name: "a",
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -108,13 +108,13 @@ var _ = Describe("Manager", func() {
 	})
 
 	It("uses remoteOnly requesters for requests with negative limits", func() {
-		_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+		_, err := m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name:     "a",
 			SourceId: "1",
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = m.Read(context.Background(), &logcache_v1.GroupReadRequest{
+		_, err = m.Read(context.Background(), &logcache_v1.ShardGroupReadRequest{
 			Name:        "a",
 			RequesterId: 2,
 			Limit:       -1,
@@ -133,7 +133,7 @@ var _ = Describe("Manager", func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		go func() {
 			for range time.Tick(time.Microsecond) {
-				m.AddToGroup(ctx, &logcache_v1.AddToGroupRequest{
+				m.SetShardGroup(ctx, &logcache_v1.SetShardGroupRequest{
 					Name:     "a",
 					SourceId: "1",
 				})
@@ -146,7 +146,7 @@ var _ = Describe("Manager", func() {
 
 		go func() {
 			for range time.Tick(time.Microsecond) {
-				m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+				m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 					Name:     "a",
 					SourceId: "2",
 				})
@@ -154,7 +154,7 @@ var _ = Describe("Manager", func() {
 		}()
 
 		f := func() int {
-			r, err := m.Group(context.Background(), &logcache_v1.GroupRequest{Name: "a"})
+			r, err := m.ShardGroup(context.Background(), &logcache_v1.ShardGroupRequest{Name: "a"})
 			Expect(err).ToNot(HaveOccurred())
 			return len(r.SourceIds)
 		}
@@ -171,7 +171,7 @@ var _ = Describe("Manager", func() {
 
 		go func() {
 			for range time.Tick(time.Microsecond) {
-				_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+				_, err := m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 					Name:     "a",
 					SourceId: "1",
 				})
@@ -180,7 +180,7 @@ var _ = Describe("Manager", func() {
 		}()
 
 		f := func() error {
-			_, err := m.Read(context.Background(), &logcache_v1.GroupReadRequest{
+			_, err := m.Read(context.Background(), &logcache_v1.ShardGroupReadRequest{
 				Name:        "a",
 				RequesterId: 1,
 			})
@@ -189,13 +189,13 @@ var _ = Describe("Manager", func() {
 		Eventually(f).ShouldNot(HaveOccurred())
 
 		ff := func() []uint64 {
-			_, err := m.Read(context.Background(), &logcache_v1.GroupReadRequest{
+			_, err := m.Read(context.Background(), &logcache_v1.ShardGroupReadRequest{
 				Name:        "a",
 				RequesterId: 2,
 			})
 			Expect(err).ToNot(HaveOccurred())
 
-			resp, err := m.Group(context.Background(), &logcache_v1.GroupRequest{
+			resp, err := m.ShardGroup(context.Background(), &logcache_v1.ShardGroupRequest{
 				Name: "a",
 			})
 			Expect(err).ToNot(HaveOccurred())
@@ -213,19 +213,19 @@ var _ = Describe("Manager", func() {
 			{Timestamp: 2},
 		}
 
-		_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+		_, err := m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name:     "a",
 			SourceId: "1",
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+		_, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name:     "a",
 			SourceId: "2",
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		resp, err := m.Read(context.Background(), &logcache_v1.GroupReadRequest{
+		resp, err := m.Read(context.Background(), &logcache_v1.ShardGroupReadRequest{
 			Name: "a",
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -239,12 +239,12 @@ var _ = Describe("Manager", func() {
 	})
 
 	It("defaults startTime to 0, endTime to now, envelopeType to nil and limit to 100", func() {
-		m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+		m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name:     "a",
 			SourceId: "1",
 		})
 
-		m.Read(context.Background(), &logcache_v1.GroupReadRequest{
+		m.Read(context.Background(), &logcache_v1.ShardGroupReadRequest{
 			Name: "a",
 		})
 
@@ -255,7 +255,7 @@ var _ = Describe("Manager", func() {
 	})
 
 	It("returns an error for unknown groups", func() {
-		_, err := m.Read(context.Background(), &logcache_v1.GroupReadRequest{
+		_, err := m.Read(context.Background(), &logcache_v1.ShardGroupReadRequest{
 			Name: "unknown-name",
 		})
 		Expect(err).To(HaveOccurred())
@@ -263,28 +263,28 @@ var _ = Describe("Manager", func() {
 	})
 
 	It("rejects empty group names and source IDs or either that are too long", func() {
-		_, err := m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+		_, err := m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name:     "",
 			SourceId: "1",
 		})
 		Expect(err).To(HaveOccurred())
 		Expect(grpc.Code(err)).To(Equal(codes.InvalidArgument))
 
-		_, err = m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+		_, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name:     strings.Repeat("x", 129),
 			SourceId: "1",
 		})
 		Expect(err).To(HaveOccurred())
 		Expect(grpc.Code(err)).To(Equal(codes.InvalidArgument))
 
-		_, err = m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+		_, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name:     "a",
 			SourceId: "",
 		})
 		Expect(err).To(HaveOccurred())
 		Expect(grpc.Code(err)).To(Equal(codes.InvalidArgument))
 
-		_, err = m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+		_, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name:     "a",
 			SourceId: strings.Repeat("x", 129),
 		})
@@ -300,7 +300,7 @@ var _ = Describe("Manager", func() {
 		go func(m *groups.Manager) {
 			defer wg.Done()
 			for i := 0; i < 100; i++ {
-				m.AddToGroup(context.Background(), &logcache_v1.AddToGroupRequest{
+				m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 					Name:     "a",
 					SourceId: "1",
 				})
@@ -310,7 +310,7 @@ var _ = Describe("Manager", func() {
 		go func(m *groups.Manager) {
 			defer wg.Done()
 			for i := 0; i < 100; i++ {
-				m.Read(context.Background(), &logcache_v1.GroupReadRequest{
+				m.Read(context.Background(), &logcache_v1.ShardGroupReadRequest{
 					Name: "a",
 				})
 			}
