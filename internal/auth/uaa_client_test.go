@@ -42,6 +42,23 @@ var _ = Describe("UAAClient", func() {
 		Expect(c.ClientID).To(Equal("some-client"))
 	})
 
+	It("returns IsAdmin when scopes include logs.admin with correct clientID and UserID", func() {
+		data, err := json.Marshal(map[string]interface{}{
+			"scope":     []string{"logs.admin"},
+			"user_id":   "some-user",
+			"client_id": "some-client",
+		})
+		Expect(err).ToNot(HaveOccurred())
+		httpClient.body = data
+		httpClient.status = http.StatusOK
+
+		c, err := client.Read("valid-token")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(c.IsAdmin).To(BeTrue())
+		Expect(c.UserID).To(Equal("some-user"))
+		Expect(c.ClientID).To(Equal("some-client"))
+	})
+
 	It("calls UAA correctly", func() {
 		token := "my-token"
 		client.Read(token)
@@ -71,7 +88,7 @@ var _ = Describe("UAAClient", func() {
 		Expect(err).To(HaveOccurred())
 	})
 
-	It("returns false when scopes don't include doppler.firehose", func() {
+	It("returns false when scopes don't include doppler.firehose or logs.admin", func() {
 		data, err := json.Marshal(map[string]interface{}{
 			"scope":     []string{"some-scope"},
 			"user_id":   "some-user",

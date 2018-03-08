@@ -90,7 +90,7 @@ type uaaResponse struct {
 
 func (c *UAAClient) hasDopplerScope(r uaaResponse) bool {
 	for _, scope := range r.Scopes {
-		if scope == "doppler.firehose" {
+		if scope == "doppler.firehose" || scope == "logs.admin" {
 			return true
 		}
 	}
