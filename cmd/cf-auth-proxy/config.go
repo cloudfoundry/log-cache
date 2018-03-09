@@ -16,7 +16,7 @@ type CAPI struct {
 
 type UAA struct {
 	ClientID     string `env:"UAA_CLIENT_ID,     required"`
-	ClientSecret string `env:"UAA_CLIENT_SECRET, required"`
+	ClientSecret string `env:"UAA_CLIENT_SECRET, required,noreport"`
 	Addr         string `env:"UAA_ADDR,          required"`
 	CAPath       string `env:"UAA_CA_PATH,       required"`
 }
