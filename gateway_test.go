@@ -93,7 +93,7 @@ var _ = Describe("Gateway", func() {
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 		req, _ := http.NewRequest("PUT", URL, strings.NewReader(`{
 			"subGroup": {
-				"sourceId": "some-source/id"
+				"sourceIds": ["some-source/id"]
 			}
 		}`))
 
@@ -104,6 +104,6 @@ var _ = Describe("Gateway", func() {
 		reqs := spyShardGroupReader.AddRequests()
 		Expect(reqs).To(HaveLen(1))
 		Expect(reqs[0].Name).To(Equal("some-name"))
-		Expect(reqs[0].GetSubGroup().GetSourceId()).To(Equal("some-source/id"))
+		Expect(reqs[0].GetSubGroup().GetSourceIds()).To(ConsistOf("some-source/id"))
 	})
 })

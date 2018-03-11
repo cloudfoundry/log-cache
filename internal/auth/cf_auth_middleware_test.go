@@ -2,8 +2,10 @@ package auth_test
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 
 	"code.cloudfoundry.org/log-cache/internal/auth"
 
@@ -122,6 +124,23 @@ var _ = Describe("CfAuthMiddleware", func() {
 			Expect(recorder.Code).To(Equal(http.StatusNotFound))
 			Expect(baseHandlerCalled).To(BeFalse())
 		})
+
+		It("returns 404 if user is not authorized", func() {
+			var baseHandlerCalled bool
+			baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				baseHandlerCalled = true
+			})
+			authHandler := provider.Middleware(baseHandler)
+
+			spyOauth2ClientReader.result = false
+			spyLogAuthorizer.result = false
+
+			request.Header.Set("Authorization", "valid-token")
+			authHandler.ServeHTTP(recorder, request)
+
+			Expect(recorder.Code).To(Equal(http.StatusNotFound))
+			Expect(baseHandlerCalled).To(BeFalse())
+		})
 	})
 
 	Describe("/v1/meta", func() {
@@ -220,38 +239,48 @@ var _ = Describe("CfAuthMiddleware", func() {
 		})
 	})
 
-	Describe("/v1/group", func() {
+	Describe("/v1/shard_group", func() {
 		BeforeEach(func() {
 			spyOauth2ClientReader.client = "some-client-id"
 			spyOauth2ClientReader.user = "some-user-id"
 
-			request = httptest.NewRequest(http.MethodGet, "/v1/group/some-name", nil)
+			request = httptest.NewRequest(http.MethodGet, "/v1/shard_group/some-name", nil)
 		})
 
 		Describe("Add to group", func() {
 			BeforeEach(func() {
-				request.URL.Path = "/v1/group/some-name/some-id"
+				request.URL.Path = "/v1/shard_group/some-name"
 				request.Method = "PUT"
+				request.Body = ioutil.NopCloser(strings.NewReader(`{"subGroup":{"sourceIds":["some-id"]}}`))
 			})
 
 			DescribeTable("prefixes group name for GET request with the client_id and user_id", func(sourceID string) {
 				request.Header.Set("Authorization", "valid-token")
 
 				var req *http.Request
-				baseHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				var reqBody []byte
+				baseHandler := http.HandlerFunc(func(writer http.ResponseWriter, r *http.Request) {
 					req = r
+					body, err := ioutil.ReadAll(req.Body)
+					Expect(err).ToNot(HaveOccurred())
+					reqBody = body
 				})
 				authHandler := provider.Middleware(baseHandler)
 
+				request.URL.Path = "/v1/shard_group/some-name"
+				request.Method = "PUT"
+				request.Body = ioutil.NopCloser(strings.NewReader(fmt.Sprintf(`{"subGroup":{"sourceIds":["%s"]}}`, sourceID)))
+
 				spyLogAuthorizer.result = true
-				request.URL.Path = fmt.Sprintf("/v1/group/some-name/%s", sourceID)
 
 				authHandler.ServeHTTP(recorder, request)
 
 				Expect(recorder.Code).To(Equal(http.StatusOK))
 
-				Expect(req.URL.Path).To(Equal(fmt.Sprintf("/v1/group/some-client-id-some-user-id-some-name/%s", sourceID)))
+				Expect(req.URL.Path).To(Equal("/v1/shard_group/some-client-id-some-user-id-some-name"))
 				Expect(spyOauth2ClientReader.token).To(Equal("valid-token"))
+
+				Expect(reqBody).To(MatchJSON(fmt.Sprintf(`{"subGroup":{"sourceIds":["%s"]}}`, sourceID)))
 
 				Expect(spyLogAuthorizer.sourceID).To(Equal(sourceID))
 				Expect(spyLogAuthorizer.token).To(Equal("valid-token"))
@@ -285,11 +314,28 @@ var _ = Describe("CfAuthMiddleware", func() {
 
 				Expect(recorder.Code).To(Equal(http.StatusNotFound))
 			})
+
+			It("returns 404 if user is not authorized", func() {
+				var baseHandlerCalled bool
+				baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+					baseHandlerCalled = true
+				})
+				authHandler := provider.Middleware(baseHandler)
+
+				spyOauth2ClientReader.result = false
+				spyLogAuthorizer.result = false
+
+				request.Header.Set("Authorization", "valid-token")
+				authHandler.ServeHTTP(recorder, request)
+
+				Expect(recorder.Code).To(Equal(http.StatusNotFound))
+				Expect(baseHandlerCalled).To(BeFalse())
+			})
 		})
 
 		Describe("Read from group", func() {
 			BeforeEach(func() {
-				request.URL.Path = "/v1/group/some-name"
+				request.URL.Path = "/v1/shard_group/some-name"
 				request.Method = "GET"
 			})
 
@@ -313,7 +359,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 					"group": "some-client-id-some-user-id-some-name"
 				}`))
 
-				Expect(req.URL.Path).To(Equal("/v1/group/some-client-id-some-user-id-some-name"))
+				Expect(req.URL.Path).To(Equal("/v1/shard_group/some-client-id-some-user-id-some-name"))
 				Expect(spyOauth2ClientReader.token).To(Equal("valid-token"))
 			})
 
@@ -342,7 +388,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 					"code":5
 				}`))
 
-				Expect(req.URL.Path).To(Equal("/v1/group/some-client-id-some-user-id-some-name"))
+				Expect(req.URL.Path).To(Equal("/v1/shard_group/some-client-id-some-user-id-some-name"))
 				Expect(spyOauth2ClientReader.token).To(Equal("valid-token"))
 			})
 
@@ -373,7 +419,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 
 		Describe("Read meta for group", func() {
 			BeforeEach(func() {
-				request.URL.Path = "/v1/group/some-name/meta"
+				request.URL.Path = "/v1/shard_group/some-name/meta"
 				request.Method = "GET"
 			})
 
@@ -392,7 +438,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 
 				Expect(recorder.Code).To(Equal(http.StatusOK))
 
-				Expect(req.URL.Path).To(Equal("/v1/group/some-client-id-some-user-id-some-name/meta"))
+				Expect(req.URL.Path).To(Equal("/v1/shard_group/some-client-id-some-user-id-some-name/meta"))
 				Expect(spyOauth2ClientReader.token).To(Equal("valid-token"))
 			})
 

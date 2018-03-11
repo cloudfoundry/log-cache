@@ -107,7 +107,7 @@ var _ = Describe("ShardGroupReader", func() {
 		_, err := c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name: "some-name-a",
 			SubGroup: &rpc.GroupedSourceIds{
-				SourceId: "source-0",
+				SourceIds: []string{"source-0"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -115,7 +115,7 @@ var _ = Describe("ShardGroupReader", func() {
 		_, err = c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name: "some-name-a",
 			SubGroup: &rpc.GroupedSourceIds{
-				SourceId: "source-1",
+				SourceIds: []string{"source-1"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -160,7 +160,7 @@ var _ = Describe("ShardGroupReader", func() {
 		_, err := c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name: "some-name-a",
 			SubGroup: &rpc.GroupedSourceIds{
-				SourceId: "source-0",
+				SourceIds: []string{"source-0"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -168,7 +168,7 @@ var _ = Describe("ShardGroupReader", func() {
 		_, err = c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name: "some-name-a",
 			SubGroup: &rpc.GroupedSourceIds{
-				SourceId: "source-1",
+				SourceIds: []string{"source-1"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -223,7 +223,7 @@ var _ = Describe("ShardGroupReader", func() {
 		_, err := c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name: "some-name-a",
 			SubGroup: &rpc.GroupedSourceIds{
-				SourceId: "some-id",
+				SourceIds: []string{"some-id"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -231,7 +231,7 @@ var _ = Describe("ShardGroupReader", func() {
 		_, err = c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name: "some-name-b",
 			SubGroup: &rpc.GroupedSourceIds{
-				SourceId: "some-other-id",
+				SourceIds: []string{"some-other-id"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -239,7 +239,7 @@ var _ = Describe("ShardGroupReader", func() {
 		_, err = c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name: "some-name-a",
 			SubGroup: &rpc.GroupedSourceIds{
-				SourceId: "some-other-id",
+				SourceIds: []string{"some-other-id"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -249,14 +249,19 @@ var _ = Describe("ShardGroupReader", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(resp.SourceIds).To(ConsistOf("some-id", "some-other-id"))
+		Expect(resp.SubGroups).To(ConsistOf(
+			&rpc.GroupedSourceIds{SourceIds: []string{"some-id"}},
+			&rpc.GroupedSourceIds{SourceIds: []string{"some-other-id"}},
+		))
 
 		resp, err = c.ShardGroup(context.Background(), &rpc.ShardGroupRequest{
 			Name: "some-name-b",
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(resp.SourceIds).To(ConsistOf("some-other-id"))
+		Expect(resp.SubGroups).To(ConsistOf(
+			&rpc.GroupedSourceIds{SourceIds: []string{"some-other-id"}},
+		))
 	})
 
 	It("routes requests to the correct node", func() {
@@ -264,7 +269,7 @@ var _ = Describe("ShardGroupReader", func() {
 		_, err := c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name: "some-name-a",
 			SubGroup: &rpc.GroupedSourceIds{
-				SourceId: "some-id",
+				SourceIds: []string{"some-id"},
 			},
 		})
 
@@ -275,14 +280,14 @@ var _ = Describe("ShardGroupReader", func() {
 		_, err = c.SetShardGroup(context.Background(), &rpc.SetShardGroupRequest{
 			Name: "some-name-c",
 			SubGroup: &rpc.GroupedSourceIds{
-				SourceId: "some-id",
+				SourceIds: []string{"some-id"},
 			},
 		})
 
 		Expect(err).ToNot(HaveOccurred())
 		Eventually(spy.AddRequests).Should(HaveLen(1))
 		Expect(spy.AddRequests()[0].Name).To(Equal("some-name-c"))
-		Expect(spy.AddRequests()[0].GetSubGroup().GetSourceId()).To(Equal("some-id"))
+		Expect(spy.AddRequests()[0].GetSubGroup().GetSourceIds()).To(ConsistOf("some-id"))
 
 		resp, err := c.Read(context.Background(), &rpc.ShardGroupReadRequest{
 			Name: "some-name-c",

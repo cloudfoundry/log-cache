@@ -13,9 +13,9 @@ This repository should be imported as:
 
 ## Source IDs
 
-Log Cache indexes everything by the `source_id` field on the [Loggregator Envelope][loggregator_v2]. The source ID should distinguish the cluster from other clusters. It should not distinguish a specific instance. 
+Log Cache indexes everything by the `source_id` field on the [Loggregator Envelope][loggregator_v2]. The source ID should distinguish the cluster from other clusters. It should not distinguish a specific instance.
 
-### Cloud Foundry 
+### Cloud Foundry
 
 In terms of Cloud Foundry, the source ID can either represent an application guid (e.g. `cf app <app-name> --guid`), or a component name (e.g. `doppler`).
 
@@ -69,9 +69,9 @@ Lists the available `SourceIDs` that Log Cache has persisted.
 }
 ```
 
-### **GET** `/v1/group/<group-name>`
+### **GET** `/v1/shard_group/<group-name>`
 
-Reads from the given group. The group's source-ids are merged and sorted.
+Reads from the given shard-group. The shard-group's source-ids are merged and sorted.
 
 Query Parameters:
 
@@ -88,7 +88,7 @@ Query Parameters:
   is 1000 and defaults to 100.
 
 ```
-curl "http://<log-cache-addr>:8080/v1/group/<group-name>/?start_time=<start time>&end_time=<end time>&requester_id=<requester_id>"
+curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>/?start_time=<start time>&end_time=<end time>&requester_id=<requester_id>"
 ```
 
 ##### Response Body
@@ -98,12 +98,30 @@ curl "http://<log-cache-addr>:8080/v1/group/<group-name>/?start_time=<start time
 }
 ```
 
-### **PUT** `/v1/group/<group-name>/<source-id>`
+### **PUT** `/v1/shard_group/<group-name>/`
 
-Adds the given source-id to the given group. If the group does not exist, then it creates it.
+Adds the given source-ids to the given shard-group. If the group does not
+exist, then it creates it. Each shard-group may contain many sub-groups. Each
+sub-group may contain many source-ids. A shard-group will will be sharded
+evenly across requesters (distinguished by each request's `requester_id`). A
+sub-group ensures that each requester receives the given source-ids grouped
+together (and not spread across other requesters).
+
+##### Request Body
 
 ```
-curl "http://<log-cache-addr>:8080/v1/group/<group-name>/<source-id>" -XPUT
+{
+  "subGroup": {
+    "sourceIds": [
+      "source-id-1",
+      "source-id-2"
+    ]
+  }
+}
+```
+
+```
+curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>/<source-id>" -XPUT -d'{"subGroup":{"sourceIds":["source-id-1","source-id-2"]}}'
 ```
 
 ##### Response Body
@@ -111,25 +129,12 @@ curl "http://<log-cache-addr>:8080/v1/group/<group-name>/<source-id>" -XPUT
 {}
 ```
 
-### **DELETE** `/v1/group/<group-name>/<source-id>`
+### **GET** `/v1/shard_group/<group-name>/meta`
 
-Removes the given source-id from the given group.
-
-```
-curl "http://<log-cache-addr>:8080/v1/group/<group-name>/<source-id>" -XDELETE
-```
-
-##### Response Body
-```
-{}
-```
-
-### **GET** `/v1/group/<group-name>/meta`
-
-Gets meta information about the group.
+Gets meta information about the shard-group.
 
 ```
-curl "http://<log-cache-addr>:8080/v1/group/<group-name>/meta"
+curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>/meta"
 ```
 
 ##### Response Body

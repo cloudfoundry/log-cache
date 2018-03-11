@@ -39,7 +39,7 @@ message SetShardGroupRequest {
 }
 
 message GroupedSourceIds {
-    string source_id = 1;
+    repeated string source_ids = 1;
 }
 
 message SetShardGroupResponse {
@@ -70,7 +70,7 @@ message ShardGroupRequest {
 }
 
 message ShardGroupResponse {
-    repeated string source_ids = 1;
+    repeated GroupedSourceIds sub_groups = 1;
     repeated uint64 requester_ids = 2;
 }
 

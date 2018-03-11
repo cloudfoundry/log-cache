@@ -2,6 +2,8 @@ package groups
 
 import (
 	"context"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,14 +36,14 @@ type DataStorage interface {
 		requesterID uint64,
 	) []*loggregator_v2.Envelope
 
-	// Add starts fetching data for the given sourceID.
-	Add(name, sourceID string)
+	// Add starts fetching data for the given sourceID group.
+	Add(name string, sourceIDs []string)
 
 	// AddRequester adds a requester ID for a given group.
 	AddRequester(name string, requesterID uint64, remoteOnly bool)
 
-	// Remove stops fetching data for the given sourceID.
-	Remove(name, sourceID string)
+	// Remove stops fetching data for the given sourceID group.
+	Remove(name string, sourceIDs []string)
 
 	// RemoveRequester removes a requester ID for a given group.
 	RemoveRequester(name string, requesterID uint64)
@@ -61,12 +63,18 @@ func NewManager(s DataStorage, timeout time.Duration) *Manager {
 // of time. Therefore, the source ID should be constantly added. It is a NOP
 // to add a source ID to a group if the source ID already exists.
 func (m *Manager) SetShardGroup(ctx context.Context, r *logcache_v1.SetShardGroupRequest, _ ...grpc.CallOption) (*logcache_v1.SetShardGroupResponse, error) {
-	if r.GetName() == "" || r.GetSubGroup().GetSourceId() == "" {
+	if r.GetName() == "" || len(r.GetSubGroup().GetSourceIds()) == 0 {
 		return nil, grpc.Errorf(codes.InvalidArgument, "name and source_id fields are required")
 	}
 
-	if len(r.GetName()) > 128 || len(r.GetSubGroup().GetSourceId()) > 128 {
-		return nil, grpc.Errorf(codes.InvalidArgument, "name and source_id fields can only be 128 bytes long")
+	if len(r.GetName()) > 128 {
+		return nil, grpc.Errorf(codes.InvalidArgument, "name and source_ids fields can only be 128 bytes long and must not be empty")
+	}
+
+	for _, sourceID := range r.GetSubGroup().GetSourceIds() {
+		if len(sourceID) > 128 || sourceID == "" {
+			return nil, grpc.Errorf(codes.InvalidArgument, "name and source_ids fields can only be 128 bytes long and must not be empty")
+		}
 	}
 
 	m.mu.Lock()
@@ -74,27 +82,35 @@ func (m *Manager) SetShardGroup(ctx context.Context, r *logcache_v1.SetShardGrou
 
 	gi, ok := m.m[r.Name]
 	if !ok {
-		gi.sourceIDs = make(map[string]*time.Timer)
+		gi.groupedSourceIDs = make(map[string]subGroupInfo)
 		gi.requesterIDs = make(map[uint64]time.Time)
 	}
 
 	// Ensure that sourceID is not already tracked.
-	if expire, ok := gi.sourceIDs[r.GetSubGroup().GetSourceId()]; ok {
-		m.resetExpire(expire)
+	sourceIDs := r.GetSubGroup().GetSourceIds()
+	sort.Strings(sourceIDs)
+	allSourceIDs := strings.Join(sourceIDs, ",")
+
+	if subGroup, ok := gi.groupedSourceIDs[allSourceIDs]; ok {
+		m.resetExpire(subGroup.t)
 		return &logcache_v1.SetShardGroupResponse{}, nil
 	}
 
-	gi.sourceIDs[r.GetSubGroup().GetSourceId()] = time.AfterFunc(m.timeout, func() {
-		m.removeFromGroup(r.GetName(), r.GetSubGroup().GetSourceId())
-	})
+	sg := subGroupInfo{
+		sourceIDs: sourceIDs,
+		t: time.AfterFunc(m.timeout, func() {
+			m.removeFromGroup(r.GetName(), allSourceIDs, r.GetSubGroup().GetSourceIds())
+		}),
+	}
+	gi.groupedSourceIDs[allSourceIDs] = sg
 
 	m.m[r.Name] = gi
-	m.s.Add(r.GetName(), r.GetSubGroup().GetSourceId())
+	m.s.Add(r.GetName(), r.GetSubGroup().GetSourceIds())
 
 	return &logcache_v1.SetShardGroupResponse{}, nil
 }
 
-func (m *Manager) removeFromGroup(name, sourceID string) {
+func (m *Manager) removeFromGroup(name, allSourceIDs string, sourceIDs []string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -103,13 +119,13 @@ func (m *Manager) removeFromGroup(name, sourceID string) {
 		return
 	}
 
-	if _, ok := a.sourceIDs[sourceID]; ok {
-		delete(a.sourceIDs, sourceID)
-		m.s.Remove(name, sourceID)
+	if _, ok := a.groupedSourceIDs[allSourceIDs]; ok {
+		delete(a.groupedSourceIDs, allSourceIDs)
+		m.s.Remove(name, sourceIDs)
 	}
 	m.m[name] = a
 
-	if len(m.m[name].sourceIDs) == 0 {
+	if len(m.m[name].groupedSourceIDs) == 0 {
 		delete(m.m, name)
 	}
 }
@@ -192,13 +208,15 @@ func (m *Manager) ShardGroup(ctx context.Context, r *logcache_v1.ShardGroupReque
 		reqIds = append(reqIds, k)
 	}
 
-	var sourceIDs []string
-	for sourceID := range a.sourceIDs {
-		sourceIDs = append(sourceIDs, sourceID)
+	var subGroups []*logcache_v1.GroupedSourceIds
+	for _, g := range a.groupedSourceIDs {
+		subGroups = append(subGroups, &logcache_v1.GroupedSourceIds{
+			SourceIds: g.sourceIDs,
+		})
 	}
 
 	return &logcache_v1.ShardGroupResponse{
-		SourceIds:    sourceIDs,
+		SubGroups:    subGroups,
 		RequesterIds: reqIds,
 	}, nil
 }
@@ -241,6 +259,11 @@ func (m *Manager) convertEnvelopeType(t logcache_v1.EnvelopeType) store.Envelope
 }
 
 type groupInfo struct {
-	sourceIDs    map[string]*time.Timer
-	requesterIDs map[uint64]time.Time
+	groupedSourceIDs map[string]subGroupInfo
+	requesterIDs     map[uint64]time.Time
+}
+
+type subGroupInfo struct {
+	t         *time.Timer
+	sourceIDs []string
 }

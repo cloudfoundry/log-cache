@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"time"
 
 	logcache "code.cloudfoundry.org/go-log-cache"
@@ -85,13 +86,32 @@ func (s *Storage) Get(
 	return s.store.Get(encodedName, start, end, envelopeTypes, limit, descending)
 }
 
-// Add adds a SourceID for the storage to fetch.
-func (s *Storage) Add(name, sourceID string) {
+// Add adds a SourceID group for the storage to fetch.
+func (s *Storage) Add(name string, sourceIDs []string) {
 	agg := s.initAggregator(name)
 
-	agg.sourceIDs = append(agg.sourceIDs, sourceID)
-	sort.Sort(sort.StringSlice(agg.sourceIDs))
+	agg.sourceIDs = append(agg.sourceIDs, sourceIDs)
+	sort.Sort(sourceIDGroups(agg.sourceIDs))
 	s.assignSourceIDs(agg)
+}
+
+type sourceIDGroups [][]string
+
+func (g sourceIDGroups) Len() int {
+	return len(g)
+}
+
+func (g sourceIDGroups) Swap(i, j int) {
+	t := g[i]
+	g[i] = g[j]
+	g[j] = t
+}
+
+func (g sourceIDGroups) Less(i, j int) bool {
+	a := strings.Join(g[i], ",")
+	b := strings.Join(g[j], ",")
+
+	return a < b
 }
 
 // AddRequester adds a request ID for sharded reading.
@@ -133,16 +153,19 @@ func (s *Storage) RemoveRequester(name string, ID uint64) {
 	s.assignSourceIDs(agg)
 }
 
-// Remove removes a SourceID from the store. The data will not be eagerly
-// deleted but additional data will not be added.
-func (s *Storage) Remove(name, sourceID string) {
+// Remove removes a SourceID group from the store. The data will not be
+// eagerly deleted but additional data will not be added.
+func (s *Storage) Remove(name string, sourceIDs []string) {
 	agg, ok := s.m[name]
 	if !ok {
 		return
 	}
 
+	a := strings.Join(sourceIDs, ",")
+
 	for i, id := range agg.sourceIDs {
-		if id == sourceID {
+		b := strings.Join(id, ",")
+		if b == a {
 			agg.sourceIDs = append(agg.sourceIDs[:i], agg.sourceIDs[i+1:]...)
 		}
 	}
@@ -162,7 +185,7 @@ func (s *Storage) assignSourceIDs(agg *aggregator) {
 	}
 
 	// Setup expected
-	expected := make(map[uint64][]string)
+	expected := make(map[uint64][][]string)
 	for si, sourceID := range agg.sourceIDs {
 		reqID := agg.requesters[si%len(agg.requesters)].ID
 		expected[reqID] = append(expected[reqID], sourceID)
@@ -172,18 +195,17 @@ func (s *Storage) assignSourceIDs(agg *aggregator) {
 	for _, req := range agg.requesters {
 		// Add sourceIDs that are in expected, but not in req.sourceIDs
 		for _, sid := range expected[req.ID] {
-			if !containsSourceID(req.sourceIDs, sid) {
+			if !containsSourceIDs(req.sourceIDs, sid) {
 				agg.add(req.ID, sid)
 			}
 		}
 
 		// Remove sourceIDs that aren't in expected, but are in req.sourceIDs
 		for _, sid := range req.sourceIDs {
-			if !containsSourceID(expected[req.ID], sid) {
+			if !containsSourceIDs(expected[req.ID], sid) {
 				agg.remove(req.ID, sid)
 			}
 		}
-
 	}
 }
 
@@ -217,7 +239,7 @@ func (s *Storage) encodeName(name string, requesterID uint64) string {
 
 type aggregator struct {
 	r            Reader
-	sourceIDs    []string
+	sourceIDs    [][]string
 	requesterIDs map[uint64]*requester
 	requesters   []*requester
 	backoff      time.Duration
@@ -227,7 +249,7 @@ type aggregator struct {
 }
 
 type requester struct {
-	sourceIDs []string
+	sourceIDs [][]string
 	agg       *streamaggregator.StreamAggregator
 	ID        uint64
 
@@ -235,49 +257,60 @@ type requester struct {
 	cancel func()
 }
 
-func containsSourceID(ids []string, sid string) bool {
+func containsSourceIDs(ids [][]string, sid []string) bool {
 	for _, s := range ids {
-		if s == sid {
+		// TODO: This could be more performant.
+		a := strings.Join(s, ",")
+		b := strings.Join(sid, ",")
+		if a == b {
 			return true
 		}
 	}
 	return false
 }
 
-func (a *aggregator) add(id uint64, sourceID string) error {
+func (a *aggregator) add(id uint64, sourceIDs []string) error {
 	req := a.requesterIDs[id]
-	req.sourceIDs = append(req.sourceIDs, sourceID)
+	req.sourceIDs = append(req.sourceIDs, sourceIDs)
 
-	req.agg.AddProducer(sourceID, streamaggregator.ProducerFunc(func(ctx context.Context, request interface{}, c chan<- interface{}) {
-		logcache.Walk(ctx, sourceID,
-			func(e []*loggregator_v2.Envelope) bool {
-				for _, ee := range e {
-					select {
-					case c <- ee:
-					case <-ctx.Done():
-						return false
+	for _, sourceID := range sourceIDs {
+		// shadow to avoid closure problems
+		sourceID := sourceID
+		req.agg.AddProducer(sourceID, streamaggregator.ProducerFunc(func(ctx context.Context, request interface{}, c chan<- interface{}) {
+			logcache.Walk(ctx, sourceID,
+				func(e []*loggregator_v2.Envelope) bool {
+					for _, ee := range e {
+						select {
+						case c <- ee:
+						case <-ctx.Done():
+							return false
+						}
 					}
-				}
 
-				return true
-			},
-			logcache.Reader(a.r),
-			logcache.WithWalkBackoff(logcache.NewAlwaysRetryBackoff(a.backoff)),
-		)
-	}))
+					return true
+				},
+				logcache.Reader(a.r),
+				logcache.WithWalkBackoff(logcache.NewAlwaysRetryBackoff(a.backoff)),
+			)
+		}))
+	}
 
 	return nil
 }
 
-func (a *aggregator) remove(id uint64, sourceID string) error {
+func (a *aggregator) remove(id uint64, sourceIDs []string) error {
 	req := a.requesterIDs[id]
+	sid := strings.Join(sourceIDs, ",")
 	for i, x := range req.sourceIDs {
-		if x == sourceID {
+		b := strings.Join(x, ",")
+		if sid == b {
 			req.sourceIDs = append(req.sourceIDs[:i], req.sourceIDs[i+1:]...)
 		}
 	}
 
-	req.agg.RemoveProducer(sourceID)
+	for _, sourceID := range sourceIDs {
+		req.agg.RemoveProducer(sourceID)
+	}
 
 	return nil
 }

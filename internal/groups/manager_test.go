@@ -32,18 +32,18 @@ var _ = Describe("Manager", func() {
 		r, err := m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "a",
 			SubGroup: &logcache_v1.GroupedSourceIds{
-				SourceId: "1",
+				SourceIds: []string{"1", "2"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r).ToNot(BeNil())
 		Expect(spyDataStorage.addNames).To(ContainElement("a"))
 
-		// Add sourceID 1 twice to ensure it is only reported once
+		// Add sourceID 1 and 2 twice to ensure it is only reported once
 		r, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "a",
 			SubGroup: &logcache_v1.GroupedSourceIds{
-				SourceId: "1",
+				SourceIds: []string{"2", "1"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -52,7 +52,7 @@ var _ = Describe("Manager", func() {
 		r, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "a",
 			SubGroup: &logcache_v1.GroupedSourceIds{
-				SourceId: "2",
+				SourceIds: []string{"3"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -61,7 +61,7 @@ var _ = Describe("Manager", func() {
 		r, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "b",
 			SubGroup: &logcache_v1.GroupedSourceIds{
-				SourceId: "1",
+				SourceIds: []string{"1", "2"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -72,14 +72,17 @@ var _ = Describe("Manager", func() {
 			Name: "a",
 		})
 		Expect(err).ToNot(HaveOccurred())
-		Expect(resp.SourceIds).To(ConsistOf("1", "2"))
+		Expect(resp.SubGroups).To(ConsistOf(
+			&logcache_v1.GroupedSourceIds{SourceIds: []string{"1", "2"}},
+			&logcache_v1.GroupedSourceIds{SourceIds: []string{"3"}},
+		))
 	})
 
 	It("keeps track of requester IDs for a group", func() {
 		_, err := m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "a",
 			SubGroup: &logcache_v1.GroupedSourceIds{
-				SourceId: "1",
+				SourceIds: []string{"1"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -121,7 +124,7 @@ var _ = Describe("Manager", func() {
 		_, err := m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "a",
 			SubGroup: &logcache_v1.GroupedSourceIds{
-				SourceId: "1",
+				SourceIds: []string{"1"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -148,7 +151,7 @@ var _ = Describe("Manager", func() {
 				m.SetShardGroup(ctx, &logcache_v1.SetShardGroupRequest{
 					Name: "a",
 					SubGroup: &logcache_v1.GroupedSourceIds{
-						SourceId: "1",
+						SourceIds: []string{"1"},
 					},
 				})
 
@@ -163,7 +166,7 @@ var _ = Describe("Manager", func() {
 				m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 					Name: "a",
 					SubGroup: &logcache_v1.GroupedSourceIds{
-						SourceId: "2",
+						SourceIds: []string{"2"},
 					},
 				})
 			}
@@ -172,7 +175,7 @@ var _ = Describe("Manager", func() {
 		f := func() int {
 			r, err := m.ShardGroup(context.Background(), &logcache_v1.ShardGroupRequest{Name: "a"})
 			Expect(err).ToNot(HaveOccurred())
-			return len(r.SourceIds)
+			return len(r.SubGroups)
 		}
 
 		Eventually(f).Should(Equal(2))
@@ -190,7 +193,7 @@ var _ = Describe("Manager", func() {
 				_, err := m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 					Name: "a",
 					SubGroup: &logcache_v1.GroupedSourceIds{
-						SourceId: "1",
+						SourceIds: []string{"1"},
 					},
 				})
 				Expect(err).ToNot(HaveOccurred())
@@ -234,7 +237,7 @@ var _ = Describe("Manager", func() {
 		_, err := m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "a",
 			SubGroup: &logcache_v1.GroupedSourceIds{
-				SourceId: "1",
+				SourceIds: []string{"1"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -242,7 +245,7 @@ var _ = Describe("Manager", func() {
 		_, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "a",
 			SubGroup: &logcache_v1.GroupedSourceIds{
-				SourceId: "2",
+				SourceIds: []string{"2"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -257,14 +260,14 @@ var _ = Describe("Manager", func() {
 			&loggregator_v2.Envelope{Timestamp: 2},
 		))
 
-		Expect(spyDataStorage.adds).To(ConsistOf("1", "2"))
+		Expect(spyDataStorage.adds).To(ConsistOf([]string{"1"}, []string{"2"}))
 	})
 
 	It("defaults startTime to 0, endTime to now, envelopeType to nil and limit to 100", func() {
 		m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "a",
 			SubGroup: &logcache_v1.GroupedSourceIds{
-				SourceId: "1",
+				SourceIds: []string{"1"},
 			},
 		})
 
@@ -290,7 +293,7 @@ var _ = Describe("Manager", func() {
 		_, err := m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "",
 			SubGroup: &logcache_v1.GroupedSourceIds{
-				SourceId: "1",
+				SourceIds: []string{"1"},
 			},
 		})
 		Expect(err).To(HaveOccurred())
@@ -299,7 +302,7 @@ var _ = Describe("Manager", func() {
 		_, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: strings.Repeat("x", 129),
 			SubGroup: &logcache_v1.GroupedSourceIds{
-				SourceId: "1",
+				SourceIds: []string{"1"},
 			},
 		})
 		Expect(err).To(HaveOccurred())
@@ -308,7 +311,7 @@ var _ = Describe("Manager", func() {
 		_, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "a",
 			SubGroup: &logcache_v1.GroupedSourceIds{
-				SourceId: "",
+				SourceIds: []string{""},
 			},
 		})
 		Expect(err).To(HaveOccurred())
@@ -317,7 +320,7 @@ var _ = Describe("Manager", func() {
 		_, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "a",
 			SubGroup: &logcache_v1.GroupedSourceIds{
-				SourceId: strings.Repeat("x", 129),
+				SourceIds: []string{strings.Repeat("x", 129)},
 			},
 		})
 		Expect(err).To(HaveOccurred())
@@ -335,7 +338,7 @@ var _ = Describe("Manager", func() {
 				m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 					Name: "a",
 					SubGroup: &logcache_v1.GroupedSourceIds{
-						SourceId: "1",
+						SourceIds: []string{"1"},
 					},
 				})
 			}
@@ -357,10 +360,10 @@ var _ = Describe("Manager", func() {
 })
 
 type spyDataStorage struct {
-	adds     []string
+	adds     [][]string
 	addNames []string
 
-	removes     []string
+	removes     [][]string
 	removeNames []string
 
 	addReqNames      []string
@@ -404,9 +407,9 @@ func (s *spyDataStorage) Get(
 	return s.getResult
 }
 
-func (s *spyDataStorage) Add(name, sourceID string) {
+func (s *spyDataStorage) Add(name string, sourceIDs []string) {
 	s.addNames = append(s.addNames, name)
-	s.adds = append(s.adds, sourceID)
+	s.adds = append(s.adds, sourceIDs)
 }
 
 func (s *spyDataStorage) AddRequester(name string, requesterID uint64, remoteOnly bool) {
@@ -415,9 +418,9 @@ func (s *spyDataStorage) AddRequester(name string, requesterID uint64, remoteOnl
 	s.addReqRemoteOnly = append(s.addReqRemoteOnly, remoteOnly)
 }
 
-func (s *spyDataStorage) Remove(name, sourceID string) {
+func (s *spyDataStorage) Remove(name string, sourceIDs []string) {
 	s.removeNames = append(s.removeNames, name)
-	s.removes = append(s.removes, sourceID)
+	s.removes = append(s.removes, sourceIDs)
 }
 
 func (s *spyDataStorage) RemoveRequester(name string, requesterID uint64) {

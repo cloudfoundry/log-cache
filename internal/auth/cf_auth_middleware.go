@@ -3,6 +3,8 @@ package auth
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 
 	"log"
@@ -85,14 +87,13 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		h.ServeHTTP(w, r)
 	})
 
-	router.HandleFunc("/v1/group/{name}/{sourceID:.*}", func(w http.ResponseWriter, r *http.Request) {
-		vars := mux.Vars(r)
+	router.HandleFunc("/v1/shard_group/{name}", func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			io.Copy(ioutil.Discard, r.Body)
+			r.Body.Close()
+		}()
 
-		sourceID, ok := mux.Vars(r)["sourceID"]
-		if !ok {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
+		vars := mux.Vars(r)
 
 		authToken := r.Header.Get("Authorization")
 		if authToken == "" {
@@ -100,7 +101,13 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 			return
 		}
 
-		m.logAuthorizer.IsAuthorized(sourceID, authToken)
+		var setShard rpc.SetShardGroupRequest
+		if err := jsonpb.Unmarshal(r.Body, &setShard); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			println(err.Error())
+			w.Write([]byte(fmt.Sprintf(`{"error": %q`, err)))
+			return
+		}
 
 		c, err := m.oauth2Reader.Read(authToken)
 		if err != nil {
@@ -109,18 +116,31 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 			return
 		}
 
+		for _, sourceID := range setShard.GetSubGroup().GetSourceIds() {
+			if !c.IsAdmin {
+				if !m.logAuthorizer.IsAuthorized(sourceID, authToken) {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+			}
+		}
+
 		r.URL.Path = fmt.Sprintf(
-			"/v1/group/%s-%s-%s/%s",
+			"/v1/shard_group/%s-%s-%s",
 			c.ClientID,
 			c.UserID,
 			vars["name"],
-			sourceID,
 		)
+
+		buf := &bytes.Buffer{}
+		m := jsonpb.Marshaler{}
+		m.Marshal(buf, &setShard)
+		r.Body = ioutil.NopCloser(buf)
 
 		h.ServeHTTP(w, r)
 	}).Methods("PUT")
 
-	router.HandleFunc("/v1/group/{name}", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/v1/shard_group/{name}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 
 		authToken := r.Header.Get("Authorization")
@@ -137,7 +157,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		}
 
 		prefixedName := fmt.Sprintf("%s-%s-%s", c.ClientID, c.UserID, vars["name"])
-		r.URL.Path = "/v1/group/" + prefixedName
+		r.URL.Path = "/v1/shard_group/" + prefixedName
 
 		interceptor := &interceptingResponseWriter{
 			ResponseWriter: w,
@@ -147,7 +167,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		h.ServeHTTP(interceptor, r)
 	}).Methods("GET")
 
-	router.HandleFunc("/v1/group/{name}/meta", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/v1/shard_group/{name}/meta", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 
 		authToken := r.Header.Get("Authorization")
@@ -164,7 +184,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		}
 
 		r.URL.Path = fmt.Sprintf(
-			"/v1/group/%s-%s-%s/meta",
+			"/v1/shard_group/%s-%s-%s/meta",
 			c.ClientID,
 			c.UserID,
 			vars["name"],

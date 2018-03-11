@@ -81,19 +81,23 @@ var _ = Describe("ShardGroupReader", func() {
 	It("keeps track of groups", func() {
 		go func(client1, client2 *gologcache.ShardGroupReaderClient) {
 			for range time.Tick(25 * time.Millisecond) {
-				client1.SetShardGroup(context.Background(), "some-name", "a")
+				client1.SetShardGroup(context.Background(), "some-name", "a", "c")
 				client2.SetShardGroup(context.Background(), "some-name", "b")
 			}
 		}(client1, client2)
 
-		Eventually(func() []string {
+		Eventually(func() [][]string {
 			m, err := client1.ShardGroup(context.Background(), "some-name")
 			if err != nil {
 				return nil
 			}
 
-			return m.SourceIDs
-		}, 5).Should(ConsistOf("a", "b"))
+			var results [][]string
+			for _, x := range m.SubGroups {
+				results = append(results, x.SourceIDs)
+			}
+			return results
+		}, 5).Should(ConsistOf([]string{"a", "c"}, []string{"b"}))
 	})
 
 	It("reads from several source IDs", func() {

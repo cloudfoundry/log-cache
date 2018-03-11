@@ -32,8 +32,9 @@ var _ = Describe("Storage", func() {
 	It("returns data sorted by timestamp", func() {
 		reader.addEnvelopes("a", []*loggregator_v2.Envelope{
 			{Timestamp: 99, SourceId: "a"},
-			{Timestamp: 101, SourceId: "a"},
+			{Timestamp: 101, SourceId: "c"},
 			{Timestamp: 103, SourceId: "a"},
+			{Timestamp: 104, SourceId: "c"},
 		})
 
 		reader.addEnvelopes("b", []*loggregator_v2.Envelope{
@@ -43,8 +44,8 @@ var _ = Describe("Storage", func() {
 		})
 
 		s.AddRequester("some-name", 0, false)
-		s.Add("some-name", "a")
-		s.Add("some-name", "b")
+		s.Add("some-name", []string{"a", "c"})
+		s.Add("some-name", []string{"b"})
 		// Ensure we don't "clear" the existing state
 		s.AddRequester("some-name", 0, false)
 
@@ -65,7 +66,7 @@ var _ = Describe("Storage", func() {
 			}
 
 			return r
-		}).Should(And(ContainElement("a"), ContainElement("b")))
+		}).Should(And(ContainElement("a"), ContainElement("b"), ContainElement("c")))
 
 		Expect(sort.IsSorted(int64s(ts))).To(BeTrue())
 	})
@@ -83,8 +84,8 @@ var _ = Describe("Storage", func() {
 			{Timestamp: 104, SourceId: "b"},
 		})
 
-		s.Add("some-name", "a")
-		s.Add("some-name", "b")
+		s.Add("some-name", []string{"a"})
+		s.Add("some-name", []string{"b"})
 		s.AddRequester("some-name", 0, true)
 		s.AddRequester("some-name", 1, false)
 
@@ -109,8 +110,8 @@ var _ = Describe("Storage", func() {
 			{Timestamp: 99, SourceId: "a"},
 		})
 
-		s.Add("some-name", "a")
-		s.Remove("some-name", "a")
+		s.Add("some-name", []string{"a"})
+		s.Remove("some-name", []string{"a"})
 		s.AddRequester("some-name", 0, false)
 
 		f := func() []*loggregator_v2.Envelope {
@@ -122,17 +123,18 @@ var _ = Describe("Storage", func() {
 	})
 
 	It("shards data by source ID", func() {
-		s.Add("some-name", "a")
-		s.Add("some-name", "b")
 		s.AddRequester("some-name", 0, false)
 		s.AddRequester("some-name", 1, false)
+		s.Add("some-name", []string{"a", "c"})
+		s.Add("some-name", []string{"b"})
 
 		go func(reader *spyReader) {
 			for range time.Tick(time.Millisecond) {
 				reader.addEnvelopes("a", []*loggregator_v2.Envelope{
 					{Timestamp: 99, SourceId: "a"},
-					{Timestamp: 101, SourceId: "a"},
+					{Timestamp: 101, SourceId: "c"},
 					{Timestamp: 103, SourceId: "a"},
+					{Timestamp: 104, SourceId: "c"},
 				})
 
 				reader.addEnvelopes("b", []*loggregator_v2.Envelope{
@@ -161,11 +163,34 @@ var _ = Describe("Storage", func() {
 		}).Should(
 			And(ContainElement("b"), Not(ContainElement("a"))),
 		)
+
+		Eventually(func() []string {
+			var r []string
+			// [100, 104)
+			for _, e := range s.Get(
+				"some-name",
+				time.Unix(0, 100),
+				time.Unix(0, 104),
+				nil,   // any envelope type
+				100,   // limit
+				false, // ascending
+				0,     // requesterID
+			) {
+				r = append(r, e.GetSourceId())
+			}
+			return r
+		}).Should(
+			And(
+				ContainElement("a"),
+				Not(ContainElement("b")),
+				ContainElement("c"),
+			),
+		)
 	})
 
 	It("ensures each source ID is serviced when a requester is removed", func() {
-		s.Add("some-name", "a")
-		s.Add("some-name", "b")
+		s.Add("some-name", []string{"a"})
+		s.Add("some-name", []string{"b"})
 		s.AddRequester("some-name", 0, false)
 		s.AddRequester("some-name", 1, false)
 		s.RemoveRequester("some-name", 1)

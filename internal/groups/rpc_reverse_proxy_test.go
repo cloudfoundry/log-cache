@@ -161,10 +161,10 @@ var _ = Describe("RPCReverseProxy", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Its eventually consistent, and just picks one to query
-		Expect(resp.SourceIds).To(
+		Expect(resp.SubGroups).To(
 			Or(
-				ConsistOf("a", "b"),
-				ConsistOf("b", "c"),
+				ConsistOf(&logcache_v1.GroupedSourceIds{SourceIds: []string{"a", "b"}}),
+				ConsistOf(&logcache_v1.GroupedSourceIds{SourceIds: []string{"b", "c"}}),
 			),
 		)
 		Expect(resp.RequesterIds).To(
@@ -267,7 +267,9 @@ func (s *spyGroupReaderClient) ShardGroup(c context.Context, r *logcache_v1.Shar
 	defer s.mu.Unlock()
 	s.groupRequests = append(s.groupRequests, r)
 	return &logcache_v1.ShardGroupResponse{
-		SourceIds:    s.groupRespSourceIDs,
+		SubGroups: []*logcache_v1.GroupedSourceIds{
+			{SourceIds: s.groupRespSourceIDs},
+		},
 		RequesterIds: s.groupRespRequesterIDs,
 	}, s.groupErr
 }
