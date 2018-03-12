@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"log"
+	"time"
 
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
@@ -30,7 +31,9 @@ var _ = Describe("EgressReverseProxy", func() {
 		p = routing.NewEgressReverseProxy(spyLookup.Lookup, []rpc.EgressClient{
 			spyEgressClient1,
 			spyEgressClient2,
-		}, 0, log.New(ioutil.Discard, "", 0))
+		}, 0, log.New(ioutil.Discard, "", 0),
+			routing.WithMetaCacheDuration(50*time.Millisecond),
+		)
 	})
 
 	It("uses the correct client", func() {
@@ -181,6 +184,54 @@ var _ = Describe("EgressReverseProxy", func() {
 		Expect(spyEgressClient2.metaRequests).To(ConsistOf(&rpc.MetaRequest{LocalOnly: true}))
 	})
 
+	It("gets sourceIds from the cache rather than the meta store", func() {
+		spyEgressClient1.metaResults = map[string]*rpc.MetaInfo{}
+		spyEgressClient2.metaResults = map[string]*rpc.MetaInfo{}
+
+		_, err := p.Meta(context.Background(), &rpc.MetaRequest{})
+		Expect(err).ToNot(HaveOccurred())
+
+		_, err = p.Meta(context.Background(), &rpc.MetaRequest{})
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(spyEgressClient1.metaCalls).To(Equal(1))
+		Expect(spyEgressClient2.metaCalls).To(Equal(1))
+	})
+
+	It("gets sourceIds from the cache rather than the meta store with local only", func() {
+		spyEgressClient1.metaResults = map[string]*rpc.MetaInfo{
+			"source-1": &rpc.MetaInfo{},
+			"source-2": &rpc.MetaInfo{},
+		}
+		spyEgressClient2.metaResults = map[string]*rpc.MetaInfo{
+			"source-3": &rpc.MetaInfo{},
+		}
+
+		respA, err := p.Meta(context.Background(), &rpc.MetaRequest{LocalOnly: true})
+		Expect(err).ToNot(HaveOccurred())
+
+		respB, err := p.Meta(context.Background(), &rpc.MetaRequest{LocalOnly: false})
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(spyEgressClient1.metaCalls).To(Equal(2))
+		Expect(spyEgressClient2.metaCalls).To(Equal(1))
+
+		Expect(respA.Meta).To(HaveLen(2))
+		Expect(respB.Meta).To(HaveLen(3))
+	})
+
+	It("times out the meta cache", func() {
+		spyEgressClient1.metaResults = map[string]*rpc.MetaInfo{}
+		spyEgressClient2.metaResults = map[string]*rpc.MetaInfo{}
+
+		Eventually(func() int {
+			_, err := p.Meta(context.Background(), &rpc.MetaRequest{})
+			Expect(err).ToNot(HaveOccurred())
+
+			return spyEgressClient2.metaCalls
+		}, 2).Should(BeNumerically(">", 1))
+	})
+
 	It("uses the given context for meta", func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -214,6 +265,7 @@ type spyEgressClient struct {
 	reqs     []*rpc.ReadRequest
 	err      error
 
+	metaCalls    int
 	metaRequests []*rpc.MetaRequest
 	metaResults  map[string]*rpc.MetaInfo
 	metaErr      error
@@ -232,6 +284,7 @@ func (s *spyEgressClient) Read(ctx context.Context, in *rpc.ReadRequest, opts ..
 }
 
 func (s *spyEgressClient) Meta(ctx context.Context, r *rpc.MetaRequest, opts ...grpc.CallOption) (*rpc.MetaResponse, error) {
+	s.metaCalls += 1
 	s.ctxs = append(s.ctxs, ctx)
 	s.metaRequests = append(s.metaRequests, r)
 	metaInfo := make(map[string]*rpc.MetaInfo)
