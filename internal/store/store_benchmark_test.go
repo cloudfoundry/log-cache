@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -15,11 +16,12 @@ const (
 )
 
 var (
-	MinTime   = time.Unix(0, 0)
-	MaxTime   = time.Unix(0, 9223372036854775807)
-	gen       = randEnvGen()
-	sourceIDs = []string{"0", "1", "2", "3", "4"}
-	results   []*loggregator_v2.Envelope
+	MinTime     = time.Unix(0, 0)
+	MaxTime     = time.Unix(0, 9223372036854775807)
+	gen         = randEnvGen()
+	sourceIDs   = []string{"0", "1", "2", "3", "4"}
+	results     []*loggregator_v2.Envelope
+	metaResults map[string]store.MetaInfo
 )
 
 func BenchmarkStoreWrite(b *testing.B) {
@@ -84,6 +86,72 @@ func BenchmarkStoreGetLogType(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		results = s.Get(sourceIDs[i%len(sourceIDs)], MinTime, MaxTime, logType, b.N, false)
+	}
+}
+
+func BenchmarkMeta(b *testing.B) {
+	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+
+	for i := 0; i < b.N; i++ {
+		e := gen()
+		s.Put(e, e.GetSourceId())
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		metaResults = s.Meta()
+	}
+}
+
+func BenchmarkMetaWhileWriting(b *testing.B) {
+	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+
+	ready := make(chan struct{}, 1)
+	go func() {
+		close(ready)
+		for i := 0; i < b.N; i++ {
+			e := gen()
+			s.Put(e, e.GetSourceId())
+		}
+	}()
+	<-ready
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		metaResults = s.Meta()
+	}
+}
+
+func BenchmarkMetaWhileReading(b *testing.B) {
+	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+
+	for i := 0; i < b.N; i++ {
+		e := gen()
+		s.Put(e, e.GetSourceId())
+	}
+	now := time.Now()
+	fiveMinAgo := now.Add(-5 * time.Minute)
+	ready := make(chan struct{}, 1)
+	go func() {
+		close(ready)
+		for i := 0; i < b.N; i++ {
+			results = s.Get(sourceIDs[i%len(sourceIDs)], fiveMinAgo, now, nil, b.N, false)
+		}
+	}()
+	<-ready
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		metaResults = s.Meta()
+	}
+}
+
+func contextIsDone(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
 	}
 }
 
