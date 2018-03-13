@@ -11,6 +11,7 @@ import (
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/routing"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -68,6 +69,15 @@ var _ = Describe("EgressReverseProxy", func() {
 		Expect(spyEgressClient2.reqs).To(ConsistOf(&rpc.ReadRequest{
 			SourceId: "b",
 		}))
+	})
+
+	It("returns an Unavailable error for an unroutable request", func() {
+		spyLookup.results["c"] = -1
+
+		_, err := p.Read(context.Background(), &rpc.ReadRequest{
+			SourceId: "c",
+		})
+		Expect(grpc.Code(err)).To(Equal(codes.Unavailable))
 	})
 
 	It("uses the given context", func() {

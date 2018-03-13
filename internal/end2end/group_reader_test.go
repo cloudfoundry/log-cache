@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync/atomic"
 	"time"
 
 	gologcache "code.cloudfoundry.org/go-log-cache"
@@ -59,7 +60,8 @@ var _ = Describe("GroupReader", func() {
 		)
 
 		scheduler = logcache.NewScheduler(
-			addrs, // Group Reader addrs
+			[]string{lcAddr}, // Log Cache addrs
+			addrs,            // Group Reader addrs
 			logcache.WithSchedulerInterval(50*time.Millisecond),
 		)
 
@@ -70,6 +72,10 @@ var _ = Describe("GroupReader", func() {
 		lcClient = gologcache.NewClient(lcAddr, gologcache.WithViaGRPC(grpc.WithInsecure()))
 		client1 = gologcache.NewGroupReaderClient(addrs[0], gologcache.WithViaGRPC(grpc.WithInsecure()))
 		client2 = gologcache.NewGroupReaderClient(addrs[1], gologcache.WithViaGRPC(grpc.WithInsecure()))
+	})
+
+	AfterEach(func() {
+		logCache.Close()
 	})
 
 	It("keeps track of groups", func() {
@@ -98,20 +104,20 @@ var _ = Describe("GroupReader", func() {
 			}
 		}(client1, client2)
 
-		_, err := ingressClient(logCache.Addr()).Send(context.Background(), &rpc.SendRequest{
-			Envelopes: &loggregator_v2.EnvelopeBatch{
-				Batch: []*loggregator_v2.Envelope{
-					{SourceId: "a", Timestamp: 1},
-					{SourceId: "a", Timestamp: 2},
-					{SourceId: "b", Timestamp: 3},
-					{SourceId: "b", Timestamp: 4},
-					{SourceId: "c", Timestamp: 5},
-				},
-			},
-		})
-		Expect(err).ToNot(HaveOccurred())
-
 		Eventually(func() []int {
+			_, err := ingressClient(logCache.Addr()).Send(context.Background(), &rpc.SendRequest{
+				Envelopes: &loggregator_v2.EnvelopeBatch{
+					Batch: []*loggregator_v2.Envelope{
+						{SourceId: "a", Timestamp: 1},
+						{SourceId: "a", Timestamp: 2},
+						{SourceId: "b", Timestamp: 3},
+						{SourceId: "b", Timestamp: 4},
+						{SourceId: "c", Timestamp: 5},
+					},
+				},
+			})
+			Expect(err).ToNot(HaveOccurred())
+
 			envelopes, err := client1.Read(
 				context.Background(),
 				"some-name",
@@ -138,8 +144,13 @@ var _ = Describe("GroupReader", func() {
 			}
 		}(client1, client2)
 
+		var done int64
+		defer func() {
+			atomic.AddInt64(&done, 1)
+		}()
+
 		go func(addr string) {
-			for i := int64(0); ; i += 5 {
+			for i := int64(0); atomic.LoadInt64(&done) == 0; i += 5 {
 				ingressClient(addr).Send(context.Background(), &rpc.SendRequest{
 					Envelopes: &loggregator_v2.EnvelopeBatch{
 						Batch: []*loggregator_v2.Envelope{
@@ -151,6 +162,7 @@ var _ = Describe("GroupReader", func() {
 						},
 					},
 				})
+				time.Sleep(time.Millisecond)
 			}
 		}(logCache.Addr())
 
@@ -194,8 +206,8 @@ var _ = Describe("GroupReader", func() {
 		Eventually(reader2, 5).Should(Receive((ConsistOf("b"))))
 
 		var later1, later2 []string
-		Eventually(reader1).Should(Receive(&later1))
-		Eventually(reader2).Should(Receive(&later2))
+		Eventually(reader1, 5).Should(Receive(&later1))
+		Eventually(reader2, 5).Should(Receive(&later2))
 		Expect(later1).ToNot(Equal(later2))
 	})
 })

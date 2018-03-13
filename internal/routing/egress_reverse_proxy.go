@@ -9,6 +9,8 @@ import (
 	"unsafe"
 
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 )
 
 // EgressReverseProxy is a reverse proxy for Egress requests.
@@ -49,7 +51,11 @@ func NewEgressReverseProxy(
 
 // Read will either read from the local node or remote nodes.
 func (e *EgressReverseProxy) Read(ctx context.Context, in *rpc.ReadRequest) (*rpc.ReadResponse, error) {
-	return e.clients[e.l(in.GetSourceId())].Read(ctx, in)
+	idx := e.l(in.GetSourceId())
+	if idx < 0 {
+		return nil, grpc.Errorf(codes.Unavailable, "failed to find route for request. please try again")
+	}
+	return e.clients[idx].Read(ctx, in)
 }
 
 // Meta will gather meta from the local store and remote nodes.

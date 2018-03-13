@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"log"
+	"math"
 	"net"
 	"sync"
 
@@ -24,6 +25,11 @@ import (
 var _ = Describe("LogCache", func() {
 	var (
 		tlsConfig *tls.Config
+		peer      *spyLogCache
+		cache     *logcache.LogCache
+		oc        rpc.OrchestrationClient
+
+		spyMetrics *spyMetrics
 	)
 
 	BeforeEach(func() {
@@ -35,12 +41,16 @@ var _ = Describe("LogCache", func() {
 			"log-cache",
 		)
 		Expect(err).ToNot(HaveOccurred())
-	})
 
-	It("returns tail of data filtered by source ID in 1 node cluster", func() {
-		spyMetrics := newSpyMetrics()
-		cache := logcache.New(
+		peer = newSpyLogCache(tlsConfig)
+		peerAddr := peer.start()
+		spyMetrics = newSpyMetrics()
+
+		cache = logcache.New(
 			logcache.WithAddr("127.0.0.1:0"),
+			logcache.WithClustered(0, []string{"my-addr", peerAddr},
+				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+			),
 			logcache.WithMetrics(spyMetrics),
 			logcache.WithServerOpts(
 				grpc.Creds(credentials.NewTLS(tlsConfig)),
@@ -48,11 +58,49 @@ var _ = Describe("LogCache", func() {
 		)
 		cache.Start()
 
+		conn, err := grpc.Dial(
+			cache.Addr(),
+			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+		)
+		Expect(err).ToNot(HaveOccurred())
+
+		oc = rpc.NewOrchestrationClient(conn)
+
+		_, err = oc.SetRanges(context.Background(), &rpc.SetRangesRequest{
+			Ranges: map[string]*rpc.Ranges{
+				cache.Addr(): &rpc.Ranges{
+					Ranges: []*rpc.Range{
+						{
+							Start: 0,
+							End:   9223372036854775807,
+						},
+					},
+				},
+				peerAddr: &rpc.Ranges{
+					Ranges: []*rpc.Range{
+						{
+							Start: 9223372036854775808,
+							End:   math.MaxUint64,
+						},
+					},
+				},
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		cache.Close()
+	})
+
+	It("returns tail of data filtered by source ID", func() {
 		writeEnvelopes(cache.Addr(), []*loggregator_v2.Envelope{
-			{Timestamp: 1, SourceId: "app-a"},
-			{Timestamp: 2, SourceId: "app-b"},
-			{Timestamp: 3, SourceId: "app-a"},
-			{Timestamp: 4, SourceId: "app-a"},
+			// source-0 hashes to 7700738999732113484 (route to node 0)
+			{Timestamp: 1, SourceId: "source-0"},
+			// source-1 hashes to 15704273932878139171 (route to node 1)
+			{Timestamp: 2, SourceId: "source-1"},
+			{Timestamp: 3, SourceId: "source-0"},
+			{Timestamp: 4, SourceId: "source-0"},
 		})
 
 		conn, err := grpc.Dial(cache.Addr(),
@@ -65,7 +113,7 @@ var _ = Describe("LogCache", func() {
 		var es []*loggregator_v2.Envelope
 		f := func() error {
 			resp, err := client.Read(context.Background(), &rpc.ReadRequest{
-				SourceId:   "app-a",
+				SourceId:   "source-0",
 				Descending: true,
 				Limit:      2,
 			})
@@ -83,29 +131,40 @@ var _ = Describe("LogCache", func() {
 		Eventually(f).Should(BeNil())
 
 		Expect(es[0].Timestamp).To(Equal(int64(4)))
-		Expect(es[0].SourceId).To(Equal("app-a"))
+		Expect(es[0].SourceId).To(Equal("source-0"))
 		Expect(es[1].Timestamp).To(Equal(int64(3)))
-		Expect(es[1].SourceId).To(Equal("app-a"))
+		Expect(es[1].SourceId).To(Equal("source-0"))
 
-		Eventually(spyMetrics.getter("Ingress")).Should(Equal(uint64(4)))
+		Eventually(spyMetrics.getter("Ingress")).Should(Equal(uint64(3)))
 		Eventually(spyMetrics.getter("Egress")).Should(Equal(uint64(2)))
 	})
 
+	It("uses the routes from the scheduler", func() {
+		_, err := oc.SetRanges(context.Background(), &rpc.SetRangesRequest{
+			Ranges: map[string]*rpc.Ranges{
+				cache.Addr(): &rpc.Ranges{
+					Ranges: []*rpc.Range{
+						{
+							Start: 0,
+							End:   math.MaxUint64,
+						},
+					},
+				},
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		writeEnvelopes(cache.Addr(), []*loggregator_v2.Envelope{
+			{Timestamp: 1, SourceId: "source-0"},
+			{Timestamp: 2, SourceId: "source-1"},
+			{Timestamp: 3, SourceId: "source-0"},
+			{Timestamp: 4, SourceId: "source-0"},
+		})
+
+		Eventually(spyMetrics.getter("Ingress")).Should(Equal(uint64(4)))
+	})
+
 	It("routes envelopes to peers", func() {
-		peer := newSpyLogCache(tlsConfig)
-		peerAddr := peer.start()
-
-		cache := logcache.New(
-			logcache.WithAddr("127.0.0.1:0"),
-			logcache.WithClustered(0, []string{"my-addr", peerAddr},
-				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
-			),
-			logcache.WithServerOpts(
-				grpc.Creds(credentials.NewTLS(tlsConfig)),
-			),
-		)
-		cache.Start()
-
 		writeEnvelopes(cache.Addr(), []*loggregator_v2.Envelope{
 			// source-0 hashes to 7700738999732113484 (route to node 0)
 			{Timestamp: 1, SourceId: "source-0"},
@@ -120,17 +179,6 @@ var _ = Describe("LogCache", func() {
 	})
 
 	It("accepts envelopes from peers", func() {
-		cache := logcache.New(
-			logcache.WithAddr("127.0.0.1:0"),
-			logcache.WithClustered(0, []string{"my-addr", "other-addr"},
-				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
-			),
-			logcache.WithServerOpts(
-				grpc.Creds(credentials.NewTLS(tlsConfig)),
-			),
-		)
-		cache.Start()
-
 		// source-0 hashes to 7700738999732113484 (route to node 0)
 		writeEnvelopes(cache.Addr(), []*loggregator_v2.Envelope{
 			{SourceId: "source-0", Timestamp: 1},
@@ -166,26 +214,12 @@ var _ = Describe("LogCache", func() {
 	})
 
 	It("routes query requests to peers", func() {
-		peer := newSpyLogCache(tlsConfig)
-		peerAddr := peer.start()
 		peer.readEnvelopes["source-1"] = func() []*loggregator_v2.Envelope {
 			return []*loggregator_v2.Envelope{
 				{Timestamp: 99},
 				{Timestamp: 101},
 			}
 		}
-
-		cache := logcache.New(
-			logcache.WithAddr("127.0.0.1:0"),
-			logcache.WithClustered(0, []string{"my-addr", peerAddr},
-				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
-			),
-			logcache.WithServerOpts(
-				grpc.Creds(credentials.NewTLS(tlsConfig)),
-			),
-		)
-
-		cache.Start()
 
 		conn, err := grpc.Dial(cache.Addr(),
 			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
@@ -213,7 +247,6 @@ var _ = Describe("LogCache", func() {
 	})
 
 	It("returns all meta information", func() {
-		peer := newSpyLogCache(tlsConfig)
 		peer.metaResponses = map[string]*rpc.MetaInfo{
 			"source-1": {
 				Count:           1,
@@ -223,22 +256,7 @@ var _ = Describe("LogCache", func() {
 			},
 		}
 
-		peerAddr := peer.start()
-
-		myAddr := "127.0.0.1:0"
-		lc := logcache.New(
-			logcache.WithAddr(myAddr),
-			logcache.WithClustered(0, []string{myAddr, peerAddr},
-				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
-			),
-			logcache.WithServerOpts(
-				grpc.Creds(credentials.NewTLS(tlsConfig)),
-			),
-		)
-
-		lc.Start()
-
-		conn, err := grpc.Dial(lc.Addr(),
+		conn, err := grpc.Dial(cache.Addr(),
 			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 		)
 		Expect(err).ToNot(HaveOccurred())

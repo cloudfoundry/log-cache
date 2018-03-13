@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/context"
@@ -17,10 +18,14 @@ import (
 
 // LogCache is a in memory cache for Loggregator envelopes.
 type LogCache struct {
-	log        *log.Logger
-	lis        net.Listener
+	log *log.Logger
+
+	lis    net.Listener
+	server *grpc.Server
+
 	serverOpts []grpc.ServerOption
 	metrics    Metrics
+	closing    int64
 
 	maxPerSource int
 	min          int
@@ -28,6 +33,7 @@ type LogCache struct {
 	// Cluster Properties
 	addr     string
 	dialOpts []grpc.DialOption
+	extAddr  string
 
 	// nodeAddrs are the addresses of all the nodes (including the current
 	// node). The index corresponds with the nodeIndex. It defaults to a
@@ -118,6 +124,16 @@ func WithClustered(nodeIndex int, nodeAddrs []string, opts ...grpc.DialOption) L
 	}
 }
 
+// WithExternalAddr returns a LogCacheOption that sets
+// address the scheduler will refer to the given node as. This is required
+// when the set address won't match what the scheduler will refer to the node
+// as (e.g. :0). Defaults to the resulting address from the listener.
+func WithExternalAddr(addr string) LogCacheOption {
+	return func(c *LogCache) {
+		c.extAddr = addr
+	}
+}
+
 // Metrics registers Counter and Gauge metrics.
 type Metrics interface {
 	// NewCounter returns a function to increment for the given metric.
@@ -154,13 +170,18 @@ func (c *LogCache) Start() {
 	c.setupRouting(store)
 }
 
+// Close will shutdown the gRPC server
+func (c *LogCache) Close() error {
+	atomic.AddInt64(&c.closing, 1)
+	c.server.GracefulStop()
+	return nil
+}
+
 func (c *LogCache) setupRouting(s *store.Store) {
 	tableECMA := crc64.MakeTable(crc64.ECMA)
 	hasher := func(s string) uint64 {
 		return crc64.Checksum([]byte(s), tableECMA)
 	}
-
-	lookup := routing.NewStaticLookup(len(c.nodeAddrs), hasher)
 
 	// gRPC
 	lis, err := net.Listen("tcp", c.addr)
@@ -169,6 +190,18 @@ func (c *LogCache) setupRouting(s *store.Store) {
 	}
 	c.lis = lis
 	c.log.Printf("listening on %s...", c.Addr())
+
+	if c.extAddr == "" {
+		c.extAddr = c.lis.Addr().String()
+	}
+
+	lookup := routing.NewRoutingTable(c.nodeAddrs, hasher)
+	orch := routing.NewOrchestrator(
+		c.extAddr,
+		hasher,
+		routing.MetaFetcherFunc(func() []string { return nil }),
+		lookup,
+	)
 
 	var (
 		ingressClients []logcache_v1.IngressClient
@@ -211,15 +244,25 @@ func (c *LogCache) setupRouting(s *store.Store) {
 		egressClients = append(egressClients, lcr)
 	}
 
-	ingressReverseProxy := routing.NewIngressReverseProxy(lookup.Lookup, ingressClients, c.log)
-	egressReverseProxy := routing.NewEgressReverseProxy(lookup.Lookup, egressClients, localIdx, c.log)
+	lookupWrapper := func(sourceID string) int {
+		nodes := lookup.Lookup(sourceID)
+		if len(nodes) == 0 {
+			return -1
+		}
+
+		return nodes[0]
+	}
+
+	ingressReverseProxy := routing.NewIngressReverseProxy(lookupWrapper, ingressClients, c.log)
+	egressReverseProxy := routing.NewEgressReverseProxy(lookupWrapper, egressClients, localIdx, c.log)
+	c.server = grpc.NewServer(c.serverOpts...)
 
 	go func() {
-		srv := grpc.NewServer(c.serverOpts...)
-		logcache_v1.RegisterIngressServer(srv, ingressReverseProxy)
-		logcache_v1.RegisterEgressServer(srv, egressReverseProxy)
-		if err := srv.Serve(lis); err != nil {
-			log.Fatalf("failed to serve gRPC ingress server: %s", err)
+		logcache_v1.RegisterIngressServer(c.server, ingressReverseProxy)
+		logcache_v1.RegisterEgressServer(c.server, egressReverseProxy)
+		logcache_v1.RegisterOrchestrationServer(c.server, orch)
+		if err := c.server.Serve(lis); err != nil && atomic.LoadInt64(&c.closing) == 0 {
+			c.log.Fatalf("failed to serve gRPC ingress server: %s %#v", err, err)
 		}
 	}()
 }

@@ -32,7 +32,12 @@ func NewIngressReverseProxy(l Lookup, clients []rpc.IngressClient, log *log.Logg
 // according to its source ID.
 func (i *IngressReverseProxy) Send(ctx context.Context, r *rpc.SendRequest) (*rpc.SendResponse, error) {
 	for _, e := range r.Envelopes.Batch {
-		_, err := i.clients[i.l(e.GetSourceId())].Send(ctx, &rpc.SendRequest{
+		idx := i.l(e.GetSourceId())
+		if idx < 0 {
+			continue
+		}
+
+		_, err := i.clients[idx].Send(ctx, &rpc.SendRequest{
 			Envelopes: &loggregator_v2.EnvelopeBatch{
 				Batch: []*loggregator_v2.Envelope{e},
 			},
@@ -40,6 +45,7 @@ func (i *IngressReverseProxy) Send(ctx context.Context, r *rpc.SendRequest) (*rp
 
 		if err != nil {
 			i.log.Printf("failed to write to client: %s", err)
+			continue
 		}
 	}
 

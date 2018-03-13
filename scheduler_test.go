@@ -17,15 +17,24 @@ var _ = Describe("Scheduler", func() {
 	var (
 		s *logcache.Scheduler
 
+		logCacheSpy1 *spyOrchestration
+		logCacheSpy2 *spyOrchestration
+
 		groupSpy1 *spyOrchestration
 		groupSpy2 *spyOrchestration
 	)
 
 	BeforeEach(func() {
+		logCacheSpy1 = startSpyOrchestration()
+		logCacheSpy2 = startSpyOrchestration()
 		groupSpy1 = startSpyOrchestration()
 		groupSpy2 = startSpyOrchestration()
 
 		s = logcache.NewScheduler(
+			[]string{
+				logCacheSpy1.lis.Addr().String(),
+				logCacheSpy2.lis.Addr().String(),
+			},
 			[]string{
 				groupSpy1.lis.Addr().String(),
 				groupSpy2.lis.Addr().String(),
@@ -33,7 +42,67 @@ var _ = Describe("Scheduler", func() {
 			logcache.WithSchedulerInterval(time.Millisecond),
 			logcache.WithSchedulerCount(7),
 		)
+	})
 
+	Describe("Log Cache Ranges", func() {
+		It("schedules the ranges evenly across the nodes", func() {
+			s.Start()
+			Eventually(logCacheSpy1.ReqCount, 2).Should(BeNumerically(">=", 50))
+			Eventually(logCacheSpy2.ReqCount, 2).Should(BeNumerically(">=", 50))
+
+			reqs := append(logCacheSpy1.AddReqs(), logCacheSpy2.AddReqs()...)
+
+			count := 7
+
+			maxHash := uint64(18446744073709551615)
+			x := maxHash / uint64(count)
+			var start uint64
+
+			for i := 0; i < count; i++ {
+				if i == count-1 {
+					Expect(reqs).To(ContainElement(&rpc.Range{
+						Start: start,
+						End:   maxHash,
+					}))
+					break
+				}
+				Expect(reqs).To(ContainElement(&rpc.Range{
+					Start: start,
+					End:   start + x,
+				}))
+
+				start += x + 1
+			}
+		})
+
+		It("reads the term from the cluster to set the next term", func() {
+			logCacheSpy1.listRanges = []*rpc.Range{
+				{
+					Term: 99,
+				},
+			}
+
+			logCacheSpy2.listRanges = []*rpc.Range{
+				{
+					Term: 100,
+				},
+			}
+
+			s.Start()
+
+			Eventually(logCacheSpy1.ReqCount).ShouldNot(BeZero())
+			Expect(logCacheSpy1.AddReqs()[0].Term).To(Equal(uint64(101)))
+		})
+
+		It("sets the range table after listing all the nodes", func() {
+			s.Start()
+
+			Eventually(logCacheSpy1.SetCount).ShouldNot(BeZero())
+			Eventually(logCacheSpy2.SetCount).ShouldNot(BeZero())
+
+			Expect(logCacheSpy1.SetReqs()[0].Ranges).To(HaveLen(2))
+			Expect(logCacheSpy2.SetReqs()[0].Ranges).To(HaveLen(2))
+		})
 	})
 
 	Describe("Group Ranges", func() {

@@ -14,19 +14,21 @@ import (
 
 // Scheduler manages the routes of the Log Cache nodes.
 type Scheduler struct {
-	log      *log.Logger
-	metrics  Metrics
-	interval time.Duration
-	count    int
-	orch     *orchestrator.Orchestrator
-	dialOpts []grpc.DialOption
+	log          *log.Logger
+	metrics      Metrics
+	interval     time.Duration
+	count        int
+	logCacheOrch *orchestrator.Orchestrator
+	groupOrch    *orchestrator.Orchestrator
+	dialOpts     []grpc.DialOption
 
-	clients []clientInfo
+	logCacheClients []clientInfo
+	groupClients    []clientInfo
 }
 
 // NewScheduler returns a new Scheduler. Addrs are the addresses of the Cache
 // nodes.
-func NewScheduler(addrs []string, opts ...SchedulerOption) *Scheduler {
+func NewScheduler(logCacheAddrs, groupAddrs []string, opts ...SchedulerOption) *Scheduler {
 	s := &Scheduler{
 		log:      log.New(ioutil.Discard, "", 0),
 		metrics:  nopMetrics{},
@@ -39,16 +41,28 @@ func NewScheduler(addrs []string, opts ...SchedulerOption) *Scheduler {
 		o(s)
 	}
 
-	s.orch = orchestrator.New(&comm{
+	s.logCacheOrch = orchestrator.New(&comm{
 		log: s.log,
 	})
 
-	for _, addr := range addrs {
+	s.groupOrch = orchestrator.New(&comm{
+		log: s.log,
+	})
+
+	for _, addr := range logCacheAddrs {
 		conn, err := grpc.Dial(addr, s.dialOpts...)
 		if err != nil {
 			s.log.Panic(err)
 		}
-		s.clients = append(s.clients, clientInfo{l: rpc.NewOrchestrationClient(conn), addr: addr})
+		s.logCacheClients = append(s.logCacheClients, clientInfo{l: rpc.NewOrchestrationClient(conn), addr: addr})
+	}
+
+	for _, addr := range groupAddrs {
+		conn, err := grpc.Dial(addr, s.dialOpts...)
+		if err != nil {
+			s.log.Panic(err)
+		}
+		s.groupClients = append(s.groupClients, clientInfo{l: rpc.NewOrchestrationClient(conn), addr: addr})
 	}
 
 	return s
@@ -99,8 +113,12 @@ func WithSchedulerDialOpts(opts ...grpc.DialOption) SchedulerOption {
 
 // Start starts the scheduler. It does not block.
 func (s *Scheduler) Start() {
-	for _, lc := range s.clients {
-		s.orch.AddWorker(lc)
+	for _, lc := range s.logCacheClients {
+		s.logCacheOrch.AddWorker(lc)
+	}
+
+	for _, lc := range s.groupClients {
+		s.groupOrch.AddWorker(lc)
 	}
 
 	maxHash := uint64(18446744073709551615)
@@ -108,7 +126,14 @@ func (s *Scheduler) Start() {
 	var start uint64
 
 	for i := 0; i < s.count-1; i++ {
-		s.orch.AddTask(rpc.Range{
+		s.logCacheOrch.AddTask(rpc.Range{
+			Start: start,
+			End:   start + x,
+		},
+			orchestrator.WithTaskInstances(1),
+		)
+
+		s.groupOrch.AddTask(rpc.Range{
 			Start: start,
 			End:   start + x,
 		},
@@ -117,7 +142,14 @@ func (s *Scheduler) Start() {
 		start += x + 1
 	}
 
-	s.orch.AddTask(rpc.Range{
+	s.logCacheOrch.AddTask(rpc.Range{
+		Start: start,
+		End:   maxHash,
+	},
+		orchestrator.WithTaskInstances(1),
+	)
+
+	s.groupOrch.AddTask(rpc.Range{
 		Start: start,
 		End:   maxHash,
 	},
@@ -127,22 +159,26 @@ func (s *Scheduler) Start() {
 	go func() {
 		for range time.Tick(s.interval) {
 			// Apply changes
-			s.orch.NextTerm(context.Background())
+			s.logCacheOrch.NextTerm(context.Background())
+			s.groupOrch.NextTerm(context.Background())
 
 			// Run again before setting remote tables to allow the
 			// orchestrator to go and query for updates.
-			s.orch.NextTerm(context.Background())
-			s.setRemoteTables(s.convertWorkerState(s.orch.LastActual()))
+			s.logCacheOrch.NextTerm(context.Background())
+			s.groupOrch.NextTerm(context.Background())
+
+			s.setRemoteTables(s.logCacheClients, s.convertWorkerState(s.logCacheOrch.LastActual()))
+			s.setRemoteTables(s.groupClients, s.convertWorkerState(s.groupOrch.LastActual()))
 		}
 	}()
 }
 
-func (s *Scheduler) setRemoteTables(m map[string]*rpc.Ranges) {
+func (s *Scheduler) setRemoteTables(clients []clientInfo, m map[string]*rpc.Ranges) {
 	req := &rpc.SetRangesRequest{
 		Ranges: m,
 	}
 
-	for _, lc := range s.clients {
+	for _, lc := range clients {
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 		if _, err := lc.l.SetRanges(ctx, req); err != nil {
 			s.log.Printf("failed to set remote table: %s", err)

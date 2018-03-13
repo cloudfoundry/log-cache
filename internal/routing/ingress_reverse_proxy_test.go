@@ -67,6 +67,29 @@ var _ = Describe("IngressReverseProxy", func() {
 		}))
 	})
 
+	It("survives an unroutable request", func() {
+		spyLookup.results["a"] = -1
+		spyLookup.results["b"] = 1
+
+		_, err := p.Send(context.Background(), &rpc.SendRequest{
+			Envelopes: &loggregator_v2.EnvelopeBatch{
+				Batch: []*loggregator_v2.Envelope{
+					{SourceId: "a", Timestamp: 1},
+					{SourceId: "b", Timestamp: 2},
+				},
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(spyIngressClient2.reqs).To(ConsistOf(&rpc.SendRequest{
+			Envelopes: &loggregator_v2.EnvelopeBatch{
+				Batch: []*loggregator_v2.Envelope{
+					{SourceId: "b", Timestamp: 2},
+				},
+			},
+		}))
+	})
+
 	It("uses the given context", func() {
 		spyLookup.results["a"] = 0
 		spyLookup.results["b"] = 1
@@ -84,6 +107,7 @@ var _ = Describe("IngressReverseProxy", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 
+		Expect(spyIngressClient1.ctxs).ToNot(BeEmpty())
 		Expect(spyIngressClient1.ctxs[0].Done()).To(BeClosed())
 	})
 

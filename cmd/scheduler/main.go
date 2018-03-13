@@ -26,6 +26,7 @@ func main() {
 	envstruct.WriteReport(cfg)
 
 	sched := logcache.NewScheduler(
+		nil,
 		cfg.NodeAddrs,
 		logcache.WithSchedulerLogger(log.New(os.Stderr, "", log.LstdFlags)),
 		logcache.WithSchedulerMetrics(metrics.New(expvar.NewMap("Scheduler"))),
