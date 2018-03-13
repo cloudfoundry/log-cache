@@ -68,10 +68,14 @@ func (r *RPCReverseProxy) AddToGroup(c context.Context, req *logcache_v1.AddToGr
 	for i := 0; i < len(nodes); i++ {
 		err := <-errs
 		if err == nil {
-			// If even one succeeds, then we will say it worked out.
-			return &logcache_v1.AddToGroupResponse{}, nil
+			continue
 		}
 		e = append(e, err.Error())
+	}
+
+	// If even one succeeds, then we will say it worked out.
+	if len(e) != len(nodes) {
+		return &logcache_v1.AddToGroupResponse{}, nil
 	}
 
 	return nil, errors.New(strings.Join(e, ", "))
@@ -106,10 +110,14 @@ func (r *RPCReverseProxy) RemoveFromGroup(c context.Context, req *logcache_v1.Re
 	for i := 0; i < len(nodes); i++ {
 		err := <-errs
 		if err == nil {
-			// If even one succeeds, then we will say it worked out.
-			return &logcache_v1.RemoveFromGroupResponse{}, nil
+			continue
 		}
 		e = append(e, err.Error())
+	}
+
+	// If even one succeeds, then we will say it worked out.
+	if len(e) != len(nodes) {
+		return &logcache_v1.RemoveFromGroupResponse{}, nil
 	}
 
 	return nil, errors.New(strings.Join(e, ", "))
