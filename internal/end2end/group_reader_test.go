@@ -15,11 +15,15 @@ import (
 	"google.golang.org/grpc"
 )
 
+// Run is incremented for each spec. It is used to set the port
+// numbers.
+var (
+	run      int
+	runIncBy = 3
+)
+
 var _ = Describe("GroupReader", func() {
 	var (
-		// Run is incremented for each spec. It is used to set the port
-		// numbers.
-		run      int
 		addrs    []string
 		logCache *logcache.LogCache
 
@@ -35,27 +39,27 @@ var _ = Describe("GroupReader", func() {
 	BeforeEach(func() {
 		run++
 		addrs = []string{
-			fmt.Sprintf("127.0.0.1:%d", 9999+(run*3)),
-			fmt.Sprintf("127.0.0.1:%d", 10000+(run*3)),
+			fmt.Sprintf("127.0.0.1:%d", 9999+(run*runIncBy)),
+			fmt.Sprintf("127.0.0.1:%d", 10000+(run*runIncBy)),
 		}
 
 		logCache = logcache.New(
-			logcache.WithAddr(fmt.Sprintf("127.0.0.1:%d", 10001+(run*3))),
+			logcache.WithAddr(fmt.Sprintf("127.0.0.1:%d", 10001+(run*runIncBy))),
 			logcache.WithLogger(log.New(GinkgoWriter, "", 0)),
 		)
 		logCache.Start()
 
-		addr := logCache.Addr()
+		lcAddr := logCache.Addr()
 
-		node1 = logcache.NewGroupReader(addr, addrs, 0,
+		node1 = logcache.NewGroupReader(lcAddr, addrs, 0,
 			logcache.WithGroupReaderLogger(log.New(GinkgoWriter, "", 0)),
 		)
-		node2 = logcache.NewGroupReader(addr, addrs, 1,
+		node2 = logcache.NewGroupReader(lcAddr, addrs, 1,
 			logcache.WithGroupReaderLogger(log.New(GinkgoWriter, "", 0)),
 		)
 
 		scheduler = logcache.NewScheduler(
-			addrs,
+			addrs, // Group Reader addrs
 			logcache.WithSchedulerInterval(50*time.Millisecond),
 		)
 
@@ -63,7 +67,7 @@ var _ = Describe("GroupReader", func() {
 		node2.Start()
 		scheduler.Start()
 
-		lcClient = gologcache.NewClient(addr, gologcache.WithViaGRPC(grpc.WithInsecure()))
+		lcClient = gologcache.NewClient(lcAddr, gologcache.WithViaGRPC(grpc.WithInsecure()))
 		client1 = gologcache.NewGroupReaderClient(addrs[0], gologcache.WithViaGRPC(grpc.WithInsecure()))
 		client2 = gologcache.NewGroupReaderClient(addrs[1], gologcache.WithViaGRPC(grpc.WithInsecure()))
 	})
