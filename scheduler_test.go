@@ -17,18 +17,18 @@ var _ = Describe("Scheduler", func() {
 	var (
 		s *logcache.Scheduler
 
-		spy1 *spyOrchestration
-		spy2 *spyOrchestration
+		groupSpy1 *spyOrchestration
+		groupSpy2 *spyOrchestration
 	)
 
 	BeforeEach(func() {
-		spy1 = startSpyOrchestration()
-		spy2 = startSpyOrchestration()
+		groupSpy1 = startSpyOrchestration()
+		groupSpy2 = startSpyOrchestration()
 
 		s = logcache.NewScheduler(
 			[]string{
-				spy1.lis.Addr().String(),
-				spy2.lis.Addr().String(),
+				groupSpy1.lis.Addr().String(),
+				groupSpy2.lis.Addr().String(),
 			},
 			logcache.WithSchedulerInterval(time.Millisecond),
 			logcache.WithSchedulerCount(7),
@@ -36,63 +36,65 @@ var _ = Describe("Scheduler", func() {
 
 	})
 
-	It("schedules the ranges evenly across the nodes", func() {
-		s.Start()
-		Eventually(spy1.ReqCount, 2).Should(BeNumerically(">=", 50))
-		Eventually(spy2.ReqCount, 2).Should(BeNumerically(">=", 50))
+	Describe("Group Ranges", func() {
+		It("schedules the ranges evenly across the nodes", func() {
+			s.Start()
+			Eventually(groupSpy1.ReqCount, 2).Should(BeNumerically(">=", 50))
+			Eventually(groupSpy2.ReqCount, 2).Should(BeNumerically(">=", 50))
 
-		reqs := append(spy1.AddReqs(), spy2.AddReqs()...)
+			reqs := append(groupSpy1.AddReqs(), groupSpy2.AddReqs()...)
 
-		count := 7
+			count := 7
 
-		maxHash := uint64(18446744073709551615)
-		x := maxHash / uint64(count)
-		var start uint64
+			maxHash := uint64(18446744073709551615)
+			x := maxHash / uint64(count)
+			var start uint64
 
-		for i := 0; i < count; i++ {
-			if i == count-1 {
+			for i := 0; i < count; i++ {
+				if i == count-1 {
+					Expect(reqs).To(ContainElement(&rpc.Range{
+						Start: start,
+						End:   maxHash,
+					}))
+					break
+				}
 				Expect(reqs).To(ContainElement(&rpc.Range{
 					Start: start,
-					End:   maxHash,
+					End:   start + x,
 				}))
-				break
+
+				start += x + 1
 			}
-			Expect(reqs).To(ContainElement(&rpc.Range{
-				Start: start,
-				End:   start + x,
-			}))
+		})
 
-			start += x + 1
-		}
-	})
+		It("reads the term from the cluster to set the next term", func() {
+			groupSpy1.listRanges = []*rpc.Range{
+				{
+					Term: 99,
+				},
+			}
 
-	It("reads the term from the cluster to set the next term", func() {
-		spy1.listRanges = []*rpc.Range{
-			{
-				Term: 99,
-			},
-		}
+			groupSpy2.listRanges = []*rpc.Range{
+				{
+					Term: 100,
+				},
+			}
 
-		spy2.listRanges = []*rpc.Range{
-			{
-				Term: 100,
-			},
-		}
+			s.Start()
 
-		s.Start()
+			Eventually(groupSpy1.ReqCount).ShouldNot(BeZero())
+			Expect(groupSpy1.AddReqs()[0].Term).To(Equal(uint64(101)))
+		})
 
-		Eventually(spy1.ReqCount).ShouldNot(BeZero())
-		Expect(spy1.AddReqs()[0].Term).To(Equal(uint64(101)))
-	})
+		It("sets the range table after listing all the nodes", func() {
+			s.Start()
 
-	It("sets the range table after listing all the nodes", func() {
-		s.Start()
+			Eventually(groupSpy1.SetCount).ShouldNot(BeZero())
+			Eventually(groupSpy2.SetCount).ShouldNot(BeZero())
 
-		Eventually(spy1.SetCount).ShouldNot(BeZero())
-		Eventually(spy2.SetCount).ShouldNot(BeZero())
-
-		Expect(spy1.SetReqs()[0].Ranges).To(HaveLen(2))
-		Expect(spy2.SetReqs()[0].Ranges).To(HaveLen(2))
+			Expect(groupSpy1.SetReqs()[0].Ranges).To(HaveLen(2))
+			Expect(groupSpy2.SetReqs()[0].Ranges).To(HaveLen(2))
+		})
 	})
 })
 
