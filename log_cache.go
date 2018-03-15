@@ -196,12 +196,7 @@ func (c *LogCache) setupRouting(s *store.Store) {
 	}
 
 	lookup := routing.NewRoutingTable(c.nodeAddrs, hasher)
-	orch := routing.NewOrchestrator(
-		c.extAddr,
-		hasher,
-		routing.MetaFetcherFunc(func() []string { return nil }),
-		lookup,
-	)
+	orch := routing.NewOrchestrator(lookup)
 
 	var (
 		ingressClients []logcache_v1.IngressClient

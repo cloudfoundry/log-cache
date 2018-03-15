@@ -4,6 +4,7 @@ package logcache.v1;
 
 service Orchestration {
     rpc AddRange(AddRangeRequest) returns (AddRangeResponse) {}
+    rpc RemoveRange(RemoveRangeRequest) returns (RemoveRangeResponse) {}
     rpc ListRanges(ListRangesRequest) returns (ListRangesResponse) {}
     rpc SetRanges(SetRangesRequest) returns (SetRangesResponse) {}
 }
@@ -14,11 +15,6 @@ message Range {
 
     // end is the last hash within the given range. [start..end]
     uint64 end = 2;
-
-    // term is the term that the range was applied to. The term is ever
-    // incrementing (managed by the scheduler algorithm). A range with a
-    // larger term is preferred.
-    uint64 term = 3;
 }
 
 message Ranges {
@@ -30,6 +26,13 @@ message AddRangeRequest {
 }
 
 message AddRangeResponse {
+}
+
+message RemoveRangeRequest {
+    Range range = 1;
+}
+
+message RemoveRangeResponse {
 }
 
 message ListRangesRequest {

@@ -75,25 +75,6 @@ var _ = Describe("Scheduler", func() {
 			}
 		})
 
-		It("reads the term from the cluster to set the next term", func() {
-			logCacheSpy1.listRanges = []*rpc.Range{
-				{
-					Term: 99,
-				},
-			}
-
-			logCacheSpy2.listRanges = []*rpc.Range{
-				{
-					Term: 100,
-				},
-			}
-
-			s.Start()
-
-			Eventually(logCacheSpy1.ReqCount).ShouldNot(BeZero())
-			Expect(logCacheSpy1.AddReqs()[0].Term).To(Equal(uint64(101)))
-		})
-
 		It("sets the range table after listing all the nodes", func() {
 			s.Start()
 
@@ -102,6 +83,41 @@ var _ = Describe("Scheduler", func() {
 
 			Expect(logCacheSpy1.SetReqs()[0].Ranges).To(HaveLen(2))
 			Expect(logCacheSpy2.SetReqs()[0].Ranges).To(HaveLen(2))
+		})
+
+		It("rebalances ranges", func() {
+			count := 7
+
+			maxHash := uint64(18446744073709551615)
+			x := maxHash / uint64(count)
+			var start uint64
+
+			for i := 0; i < count; i++ {
+				if i == count-1 {
+					logCacheSpy1.listRanges = append(logCacheSpy1.listRanges, &rpc.Range{
+						Start: start,
+						End:   maxHash,
+					})
+					break
+				}
+
+				logCacheSpy1.listRanges = append(logCacheSpy1.listRanges, &rpc.Range{
+					Start: start,
+					End:   start + x,
+				})
+
+				start += x + 1
+			}
+
+			s.Start()
+
+			Eventually(func() int {
+				return len(logCacheSpy1.RemoveReqs())
+			}).Should(Or(Equal(3), Equal(4)))
+
+			Eventually(func() int {
+				return len(logCacheSpy2.AddReqs())
+			}).Should(Or(Equal(3), Equal(4)))
 		})
 	})
 
@@ -136,25 +152,6 @@ var _ = Describe("Scheduler", func() {
 			}
 		})
 
-		It("reads the term from the cluster to set the next term", func() {
-			groupSpy1.listRanges = []*rpc.Range{
-				{
-					Term: 99,
-				},
-			}
-
-			groupSpy2.listRanges = []*rpc.Range{
-				{
-					Term: 100,
-				},
-			}
-
-			s.Start()
-
-			Eventually(groupSpy1.ReqCount).ShouldNot(BeZero())
-			Expect(groupSpy1.AddReqs()[0].Term).To(Equal(uint64(101)))
-		})
-
 		It("sets the range table after listing all the nodes", func() {
 			s.Start()
 
@@ -172,6 +169,9 @@ type spyOrchestration struct {
 	lis     net.Listener
 	addReqs []*rpc.Range
 	addErr  error
+
+	removeReqs []*rpc.Range
+	removeErr  error
 
 	listReqs   []*rpc.ListRangesRequest
 	listRanges []*rpc.Range
@@ -220,6 +220,22 @@ func (s *spyOrchestration) AddReqs() []*rpc.Range {
 
 func (s *spyOrchestration) ReqCount() int {
 	return len(s.AddReqs())
+}
+
+func (s *spyOrchestration) RemoveRange(ctx context.Context, r *rpc.RemoveRangeRequest) (*rpc.RemoveRangeResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.removeReqs = append(s.removeReqs, r.Range)
+
+	return &rpc.RemoveRangeResponse{}, s.removeErr
+}
+
+func (s *spyOrchestration) RemoveReqs() []*rpc.Range {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.removeReqs
 }
 
 func (s *spyOrchestration) ListRanges(ctx context.Context, r *rpc.ListRangesRequest) (*rpc.ListRangesResponse, error) {

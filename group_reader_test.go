@@ -56,6 +56,14 @@ var _ = Describe("GroupReader", func() {
 
 		c, oc = newGroupReaderClient(g.Addr(), tlsConfig)
 
+		_, err = oc.AddRange(context.Background(), &rpc.AddRangeRequest{
+			Range: &rpc.Range{
+				Start: 0,
+				End:   9223372036854775807,
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+
 		_, err = oc.SetRanges(context.Background(), &rpc.SetRangesRequest{
 			Ranges: map[string]*rpc.Ranges{
 				g.Addr(): &rpc.Ranges{

@@ -26,25 +26,22 @@ var _ = Describe("RoutingTable", func() {
 			map[string]*rpc.Ranges{
 				"a": {
 					Ranges: []*rpc.Range{
-						{Start: 0, End: 100, Term: 1},
-
-						// Older term should and be ignored
-						{Start: 101, End: 200, Term: 0},
+						{Start: 0, End: 100},
 					},
 				},
 				"b": {
 					Ranges: []*rpc.Range{
-						{Start: 101, End: 200, Term: 1},
+						{Start: 101, End: 200},
 					},
 				},
 				"c": {
 					Ranges: []*rpc.Range{
-						{Start: 201, End: 300, Term: 1},
+						{Start: 201, End: 300},
 					},
 				},
 				"d": {
 					Ranges: []*rpc.Range{
-						{Start: 101, End: 200, Term: 1},
+						{Start: 101, End: 200},
 					},
 				},
 			},
@@ -62,18 +59,18 @@ var _ = Describe("RoutingTable", func() {
 			map[string]*rpc.Ranges{
 				"a": {
 					Ranges: []*rpc.Range{
-						{Start: 0, End: 100, Term: 1},
-						{Start: 101, End: 200, Term: 0},
+						{Start: 0, End: 100},
+						{Start: 101, End: 200},
 					},
 				},
 				"b": {
 					Ranges: []*rpc.Range{
-						{Start: 101, End: 200, Term: 1},
+						{Start: 101, End: 200},
 					},
 				},
 				"c": {
 					Ranges: []*rpc.Range{
-						{Start: 201, End: 300, Term: 1},
+						{Start: 201, End: 300},
 					},
 				},
 			},

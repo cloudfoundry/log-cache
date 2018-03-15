@@ -13,107 +13,86 @@ import (
 
 var _ = Describe("Orchestrator", func() {
 	var (
-		spyHasher      *spyHasher
-		spyMetaFetcher *spyMetaFetcher
 		spyRangeSetter *spyRangeSetter
 		o              *routing.Orchestrator
 	)
 
 	BeforeEach(func() {
-		spyHasher = newSpyHasher()
-		spyMetaFetcher = newSpyMetaFetcher()
 		spyRangeSetter = newSpyRangeSetter()
-		o = routing.NewOrchestrator("a", spyHasher.Hash, spyMetaFetcher, spyRangeSetter)
+		o = routing.NewOrchestrator(spyRangeSetter)
 	})
 
-	It("always keep the latest term", func() {
-		// SpyHasher returns 0 by default
-		spyMetaFetcher.results = []string{"a"}
-		o.AddRange(context.Background(), &rpc.AddRangeRequest{
-			Range: &rpc.Range{
-				Start: 0,
-				End:   1,
-				Term:  1,
-			},
-		})
-
-		o.AddRange(context.Background(), &rpc.AddRangeRequest{
-			Range: &rpc.Range{
-				Start: 0,
-				End:   1,
-				Term:  2,
-			},
-		})
-
-		o.AddRange(context.Background(), &rpc.AddRangeRequest{
+	It("keeps track of the ranges", func() {
+		_, err := o.AddRange(context.Background(), &rpc.AddRangeRequest{
 			Range: &rpc.Range{
 				Start: 1,
 				End:   2,
-				Term:  2,
 			},
 		})
+		Expect(err).ToNot(HaveOccurred())
+
+		_, err = o.AddRange(context.Background(), &rpc.AddRangeRequest{
+			Range: &rpc.Range{
+				Start: 3,
+				End:   4,
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
 
 		resp, err := o.ListRanges(context.Background(), &rpc.ListRangesRequest{})
 		Expect(err).ToNot(HaveOccurred())
-		Expect(resp.Ranges).To(ConsistOf([]*rpc.Range{
-			{
-				Start: 0,
-				End:   1,
-				Term:  2,
-			},
-			{
+		Expect(resp.Ranges).To(ConsistOf(
+			&rpc.Range{
 				Start: 1,
 				End:   2,
-				Term:  2,
 			},
-		}))
-	})
 
-	It("keeps older terms with meta available", func() {
-		// SpyHasher returns 0 by default
-		spyMetaFetcher.results = []string{"a"}
-
-		o.AddRange(context.Background(), &rpc.AddRangeRequest{
-			Range: &rpc.Range{
-				Start: 0,
-				End:   1,
-				Term:  1,
+			&rpc.Range{
+				Start: 3,
+				End:   4,
 			},
-		})
+		))
 
-		o.AddRange(context.Background(), &rpc.AddRangeRequest{
+		_, err = o.RemoveRange(context.Background(), &rpc.RemoveRangeRequest{
 			Range: &rpc.Range{
 				Start: 1,
 				End:   2,
-				Term:  2,
 			},
 		})
-
-		resp, err := o.ListRanges(context.Background(), &rpc.ListRangesRequest{})
 		Expect(err).ToNot(HaveOccurred())
-		Expect(resp.Ranges).To(ConsistOf([]*rpc.Range{
-			{
-				Start: 0,
-				End:   1,
-				Term:  1,
+
+		resp, err = o.ListRanges(context.Background(), &rpc.ListRangesRequest{})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resp.Ranges).To(ConsistOf(
+			&rpc.Range{
+				Start: 3,
+				End:   4,
 			},
-			{
-				Start: 1,
-				End:   2,
-				Term:  2,
-			},
-		}))
+		))
 	})
 
 	It("survives race the detector", func() {
 		var wg sync.WaitGroup
-		wg.Add(1)
+		wg.Add(2)
 		go func(o *routing.Orchestrator) {
 			wg.Done()
 			for i := 0; i < 100; i++ {
 				o.ListRanges(context.Background(), &rpc.ListRangesRequest{})
 			}
 		}(o)
+
+		go func(o *routing.Orchestrator) {
+			wg.Done()
+			for i := 0; i < 100; i++ {
+				o.RemoveRange(context.Background(), &rpc.RemoveRangeRequest{
+					Range: &rpc.Range{
+						Start: 1,
+						End:   2,
+					},
+				})
+			}
+		}(o)
+
 		wg.Wait()
 
 		for i := 0; i < 100; i++ {
@@ -121,32 +100,25 @@ var _ = Describe("Orchestrator", func() {
 				Range: &rpc.Range{
 					Start: 1,
 					End:   2,
-					Term:  2,
 				},
 			})
 		}
 	})
 
-	It("passes through SetRanges requests and keeps track of the latest ranges", func() {
+	It("passes through SetRanges requests", func() {
 		expected := &rpc.SetRangesRequest{
 			Ranges: map[string]*rpc.Ranges{
 				"a": &rpc.Ranges{
 					Ranges: []*rpc.Range{
 						{
-							Term: 1,
+							Start: 1,
 						},
 					},
 				},
 			},
 		}
 		o.SetRanges(context.Background(), expected)
-		resp, err := o.ListRanges(context.Background(), &rpc.ListRangesRequest{})
-		Expect(err).ToNot(HaveOccurred())
-
 		Expect(spyRangeSetter.requests).To(ConsistOf(expected))
-		Expect(resp.Ranges).To(ConsistOf(&rpc.Range{
-			Term: 1,
-		}))
 	})
 })
 

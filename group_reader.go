@@ -133,12 +133,7 @@ func (g *GroupReader) Start() {
 
 		m := groups.NewManager(s, time.Minute)
 		lookup := routing.NewRoutingTable(g.nodeAddrs, hasher)
-		orch := routing.NewOrchestrator(
-			g.extAddr,
-			hasher,
-			routing.MetaFetcherFunc(func() []string { return nil }),
-			lookup,
-		)
+		orch := routing.NewOrchestrator(lookup)
 
 		srv := grpc.NewServer(g.serverOpts...)
 

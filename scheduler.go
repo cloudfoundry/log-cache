@@ -210,9 +210,8 @@ type clientInfo struct {
 }
 
 type comm struct {
-	mu   sync.Mutex
-	term uint64
-	log  *log.Logger
+	mu  sync.Mutex
+	log *log.Logger
 }
 
 // List implements orchestrator.Communicator.
@@ -231,13 +230,6 @@ func (c *comm) List(ctx context.Context, worker interface{}) ([]interface{}, err
 
 	var results []interface{}
 	for _, r := range resp.Ranges {
-		if c.term <= r.Term {
-			c.term = r.Term + 1
-		}
-
-		// The orch algorithm only knows about term 0, therefore we need to
-		// ditch the term value.
-		r.Term = 0
 		results = append(results, *r)
 	}
 
@@ -251,7 +243,6 @@ func (c *comm) Add(ctx context.Context, worker interface{}, task interface{}) er
 
 	lc := worker.(clientInfo)
 	r := task.(rpc.Range)
-	r.Term = c.term
 	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
 
 	_, err := lc.l.AddRange(ctx, &rpc.AddRangeRequest{
@@ -268,6 +259,21 @@ func (c *comm) Add(ctx context.Context, worker interface{}, task interface{}) er
 
 // Remvoe implements orchestrator.Communicator.
 func (c *comm) Remove(ctx context.Context, worker interface{}, task interface{}) error {
-	// NOP
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	lc := worker.(clientInfo)
+	r := task.(rpc.Range)
+	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
+
+	_, err := lc.l.RemoveRange(ctx, &rpc.RemoveRangeRequest{
+		Range: &r,
+	})
+
+	if err != nil {
+		c.log.Printf("failed to add range to %s: %s", lc.addr, err)
+		return err
+	}
+
 	return nil
 }

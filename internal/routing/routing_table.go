@@ -40,7 +40,7 @@ func (t *RoutingTable) Lookup(item string) []int {
 
 	var result []int
 	for _, r := range t.table {
-		if r.r.Term != t.latestTerm || h < r.r.Start || h > r.r.End {
+		if h < r.r.Start || h > r.r.End {
 			// Outside of range
 			continue
 		}
@@ -79,17 +79,12 @@ func (t *RoutingTable) SetRanges(ctx context.Context, in *rpc.SetRangesRequest) 
 	defer t.mu.Unlock()
 
 	t.table = nil
-	t.latestTerm = 0
 	for addr, ranges := range in.Ranges {
 		for _, r := range ranges.Ranges {
 			t.table = append(t.table, rangeInfo{
 				idx: t.addrs[addr],
 				r:   *r,
 			})
-
-			if t.latestTerm < r.Term {
-				t.latestTerm = r.Term
-			}
 		}
 	}
 
@@ -123,10 +118,7 @@ func (r rangeInfos) Len() int {
 
 func (r rangeInfos) Less(i, j int) bool {
 	if r[i].r.Start == r[j].r.Start {
-		if r[i].r.Term == r[j].r.Term {
-			return r[i].idx > r[j].idx
-		}
-		return r[i].r.Term > r[j].r.Term
+		return r[i].idx > r[j].idx
 	}
 
 	return r[i].r.Start < r[j].r.Start
