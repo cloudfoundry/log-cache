@@ -75,7 +75,7 @@ func (r *RPCReverseProxy) SetShardGroup(c context.Context, req *logcache_v1.SetS
 
 	// If even one succeeds, then we will say it worked out.
 	if len(e) != len(nodes) {
-		return &logcache_v1.AddToGroupResponse{}, nil
+		return &logcache_v1.SetShardGroupResponse{}, nil
 	}
 
 	return nil, errors.New(strings.Join(e, ", "))

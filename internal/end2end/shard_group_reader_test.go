@@ -69,7 +69,7 @@ var _ = Describe("ShardGroupReader", func() {
 		node2.Start()
 		scheduler.Start()
 
-		lcClient = gologcache.NewClient(addr, gologcache.WithViaGRPC(grpc.WithInsecure()))
+		lcClient = gologcache.NewClient(lcAddr, gologcache.WithViaGRPC(grpc.WithInsecure()))
 		client1 = gologcache.NewShardGroupReaderClient(addrs[0], gologcache.WithViaGRPC(grpc.WithInsecure()))
 		client2 = gologcache.NewShardGroupReaderClient(addrs[1], gologcache.WithViaGRPC(grpc.WithInsecure()))
 	})
