@@ -108,13 +108,13 @@ var _ = Describe("EgressReverseProxy", func() {
 
 	It("gets meta from the local store", func() {
 		spyEgressClient1.metaResults = map[string]*rpc.MetaInfo{
-			"source-1": &rpc.MetaInfo{
+			"source-1": {
 				Count:           1,
 				Expired:         2,
 				OldestTimestamp: 3,
 				NewestTimestamp: 4,
 			},
-			"source-2": &rpc.MetaInfo{
+			"source-2": {
 				Count:           5,
 				Expired:         6,
 				OldestTimestamp: 7,
@@ -146,13 +146,13 @@ var _ = Describe("EgressReverseProxy", func() {
 
 	It("gets sourceIds from the remote store and the local store", func() {
 		spyEgressClient1.metaResults = map[string]*rpc.MetaInfo{
-			"source-1": &rpc.MetaInfo{
+			"source-1": {
 				Count:           1,
 				Expired:         2,
 				OldestTimestamp: 3,
 				NewestTimestamp: 4,
 			},
-			"source-2": &rpc.MetaInfo{
+			"source-2": {
 				Count:           5,
 				Expired:         6,
 				OldestTimestamp: 7,
@@ -161,7 +161,7 @@ var _ = Describe("EgressReverseProxy", func() {
 		}
 
 		spyEgressClient2.metaResults = map[string]*rpc.MetaInfo{
-			"source-3": &rpc.MetaInfo{
+			"source-3": {
 				Count:           9,
 				Expired:         10,
 				OldestTimestamp: 11,
@@ -210,11 +210,11 @@ var _ = Describe("EgressReverseProxy", func() {
 
 	It("gets sourceIds from the cache rather than the meta store with local only", func() {
 		spyEgressClient1.metaResults = map[string]*rpc.MetaInfo{
-			"source-1": &rpc.MetaInfo{},
-			"source-2": &rpc.MetaInfo{},
+			"source-1": {},
+			"source-2": {},
 		}
 		spyEgressClient2.metaResults = map[string]*rpc.MetaInfo{
-			"source-3": &rpc.MetaInfo{},
+			"source-3": {},
 		}
 
 		respA, err := p.Meta(context.Background(), &rpc.MetaRequest{LocalOnly: true})

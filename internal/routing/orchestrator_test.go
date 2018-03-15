@@ -108,7 +108,7 @@ var _ = Describe("Orchestrator", func() {
 	It("passes through SetRanges requests", func() {
 		expected := &rpc.SetRangesRequest{
 			Ranges: map[string]*rpc.Ranges{
-				"a": &rpc.Ranges{
+				"a": {
 					Ranges: []*rpc.Range{
 						{
 							Start: 1,

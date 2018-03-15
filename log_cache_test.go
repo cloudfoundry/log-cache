@@ -68,7 +68,7 @@ var _ = Describe("LogCache", func() {
 
 		_, err = oc.SetRanges(context.Background(), &rpc.SetRangesRequest{
 			Ranges: map[string]*rpc.Ranges{
-				cache.Addr(): &rpc.Ranges{
+				cache.Addr(): {
 					Ranges: []*rpc.Range{
 						{
 							Start: 0,
@@ -76,7 +76,7 @@ var _ = Describe("LogCache", func() {
 						},
 					},
 				},
-				peerAddr: &rpc.Ranges{
+				peerAddr: {
 					Ranges: []*rpc.Range{
 						{
 							Start: 9223372036854775808,
@@ -142,7 +142,7 @@ var _ = Describe("LogCache", func() {
 	It("uses the routes from the scheduler", func() {
 		_, err := oc.SetRanges(context.Background(), &rpc.SetRangesRequest{
 			Ranges: map[string]*rpc.Ranges{
-				cache.Addr(): &rpc.Ranges{
+				cache.Addr(): {
 					Ranges: []*rpc.Range{
 						{
 							Start: 0,

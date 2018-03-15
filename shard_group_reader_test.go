@@ -66,7 +66,7 @@ var _ = Describe("ShardGroupReader", func() {
 
 		_, err = oc.SetRanges(context.Background(), &rpc.SetRangesRequest{
 			Ranges: map[string]*rpc.Ranges{
-				g.Addr(): &rpc.Ranges{
+				g.Addr(): {
 					Ranges: []*rpc.Range{
 						{
 							Start: 0,
@@ -74,7 +74,7 @@ var _ = Describe("ShardGroupReader", func() {
 						},
 					},
 				},
-				spyAddr: &rpc.Ranges{
+				spyAddr: {
 					Ranges: []*rpc.Range{
 						{
 							Start: 9223372036854775808,
