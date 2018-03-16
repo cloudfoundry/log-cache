@@ -113,11 +113,11 @@ var _ = Describe("Scheduler", func() {
 
 			Eventually(func() int {
 				return len(logCacheSpy1.RemoveReqs())
-			}).Should(Or(Equal(3), Equal(4)))
+			}).Should(BeNumerically(">=", 3))
 
 			Eventually(func() int {
 				return len(logCacheSpy2.AddReqs())
-			}).Should(Or(Equal(3), Equal(4)))
+			}).Should(BeNumerically(">=", 3))
 		})
 	})
 

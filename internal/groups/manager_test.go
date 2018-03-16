@@ -143,7 +143,7 @@ var _ = Describe("Manager", func() {
 
 	It("expires source IDs from group", func() {
 		// Shadow m to protect against race conditions
-		m := groups.NewManager(spyDataStorage, 10*time.Millisecond)
+		m := groups.NewManager(spyDataStorage, 100*time.Millisecond)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		go func() {
