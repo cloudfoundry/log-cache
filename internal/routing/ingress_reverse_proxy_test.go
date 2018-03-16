@@ -18,58 +18,108 @@ import (
 
 var _ = Describe("IngressReverseProxy", func() {
 	var (
-		spyLookup         *spyLookup
-		spyIngressClient1 *spyIngressClient
-		spyIngressClient2 *spyIngressClient
-		p                 *routing.IngressReverseProxy
+		spyLookup              *spyLookup
+		spyIngressRemoteClient *spyIngressClient
+		spyIngressLocalClient  *spyIngressClient
+		p                      *routing.IngressReverseProxy
 	)
 
 	BeforeEach(func() {
 		spyLookup = newSpyLookup()
-		spyIngressClient1 = newSpyIngressClient()
-		spyIngressClient2 = newSpyIngressClient()
+		spyIngressRemoteClient = newSpyIngressClient()
+		spyIngressLocalClient = newSpyIngressClient()
 		p = routing.NewIngressReverseProxy(spyLookup.Lookup, []rpc.IngressClient{
-			spyIngressClient1,
-			spyIngressClient2,
-		}, log.New(ioutil.Discard, "", 0))
+			spyIngressRemoteClient,
+			spyIngressLocalClient,
+		},
+			1, // Point local at spyIngressLocalClient
+			log.New(ioutil.Discard, "", 0))
 	})
 
-	It("uses the correct client", func() {
-		spyLookup.results["a"] = 0
-		spyLookup.results["b"] = 1
+	It("uses the correct clients", func() {
+		spyLookup.results["a"] = []int{0}
+		spyLookup.results["b"] = []int{1}
+		spyLookup.results["c"] = []int{0, 1}
 
 		_, err := p.Send(context.Background(), &rpc.SendRequest{
 			Envelopes: &loggregator_v2.EnvelopeBatch{
 				Batch: []*loggregator_v2.Envelope{
 					{SourceId: "a", Timestamp: 1},
 					{SourceId: "b", Timestamp: 2},
+					{SourceId: "c", Timestamp: 3},
 				},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(spyLookup.sourceIDs).To(ConsistOf("a", "b"))
+		Expect(spyLookup.sourceIDs).To(ConsistOf("a", "b", "c"))
 
-		Expect(spyIngressClient1.reqs).To(ConsistOf(&rpc.SendRequest{
+		Expect(spyIngressRemoteClient.reqs).To(ConsistOf(
+			&rpc.SendRequest{
+				LocalOnly: true,
+				Envelopes: &loggregator_v2.EnvelopeBatch{
+					Batch: []*loggregator_v2.Envelope{
+						{SourceId: "a", Timestamp: 1},
+					},
+				},
+			},
+			&rpc.SendRequest{
+				LocalOnly: true,
+				Envelopes: &loggregator_v2.EnvelopeBatch{
+					Batch: []*loggregator_v2.Envelope{
+						{SourceId: "c", Timestamp: 3},
+					},
+				},
+			},
+		))
+
+		Expect(spyIngressLocalClient.reqs).To(ConsistOf(
+			&rpc.SendRequest{
+				LocalOnly: true,
+				Envelopes: &loggregator_v2.EnvelopeBatch{
+					Batch: []*loggregator_v2.Envelope{
+						{SourceId: "b", Timestamp: 2},
+					},
+				},
+			},
+			&rpc.SendRequest{
+				LocalOnly: true,
+				Envelopes: &loggregator_v2.EnvelopeBatch{
+					Batch: []*loggregator_v2.Envelope{
+						{SourceId: "c", Timestamp: 3},
+					},
+				},
+			},
+		))
+	})
+
+	It("routes local_only requests only to local client", func() {
+		spyLookup.results["a"] = []int{0, 1}
+		_, err := p.Send(context.Background(), &rpc.SendRequest{
+			LocalOnly: true,
 			Envelopes: &loggregator_v2.EnvelopeBatch{
 				Batch: []*loggregator_v2.Envelope{
 					{SourceId: "a", Timestamp: 1},
 				},
 			},
-		}))
+		})
+		Expect(err).ToNot(HaveOccurred())
 
-		Expect(spyIngressClient2.reqs).To(ConsistOf(&rpc.SendRequest{
-			Envelopes: &loggregator_v2.EnvelopeBatch{
-				Batch: []*loggregator_v2.Envelope{
-					{SourceId: "b", Timestamp: 2},
+		Expect(spyIngressLocalClient.reqs).To(ConsistOf(
+			&rpc.SendRequest{
+				LocalOnly: true,
+				Envelopes: &loggregator_v2.EnvelopeBatch{
+					Batch: []*loggregator_v2.Envelope{
+						{SourceId: "a", Timestamp: 1},
+					},
 				},
 			},
-		}))
+		))
+		Expect(spyIngressRemoteClient.reqs).To(BeEmpty())
 	})
 
 	It("survives an unroutable request", func() {
-		spyLookup.results["a"] = -1
-		spyLookup.results["b"] = 1
+		spyLookup.results["b"] = []int{1}
 
 		_, err := p.Send(context.Background(), &rpc.SendRequest{
 			Envelopes: &loggregator_v2.EnvelopeBatch{
@@ -81,7 +131,8 @@ var _ = Describe("IngressReverseProxy", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(spyIngressClient2.reqs).To(ConsistOf(&rpc.SendRequest{
+		Expect(spyIngressLocalClient.reqs).To(ConsistOf(&rpc.SendRequest{
+			LocalOnly: true,
 			Envelopes: &loggregator_v2.EnvelopeBatch{
 				Batch: []*loggregator_v2.Envelope{
 					{SourceId: "b", Timestamp: 2},
@@ -91,8 +142,8 @@ var _ = Describe("IngressReverseProxy", func() {
 	})
 
 	It("uses the given context", func() {
-		spyLookup.results["a"] = 0
-		spyLookup.results["b"] = 1
+		spyLookup.results["a"] = []int{0}
+		spyLookup.results["b"] = []int{1}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -107,15 +158,15 @@ var _ = Describe("IngressReverseProxy", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(spyIngressClient1.ctxs).ToNot(BeEmpty())
-		Expect(spyIngressClient1.ctxs[0].Done()).To(BeClosed())
+		Expect(spyIngressRemoteClient.ctxs).ToNot(BeEmpty())
+		Expect(spyIngressRemoteClient.ctxs[0].Done()).To(BeClosed())
 	})
 
 	It("does not return an error if one of the clients returns an error", func() {
-		spyIngressClient1.err = errors.New("some-error")
+		spyIngressRemoteClient.err = errors.New("some-error")
 
-		spyLookup.results["a"] = 0
-		spyLookup.results["b"] = 1
+		spyLookup.results["a"] = []int{0}
+		spyLookup.results["b"] = []int{1}
 
 		_, err := p.Send(context.Background(), &rpc.SendRequest{
 			Envelopes: &loggregator_v2.EnvelopeBatch{
@@ -131,16 +182,16 @@ var _ = Describe("IngressReverseProxy", func() {
 
 type spyLookup struct {
 	sourceIDs []string
-	results   map[string]int
+	results   map[string][]int
 }
 
 func newSpyLookup() *spyLookup {
 	return &spyLookup{
-		results: make(map[string]int),
+		results: make(map[string][]int),
 	}
 }
 
-func (s *spyLookup) Lookup(sourceID string) int {
+func (s *spyLookup) Lookup(sourceID string) []int {
 	s.sourceIDs = append(s.sourceIDs, sourceID)
 	return s.results[sourceID]
 }

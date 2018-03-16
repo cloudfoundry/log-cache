@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"math/rand"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -52,10 +53,15 @@ func NewEgressReverseProxy(
 // Read will either read from the local node or remote nodes.
 func (e *EgressReverseProxy) Read(ctx context.Context, in *rpc.ReadRequest) (*rpc.ReadResponse, error) {
 	idx := e.l(in.GetSourceId())
-	if idx < 0 {
+	if len(idx) == 0 {
 		return nil, grpc.Errorf(codes.Unavailable, "failed to find route for request. please try again")
 	}
-	return e.clients[idx].Read(ctx, in)
+	for _, i := range idx {
+		if i == e.localIdx {
+			return e.clients[e.localIdx].Read(ctx, in)
+		}
+	}
+	return e.clients[idx[rand.Intn(len(idx))]].Read(ctx, in)
 }
 
 // Meta will gather meta from the local store and remote nodes.

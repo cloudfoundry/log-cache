@@ -25,6 +25,31 @@ var _ = Describe("BatchedIngressClient", func() {
 		c = routing.NewBatchedIngressClient(5, time.Hour, spyIngressClient, log.New(ioutil.Discard, "", 0))
 	})
 
+	It("sends envelopes with LocalOnly set to true", func() {
+		for i := 0; i < 5; i++ {
+			_, err := c.Send(context.Background(), &rpc.SendRequest{
+				Envelopes: &loggregator_v2.EnvelopeBatch{
+					Batch: []*loggregator_v2.Envelope{
+						{Timestamp: int64(i)},
+					},
+				},
+			})
+			Expect(err).ToNot(HaveOccurred())
+		}
+
+		Eventually(spyIngressClient.Requests).Should(HaveLen(1))
+		Expect(spyIngressClient.Requests()[0].Envelopes.Batch).To(HaveLen(5))
+		Expect(spyIngressClient.Requests()[0].LocalOnly).To(BeTrue())
+
+		for i, e := range spyIngressClient.Requests()[0].Envelopes.Batch {
+			Expect(e).To(Equal(
+				&loggregator_v2.Envelope{
+					Timestamp: int64(i),
+				},
+			))
+		}
+	})
+
 	It("sends envelopes by batches because of size", func() {
 		for i := 0; i < 5; i++ {
 			_, err := c.Send(context.Background(), &rpc.SendRequest{

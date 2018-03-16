@@ -239,17 +239,8 @@ func (c *LogCache) setupRouting(s *store.Store) {
 		egressClients = append(egressClients, lcr)
 	}
 
-	lookupWrapper := func(sourceID string) int {
-		nodes := lookup.Lookup(sourceID)
-		if len(nodes) == 0 {
-			return -1
-		}
-
-		return nodes[0]
-	}
-
-	ingressReverseProxy := routing.NewIngressReverseProxy(lookupWrapper, ingressClients, c.log)
-	egressReverseProxy := routing.NewEgressReverseProxy(lookupWrapper, egressClients, localIdx, c.log)
+	ingressReverseProxy := routing.NewIngressReverseProxy(lookup.Lookup, ingressClients, localIdx, c.log)
+	egressReverseProxy := routing.NewEgressReverseProxy(lookup.Lookup, egressClients, localIdx, c.log)
 	c.server = grpc.NewServer(c.serverOpts...)
 
 	go func() {

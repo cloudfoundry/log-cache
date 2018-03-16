@@ -19,27 +19,31 @@ import (
 
 var _ = Describe("EgressReverseProxy", func() {
 	var (
-		spyLookup        *spyLookup
-		spyEgressClient1 *spyEgressClient
-		spyEgressClient2 *spyEgressClient
-		p                *routing.EgressReverseProxy
+		spyLookup              *spyLookup
+		spyEgressLocalClient   *spyEgressClient
+		spyEgressRemoteClient1 *spyEgressClient
+		spyEgressRemoteClient2 *spyEgressClient
+		p                      *routing.EgressReverseProxy
 	)
 
 	BeforeEach(func() {
 		spyLookup = newSpyLookup()
-		spyEgressClient1 = newSpyEgressClient()
-		spyEgressClient2 = newSpyEgressClient()
+		spyEgressLocalClient = newSpyEgressClient()
+		spyEgressRemoteClient1 = newSpyEgressClient()
+		spyEgressRemoteClient2 = newSpyEgressClient()
 		p = routing.NewEgressReverseProxy(spyLookup.Lookup, []rpc.EgressClient{
-			spyEgressClient1,
-			spyEgressClient2,
+			spyEgressLocalClient,
+			spyEgressRemoteClient1,
+			spyEgressRemoteClient2,
 		}, 0, log.New(ioutil.Discard, "", 0),
 			routing.WithMetaCacheDuration(50*time.Millisecond),
 		)
 	})
 
-	It("uses the correct client", func() {
-		spyLookup.results["a"] = 0
-		spyLookup.results["b"] = 1
+	It("uses a correct client", func() {
+		spyLookup.results["a"] = []int{0}
+		spyLookup.results["b"] = []int{1}
+		spyLookup.results["c"] = []int{1, 2}
 		expected := &rpc.ReadResponse{
 			Envelopes: &loggregator_v2.EnvelopeBatch{
 				Batch: []*loggregator_v2.Envelope{
@@ -47,7 +51,7 @@ var _ = Describe("EgressReverseProxy", func() {
 				},
 			},
 		}
-		spyEgressClient1.readResp = expected
+		spyEgressLocalClient.readResp = expected
 
 		resp, err := p.Read(context.Background(), &rpc.ReadRequest{
 			SourceId: "a",
@@ -60,20 +64,58 @@ var _ = Describe("EgressReverseProxy", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(spyLookup.sourceIDs).To(ConsistOf("a", "b"))
+		_, err = p.Read(context.Background(), &rpc.ReadRequest{
+			SourceId: "c",
+		})
+		Expect(err).ToNot(HaveOccurred())
 
-		Expect(spyEgressClient1.reqs).To(ConsistOf(&rpc.ReadRequest{
+		Expect(spyLookup.sourceIDs).To(ConsistOf("a", "b", "c"))
+
+		Expect(spyEgressLocalClient.reqs).To(ConsistOf(&rpc.ReadRequest{
 			SourceId: "a",
 		}))
 
-		Expect(spyEgressClient2.reqs).To(ConsistOf(&rpc.ReadRequest{
+		Expect(spyEgressRemoteClient1.reqs).To(ContainElement(&rpc.ReadRequest{
 			SourceId: "b",
+		}))
+
+		Expect(len(spyEgressRemoteClient1.reqs) + len(spyEgressRemoteClient2.reqs)).To(Equal(2))
+		Expect(append(spyEgressRemoteClient1.reqs, spyEgressRemoteClient2.reqs...)).To(ContainElement(&rpc.ReadRequest{
+			SourceId: "c",
+		}))
+	})
+
+	It("evenly distributes requests between remote clients", func() {
+		spyLookup.results["a"] = []int{1, 2}
+		for i := 0; i < 1000; i++ {
+			_, err := p.Read(context.Background(), &rpc.ReadRequest{
+				SourceId: "a",
+			})
+			Expect(err).ToNot(HaveOccurred())
+		}
+
+		Expect(len(spyEgressRemoteClient1.reqs) + len(spyEgressRemoteClient2.reqs)).To(Equal(1000))
+		Expect(len(spyEgressRemoteClient1.reqs)).To(BeNumerically("~", 500, 100))
+		Expect(len(spyEgressRemoteClient2.reqs)).To(BeNumerically("~", 500, 100))
+	})
+
+	It("prefers the local client", func() {
+		spyLookup.results["a"] = []int{0, 1, 2}
+
+		for i := 0; i < 1000; i++ {
+			_, err := p.Read(context.Background(), &rpc.ReadRequest{
+				SourceId: "a",
+			})
+			Expect(err).ToNot(HaveOccurred())
+		}
+
+		Expect(spyEgressLocalClient.reqs).To(HaveLen(1000))
+		Expect(spyEgressLocalClient.reqs).To(ContainElement(&rpc.ReadRequest{
+			SourceId: "a",
 		}))
 	})
 
 	It("returns an Unavailable error for an unroutable request", func() {
-		spyLookup.results["c"] = -1
-
 		_, err := p.Read(context.Background(), &rpc.ReadRequest{
 			SourceId: "c",
 		})
@@ -81,7 +123,7 @@ var _ = Describe("EgressReverseProxy", func() {
 	})
 
 	It("uses the given context", func() {
-		spyLookup.results["a"] = 0
+		spyLookup.results["a"] = []int{0}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -91,14 +133,14 @@ var _ = Describe("EgressReverseProxy", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(spyEgressClient1.ctxs[0].Done()).To(BeClosed())
+		Expect(spyEgressLocalClient.ctxs[0].Done()).To(BeClosed())
 	})
 
 	It("returns an error if the clients returns an error", func() {
-		spyEgressClient1.err = errors.New("some-error")
+		spyEgressLocalClient.err = errors.New("some-error")
 
-		spyLookup.results["a"] = 0
-		spyLookup.results["b"] = 1
+		spyLookup.results["a"] = []int{0}
+		spyLookup.results["b"] = []int{1}
 
 		_, err := p.Read(context.Background(), &rpc.ReadRequest{
 			SourceId: "a",
@@ -107,7 +149,7 @@ var _ = Describe("EgressReverseProxy", func() {
 	})
 
 	It("gets meta from the local store", func() {
-		spyEgressClient1.metaResults = map[string]*rpc.MetaInfo{
+		spyEgressLocalClient.metaResults = map[string]*rpc.MetaInfo{
 			"source-1": {
 				Count:           1,
 				Expired:         2,
@@ -140,12 +182,12 @@ var _ = Describe("EgressReverseProxy", func() {
 			NewestTimestamp: 8,
 		}))
 
-		Expect(spyEgressClient1.metaRequests).To(ConsistOf(&rpc.MetaRequest{LocalOnly: true}))
-		Expect(spyEgressClient2.metaRequests).To(BeEmpty())
+		Expect(spyEgressLocalClient.metaRequests).To(ConsistOf(&rpc.MetaRequest{LocalOnly: true}))
+		Expect(spyEgressRemoteClient1.metaRequests).To(BeEmpty())
 	})
 
 	It("gets sourceIds from the remote store and the local store", func() {
-		spyEgressClient1.metaResults = map[string]*rpc.MetaInfo{
+		spyEgressLocalClient.metaResults = map[string]*rpc.MetaInfo{
 			"source-1": {
 				Count:           1,
 				Expired:         2,
@@ -160,7 +202,7 @@ var _ = Describe("EgressReverseProxy", func() {
 			},
 		}
 
-		spyEgressClient2.metaResults = map[string]*rpc.MetaInfo{
+		spyEgressRemoteClient1.metaResults = map[string]*rpc.MetaInfo{
 			"source-3": {
 				Count:           9,
 				Expired:         10,
@@ -190,13 +232,13 @@ var _ = Describe("EgressReverseProxy", func() {
 			NewestTimestamp: 12,
 		}))
 
-		Expect(spyEgressClient1.metaRequests).To(ConsistOf(&rpc.MetaRequest{LocalOnly: true}))
-		Expect(spyEgressClient2.metaRequests).To(ConsistOf(&rpc.MetaRequest{LocalOnly: true}))
+		Expect(spyEgressLocalClient.metaRequests).To(ConsistOf(&rpc.MetaRequest{LocalOnly: true}))
+		Expect(spyEgressRemoteClient1.metaRequests).To(ConsistOf(&rpc.MetaRequest{LocalOnly: true}))
 	})
 
 	It("gets sourceIds from the cache rather than the meta store", func() {
-		spyEgressClient1.metaResults = map[string]*rpc.MetaInfo{}
-		spyEgressClient2.metaResults = map[string]*rpc.MetaInfo{}
+		spyEgressLocalClient.metaResults = map[string]*rpc.MetaInfo{}
+		spyEgressRemoteClient1.metaResults = map[string]*rpc.MetaInfo{}
 
 		_, err := p.Meta(context.Background(), &rpc.MetaRequest{})
 		Expect(err).ToNot(HaveOccurred())
@@ -204,16 +246,16 @@ var _ = Describe("EgressReverseProxy", func() {
 		_, err = p.Meta(context.Background(), &rpc.MetaRequest{})
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(spyEgressClient1.metaCalls).To(Equal(1))
-		Expect(spyEgressClient2.metaCalls).To(Equal(1))
+		Expect(spyEgressLocalClient.metaCalls).To(Equal(1))
+		Expect(spyEgressRemoteClient1.metaCalls).To(Equal(1))
 	})
 
 	It("gets sourceIds from the cache rather than the meta store with local only", func() {
-		spyEgressClient1.metaResults = map[string]*rpc.MetaInfo{
+		spyEgressLocalClient.metaResults = map[string]*rpc.MetaInfo{
 			"source-1": {},
 			"source-2": {},
 		}
-		spyEgressClient2.metaResults = map[string]*rpc.MetaInfo{
+		spyEgressRemoteClient1.metaResults = map[string]*rpc.MetaInfo{
 			"source-3": {},
 		}
 
@@ -223,22 +265,22 @@ var _ = Describe("EgressReverseProxy", func() {
 		respB, err := p.Meta(context.Background(), &rpc.MetaRequest{LocalOnly: false})
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(spyEgressClient1.metaCalls).To(Equal(2))
-		Expect(spyEgressClient2.metaCalls).To(Equal(1))
+		Expect(spyEgressLocalClient.metaCalls).To(Equal(2))
+		Expect(spyEgressRemoteClient1.metaCalls).To(Equal(1))
 
 		Expect(respA.Meta).To(HaveLen(2))
 		Expect(respB.Meta).To(HaveLen(3))
 	})
 
 	It("times out the meta cache", func() {
-		spyEgressClient1.metaResults = map[string]*rpc.MetaInfo{}
-		spyEgressClient2.metaResults = map[string]*rpc.MetaInfo{}
+		spyEgressLocalClient.metaResults = map[string]*rpc.MetaInfo{}
+		spyEgressRemoteClient1.metaResults = map[string]*rpc.MetaInfo{}
 
 		Eventually(func() int {
 			_, err := p.Meta(context.Background(), &rpc.MetaRequest{})
 			Expect(err).ToNot(HaveOccurred())
 
-			return spyEgressClient2.metaCalls
+			return spyEgressRemoteClient1.metaCalls
 		}, 2).Should(BeNumerically(">", 1))
 	})
 
@@ -249,11 +291,11 @@ var _ = Describe("EgressReverseProxy", func() {
 			LocalOnly: true,
 		})
 
-		Expect(spyEgressClient1.ctxs[0].Done()).To(BeClosed())
+		Expect(spyEgressLocalClient.ctxs[0].Done()).To(BeClosed())
 	})
 
 	It("returns partial results if some of the remotes return an error", func() {
-		spyEgressClient2.metaErr = errors.New("errors")
+		spyEgressRemoteClient1.metaErr = errors.New("errors")
 
 		result, err := p.Meta(context.Background(), &rpc.MetaRequest{})
 		Expect(err).ToNot(HaveOccurred())
@@ -261,8 +303,9 @@ var _ = Describe("EgressReverseProxy", func() {
 	})
 
 	It("returns an error if all of the remotes returns an error", func() {
-		spyEgressClient1.metaErr = errors.New("errors")
-		spyEgressClient2.metaErr = errors.New("errors")
+		spyEgressLocalClient.metaErr = errors.New("errors")
+		spyEgressRemoteClient1.metaErr = errors.New("errors")
+		spyEgressRemoteClient2.metaErr = errors.New("errors")
 
 		_, err := p.Meta(context.Background(), &rpc.MetaRequest{})
 		Expect(err).To(HaveOccurred())

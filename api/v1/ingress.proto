@@ -13,6 +13,7 @@ service Ingress {
 
 message SendRequest {
     loggregator.v2.EnvelopeBatch envelopes = 1;
+    bool local_only = 2;
 }
 
 message SendResponse {}

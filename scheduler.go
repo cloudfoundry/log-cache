@@ -130,7 +130,7 @@ func (s *Scheduler) Start() {
 			Start: start,
 			End:   start + x,
 		},
-			orchestrator.WithTaskInstances(1),
+			orchestrator.WithTaskInstances(3),
 		)
 
 		s.groupOrch.AddTask(rpc.Range{

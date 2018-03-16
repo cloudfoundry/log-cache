@@ -176,6 +176,7 @@ var _ = Describe("LogCache", func() {
 		Eventually(peer.getEnvelopes).Should(HaveLen(2))
 		Expect(peer.getEnvelopes()[0].Timestamp).To(Equal(int64(2)))
 		Expect(peer.getEnvelopes()[1].Timestamp).To(Equal(int64(3)))
+		Expect(peer.getLocalOnlyValues()).ToNot(ContainElement(false))
 	})
 
 	It("accepts envelopes from peers", func() {
@@ -331,12 +332,13 @@ func writeEnvelopes(addr string, es []*loggregator_v2.Envelope) {
 }
 
 type spyLogCache struct {
-	mu            sync.Mutex
-	envelopes     []*loggregator_v2.Envelope
-	readRequests  []*rpc.ReadRequest
-	readEnvelopes map[string]func() []*loggregator_v2.Envelope
-	metaResponses map[string]*rpc.MetaInfo
-	tlsConfig     *tls.Config
+	mu              sync.Mutex
+	localOnlyValues []bool
+	envelopes       []*loggregator_v2.Envelope
+	readRequests    []*rpc.ReadRequest
+	readEnvelopes   map[string]func() []*loggregator_v2.Envelope
+	metaResponses   map[string]*rpc.MetaInfo
+	tlsConfig       *tls.Config
 }
 
 func newSpyLogCache(tlsConfig *tls.Config) *spyLogCache {
@@ -370,6 +372,14 @@ func (s *spyLogCache) getEnvelopes() []*loggregator_v2.Envelope {
 	return r
 }
 
+func (s *spyLogCache) getLocalOnlyValues() []bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r := make([]bool, len(s.localOnlyValues))
+	copy(r, s.localOnlyValues)
+	return r
+}
+
 func (s *spyLogCache) getReadRequests() []*rpc.ReadRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -381,6 +391,8 @@ func (s *spyLogCache) getReadRequests() []*rpc.ReadRequest {
 func (s *spyLogCache) Send(ctx context.Context, r *rpc.SendRequest) (*rpc.SendResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	s.localOnlyValues = append(s.localOnlyValues, r.LocalOnly)
 
 	for _, e := range r.Envelopes.Batch {
 		s.envelopes = append(s.envelopes, e)

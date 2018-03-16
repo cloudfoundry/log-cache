@@ -76,6 +76,7 @@ func (b *BatchedIngressClient) write(batch []interface{}) {
 
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
 	_, err := b.c.Send(ctx, &rpc.SendRequest{
+		LocalOnly: true,
 		Envelopes: &loggregator_v2.EnvelopeBatch{e},
 	})
 
