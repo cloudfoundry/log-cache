@@ -121,7 +121,7 @@ together (and not spread across other requesters).
 ```
 
 ```
-curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>/<source-id>" -XPUT -d'{"subGroup":{"sourceIds":["source-id-1","source-id-2"]}}'
+curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>" -XPUT -d'{"subGroup":{"sourceIds":["source-id-1","source-id-2"]}}'
 ```
 
 ##### Response Body

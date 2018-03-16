@@ -105,7 +105,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		if err := jsonpb.Unmarshal(r.Body, &setShard); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			println(err.Error())
-			w.Write([]byte(fmt.Sprintf(`{"error": %q`, err)))
+			w.Write([]byte(fmt.Sprintf(`{"error": %q}`, err)))
 			return
 		}
 
