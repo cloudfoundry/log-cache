@@ -114,6 +114,7 @@ func (e *EgressReverseProxy) remoteMeta(ctx context.Context, in *rpc.MetaRequest
 			// TODO: Metric
 			e.log.Printf("failed to read meta data from remote node: %s", err)
 			errs = append(errs, err)
+			continue
 		}
 
 		for sourceID, mi := range resp.Meta {

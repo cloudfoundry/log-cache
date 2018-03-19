@@ -345,7 +345,11 @@ func (s *spyEgressClient) Meta(ctx context.Context, r *rpc.MetaRequest, opts ...
 		metaInfo[id] = m
 	}
 
+	if s.metaErr != nil {
+		return nil, s.metaErr
+	}
+
 	return &rpc.MetaResponse{
 		Meta: metaInfo,
-	}, s.metaErr
+	}, nil
 }
