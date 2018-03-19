@@ -107,7 +107,6 @@ func (s *Store) Put(e *loggregator_v2.Envelope, index string) {
 
 		// Update the meta
 		m := s.meta[index]
-		m.Count--
 		m.Expired++
 		s.meta[index] = m
 	}
@@ -133,7 +132,6 @@ func (s *Store) Put(e *loggregator_v2.Envelope, index string) {
 
 	// Update the meta
 	m := s.meta[index]
-	m.Count++
 	if e.Timestamp > m.Newest.UnixNano() {
 		m.Newest = time.Unix(0, e.Timestamp)
 	}
@@ -180,7 +178,6 @@ func (s *Store) truncate() {
 
 		// Update the meta
 		m := s.meta[index]
-		m.Count--
 		m.Expired++
 		m.Oldest = time.Unix(0, newOldest)
 		s.meta[index] = m
@@ -343,6 +340,7 @@ func (s *Store) Meta() map[string]MetaInfo {
 	// Copy the map so that we don't leak the lock protected map beyond the
 	// locks.
 	for k, v := range s.meta {
+		v.Count = s.indexes[k].Size()
 		meta[k] = v
 	}
 	return meta

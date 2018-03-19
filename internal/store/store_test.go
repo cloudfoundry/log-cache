@@ -88,6 +88,21 @@ var _ = Describe("Store", func() {
 		Expect(envelopes[2].GetTimestamp()).To(Equal(int64(2)))
 	})
 
+	It("does not increment the count during a timestamp overwrite", func() {
+		e1 := buildEnvelope(1, "a")
+		e2 := buildEnvelope(1, "a")
+		e3 := buildEnvelope(3, "a")
+		e4 := buildEnvelope(4, "a")
+
+		s.Put(e1, e1.GetSourceId())
+		s.Put(e2, e2.GetSourceId())
+		s.Put(e3, e3.GetSourceId())
+		s.Put(e4, e4.GetSourceId())
+
+		m := s.Meta()["a"]
+		Expect(m.Count).To(Equal(3))
+	})
+
 	DescribeTable("fetches data based on envelope type",
 		func(envelopeType store.EnvelopeType, envelopeWrapper interface{}) {
 			e1 := buildTypedEnvelope(0, "a", &loggregator_v2.Log{})
