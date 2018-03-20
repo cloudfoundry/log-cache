@@ -32,6 +32,7 @@ func main() {
 		logcache.WithSchedulerMetrics(metrics.New(expvar.NewMap("Scheduler"))),
 		logcache.WithSchedulerInterval(cfg.Interval),
 		logcache.WithSchedulerCount(cfg.Count),
+		logcache.WithSchedulerReplicationFactor(cfg.ReplicationFactor),
 		logcache.WithSchedulerDialOpts(
 			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
 		),

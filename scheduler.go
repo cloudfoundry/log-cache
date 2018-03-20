@@ -14,13 +14,14 @@ import (
 
 // Scheduler manages the routes of the Log Cache nodes.
 type Scheduler struct {
-	log          *log.Logger
-	metrics      Metrics
-	interval     time.Duration
-	count        int
-	logCacheOrch *orchestrator.Orchestrator
-	groupOrch    *orchestrator.Orchestrator
-	dialOpts     []grpc.DialOption
+	log               *log.Logger
+	metrics           Metrics
+	interval          time.Duration
+	count             int
+	replicationFactor int
+	logCacheOrch      *orchestrator.Orchestrator
+	groupOrch         *orchestrator.Orchestrator
+	dialOpts          []grpc.DialOption
 
 	logCacheClients []clientInfo
 	groupClients    []clientInfo
@@ -30,11 +31,12 @@ type Scheduler struct {
 // nodes.
 func NewScheduler(logCacheAddrs, groupAddrs []string, opts ...SchedulerOption) *Scheduler {
 	s := &Scheduler{
-		log:      log.New(ioutil.Discard, "", 0),
-		metrics:  nopMetrics{},
-		interval: time.Minute,
-		count:    100,
-		dialOpts: []grpc.DialOption{grpc.WithInsecure()},
+		log:               log.New(ioutil.Discard, "", 0),
+		metrics:           nopMetrics{},
+		interval:          time.Minute,
+		count:             100,
+		replicationFactor: 1,
+		dialOpts:          []grpc.DialOption{grpc.WithInsecure()},
 	}
 
 	for _, o := range opts {
@@ -103,6 +105,16 @@ func WithSchedulerCount(count int) SchedulerOption {
 	}
 }
 
+// WithSchedulerReplicationFactor returns a SchedulerOption that configures
+// the replication factor for the Log Cache cluster. Replication factor is the
+// total number of nodes to replicate data across. It defaults to 1 (meaning
+// no replication).
+func WithSchedulerReplicationFactor(replicationFactor int) SchedulerOption {
+	return func(s *Scheduler) {
+		s.replicationFactor = replicationFactor
+	}
+}
+
 // WithSchedulerDialOpts are the gRPC options used to dial peer Log Cache
 // nodes. It defaults to WithInsecure().
 func WithSchedulerDialOpts(opts ...grpc.DialOption) SchedulerOption {
@@ -130,7 +142,7 @@ func (s *Scheduler) Start() {
 			Start: start,
 			End:   start + x,
 		},
-			orchestrator.WithTaskInstances(3),
+			orchestrator.WithTaskInstances(s.replicationFactor),
 		)
 
 		s.groupOrch.AddTask(rpc.Range{
@@ -146,7 +158,7 @@ func (s *Scheduler) Start() {
 		Start: start,
 		End:   maxHash,
 	},
-		orchestrator.WithTaskInstances(1),
+		orchestrator.WithTaskInstances(s.replicationFactor),
 	)
 
 	s.groupOrch.AddTask(rpc.Range{
@@ -158,6 +170,7 @@ func (s *Scheduler) Start() {
 
 	go func() {
 		for range time.Tick(s.interval) {
+
 			// Apply changes
 			s.logCacheOrch.NextTerm(context.Background())
 			s.groupOrch.NextTerm(context.Background())

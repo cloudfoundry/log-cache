@@ -8,6 +8,7 @@ import (
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/log-cache"
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -41,40 +42,83 @@ var _ = Describe("Scheduler", func() {
 			},
 			logcache.WithSchedulerInterval(time.Millisecond),
 			logcache.WithSchedulerCount(7),
+			logcache.WithSchedulerReplicationFactor(2),
 		)
 	})
 
-	Describe("Log Cache Ranges", func() {
-		It("schedules the ranges evenly across the nodes", func() {
-			s.Start()
-			Eventually(logCacheSpy1.ReqCount, 2).Should(BeNumerically(">=", 50))
-			Eventually(logCacheSpy2.ReqCount, 2).Should(BeNumerically(">=", 50))
+	DescribeTable("schedules the ranges evenly across the nodes", func(spyF1, spyF2 func() *spyOrchestration) {
+		spy1 := spyF1()
+		spy2 := spyF2()
+		count := 7
 
-			reqs := append(logCacheSpy1.AddReqs(), logCacheSpy2.AddReqs()...)
+		maxHash := uint64(18446744073709551615)
+		x := maxHash / uint64(count)
+		var start uint64
 
-			count := 7
-
-			maxHash := uint64(18446744073709551615)
-			x := maxHash / uint64(count)
-			var start uint64
-
-			for i := 0; i < count; i++ {
-				if i == count-1 {
-					Expect(reqs).To(ContainElement(&rpc.Range{
-						Start: start,
-						End:   maxHash,
-					}))
-					break
-				}
-				Expect(reqs).To(ContainElement(&rpc.Range{
+		// Populate spy1 with all the ranges. The scheduler should leave spy1
+		// alone.
+		for i := 0; i < count; i++ {
+			if i == count-1 {
+				spy1.listRanges = append(spy1.listRanges, &rpc.Range{
 					Start: start,
-					End:   start + x,
-				}))
+					End:   maxHash,
+				})
 
-				start += x + 1
+				break
 			}
-		})
 
+			spy1.listRanges = append(spy1.listRanges, &rpc.Range{
+				Start: start,
+				End:   start + x,
+			})
+
+			start += x + 1
+		}
+
+		s.Start()
+		Eventually(spy2.ReqCount, 2).Should(BeNumerically(">=", 50))
+
+		m := make(map[rpc.Range]int)
+
+		for _, r := range spy2.AddReqs() {
+			m[*r]++
+		}
+
+		start = 0
+		for i := 0; i < count; i++ {
+			if i == count-1 {
+				Expect(m).To(HaveKey(rpc.Range{
+					Start: start,
+					End:   maxHash,
+				}))
+				break
+			}
+
+			Expect(m).To(HaveKey(rpc.Range{
+				Start: start,
+				End:   start + x,
+			}))
+
+			start += x + 1
+		}
+
+		Expect(spy1.AddReqs()).To(BeEmpty())
+		Expect(spy1.RemoveReqs()).To(BeEmpty())
+	},
+		// Why are these functions? Go is eager and therefore if we passed the
+		// spy in directly, the BeforeEach would not have a chance to
+		// initialze them and therefore they would just be nil.
+		Entry("LogCache Ranges",
+			func() *spyOrchestration { return logCacheSpy1 },
+			func() *spyOrchestration { return logCacheSpy2 },
+		),
+		Entry("GroupReader Ranges",
+			func() *spyOrchestration { return groupSpy1 },
+			func() *spyOrchestration { return groupSpy2 },
+		),
+	)
+
+	Describe("Log Cache Ranges", func() {
 		It("sets the range table after listing all the nodes", func() {
 			s.Start()
 
@@ -98,6 +142,7 @@ var _ = Describe("Scheduler", func() {
 						Start: start,
 						End:   maxHash,
 					})
+
 					break
 				}
 
@@ -108,6 +153,19 @@ var _ = Describe("Scheduler", func() {
 
 				start += x + 1
 			}
+
+			s := logcache.NewScheduler(
+				[]string{
+					logCacheSpy1.lis.Addr().String(),
+					logCacheSpy2.lis.Addr().String(),
+				},
+				[]string{
+					groupSpy1.lis.Addr().String(),
+					groupSpy2.lis.Addr().String(),
+				},
+				logcache.WithSchedulerInterval(time.Millisecond),
+				logcache.WithSchedulerCount(7),
+			)
 
 			s.Start()
 

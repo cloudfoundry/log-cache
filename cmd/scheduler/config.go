@@ -12,8 +12,9 @@ type Config struct {
 	TLS        tls.TLS
 	HealthPort int `env:"HEALTH_PORT"`
 
-	Interval time.Duration `env:"INTERVAL"`
-	Count    int           `env:"COUNT"`
+	Interval          time.Duration `env:"INTERVAL"`
+	Count             int           `env:"COUNT"`
+	ReplicationFactor int           `env:"REPLICATION_FACTOR"`
 
 	// GroupReaderNodeAddrs are all the GroupReader addresses. They are in
 	// order according to their NodeIndex.
@@ -27,9 +28,10 @@ type Config struct {
 // LoadConfig creates Config object from environment variables
 func LoadConfig() (*Config, error) {
 	c := Config{
-		HealthPort: 6064,
-		Count:      100,
-		Interval:   time.Minute,
+		HealthPort:        6064,
+		Count:             100,
+		ReplicationFactor: 1,
+		Interval:          time.Minute,
 	}
 
 	if err := envstruct.Load(&c); err != nil {
