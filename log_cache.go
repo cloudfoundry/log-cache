@@ -33,7 +33,7 @@ type LogCache struct {
 	// Cluster Properties
 	addr     string
 	dialOpts []grpc.DialOption
-	extAddr  string
+	serverID string
 
 	// nodeAddrs are the addresses of all the nodes (including the current
 	// node). The index corresponds with the nodeIndex. It defaults to a
@@ -124,13 +124,13 @@ func WithClustered(nodeIndex int, nodeAddrs []string, opts ...grpc.DialOption) L
 	}
 }
 
-// WithExternalAddr returns a LogCacheOption that sets
-// address the scheduler will refer to the given node as. This is required
+// WithServerID returns a LogCacheOption that sets ID the scheduler will refer
+// to the given node as. The scheduler speaks in addresses. This is required
 // when the set address won't match what the scheduler will refer to the node
 // as (e.g. :0). Defaults to the resulting address from the listener.
-func WithExternalAddr(addr string) LogCacheOption {
+func WithServerID(addr string) LogCacheOption {
 	return func(c *LogCache) {
-		c.extAddr = addr
+		c.serverID = addr
 	}
 }
 
@@ -194,13 +194,13 @@ func (c *LogCache) setupRouting() {
 	c.lis = lis
 	c.log.Printf("listening on %s...", c.Addr())
 
-	if c.extAddr == "" {
-		c.extAddr = c.lis.Addr().String()
+	if c.serverID == "" {
+		c.serverID = c.lis.Addr().String()
 	}
 
 	lookup := routing.NewRoutingTable(c.nodeAddrs, hasher)
 	orch := routing.NewOrchestrator(routing.RangeSetterFunc(func(in *logcache_v1.SetRangesRequest) {
-		r, ok := in.Ranges[c.extAddr]
+		r, ok := in.Ranges[c.serverID]
 		if ok {
 			s.SetRanges(r.Ranges)
 		}

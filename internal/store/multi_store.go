@@ -29,11 +29,11 @@ type SubStore interface {
 type SubStoreCreator func() SubStore
 
 // NewMultiStore returns a new MultiStore.
-func NewMultiStore(c SubStoreCreator, hash func(string) uint64) *MultiStore {
+func NewMultiStore(c SubStoreCreator, hasher func(string) uint64) *MultiStore {
 	return &MultiStore{
 		stores:          make(map[logcache_v1.Range]SubStore),
 		subStoreCreator: c,
-		hasher:          hash,
+		hasher:          hasher,
 	}
 }
 
