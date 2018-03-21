@@ -9,7 +9,6 @@ import (
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/groups"
-	"code.cloudfoundry.org/log-cache/internal/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
@@ -377,7 +376,7 @@ type spyDataStorage struct {
 	getStarts        []int64
 	getEnds          []int64
 	getLimits        []int
-	getEnvelopeTypes [][]store.EnvelopeType
+	getEnvelopeTypes [][]logcache_v1.EnvelopeType
 	getDescending    []bool
 	getRequestIDs    []uint64
 	getResult        []*loggregator_v2.Envelope
@@ -391,7 +390,7 @@ func (s *spyDataStorage) Get(
 	name string,
 	start time.Time,
 	end time.Time,
-	envelopeType []store.EnvelopeType,
+	envelopeType []logcache_v1.EnvelopeType,
 	limit int,
 	descending bool,
 	requesterID uint64,

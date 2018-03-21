@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/store"
 
@@ -104,7 +105,7 @@ var _ = Describe("Store", func() {
 	})
 
 	DescribeTable("fetches data based on envelope type",
-		func(envelopeType store.EnvelopeType, envelopeWrapper interface{}) {
+		func(envelopeType logcache_v1.EnvelopeType, envelopeWrapper interface{}) {
 			e1 := buildTypedEnvelope(0, "a", &loggregator_v2.Log{})
 			e2 := buildTypedEnvelope(1, "a", &loggregator_v2.Counter{})
 			e3 := buildTypedEnvelope(2, "a", &loggregator_v2.Gauge{})
@@ -119,7 +120,7 @@ var _ = Describe("Store", func() {
 
 			start := time.Unix(0, 0)
 			end := time.Unix(0, 9999)
-			envelopes := s.Get("a", start, end, []store.EnvelopeType{envelopeType}, 5, false)
+			envelopes := s.Get("a", start, end, []logcache_v1.EnvelopeType{envelopeType}, 5, false)
 			Expect(envelopes).To(HaveLen(1))
 			Expect(envelopes[0].Message).To(BeAssignableToTypeOf(envelopeWrapper))
 
@@ -128,11 +129,11 @@ var _ = Describe("Store", func() {
 			Expect(envelopes).To(HaveLen(5))
 		},
 
-		Entry("Log", &loggregator_v2.Log{}, &loggregator_v2.Envelope_Log{}),
-		Entry("Counter", &loggregator_v2.Counter{}, &loggregator_v2.Envelope_Counter{}),
-		Entry("Gauge", &loggregator_v2.Gauge{}, &loggregator_v2.Envelope_Gauge{}),
-		Entry("Timer", &loggregator_v2.Timer{}, &loggregator_v2.Envelope_Timer{}),
-		Entry("Event", &loggregator_v2.Event{}, &loggregator_v2.Envelope_Event{}),
+		Entry("Log", logcache_v1.EnvelopeType_LOG, &loggregator_v2.Envelope_Log{}),
+		Entry("Counter", logcache_v1.EnvelopeType_COUNTER, &loggregator_v2.Envelope_Counter{}),
+		Entry("Gauge", logcache_v1.EnvelopeType_GAUGE, &loggregator_v2.Envelope_Gauge{}),
+		Entry("Timer", logcache_v1.EnvelopeType_TIMER, &loggregator_v2.Envelope_Timer{}),
+		Entry("Event", logcache_v1.EnvelopeType_EVENT, &loggregator_v2.Envelope_Event{}),
 	)
 
 	It("is thread safe", func() {

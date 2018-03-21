@@ -10,7 +10,6 @@ import (
 	"golang.org/x/net/context"
 
 	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 )
 
@@ -46,27 +45,10 @@ var _ = Describe("LocalStoreReader", func() {
 		Expect(spyStoreReader.sourceID).To(Equal("some-source"))
 		Expect(spyStoreReader.start.UnixNano()).To(Equal(int64(99)))
 		Expect(spyStoreReader.end.UnixNano()).To(Equal(int64(100)))
-		Expect(spyStoreReader.envelopeTypes).To(ConsistOf(&loggregator_v2.Log{}))
+		Expect(spyStoreReader.envelopeTypes).To(ConsistOf(logcache_v1.EnvelopeType_LOG))
 		Expect(spyStoreReader.limit).To(Equal(101))
 		Expect(spyStoreReader.descending).To(BeTrue())
 	})
-
-	DescribeTable("envelope types", func(t logcache_v1.EnvelopeType, expected store.EnvelopeType) {
-		_, err := r.Read(context.Background(), &logcache_v1.ReadRequest{
-			SourceId:      "some-source",
-			StartTime:     99,
-			EndTime:       100,
-			Limit:         101,
-			EnvelopeTypes: []logcache_v1.EnvelopeType{t},
-		})
-		Expect(err).ToNot(HaveOccurred())
-		Expect(spyStoreReader.envelopeTypes).To(ConsistOf(expected))
-	},
-		Entry("log", logcache_v1.EnvelopeType_LOG, &loggregator_v2.Log{}),
-		Entry("counter", logcache_v1.EnvelopeType_COUNTER, &loggregator_v2.Counter{}),
-		Entry("gauge", logcache_v1.EnvelopeType_GAUGE, &loggregator_v2.Gauge{}),
-		Entry("timer", logcache_v1.EnvelopeType_TIMER, &loggregator_v2.Timer{}),
-		Entry("event", logcache_v1.EnvelopeType_EVENT, &loggregator_v2.Event{}))
 
 	It("does not set the envelope type for an ANY", func() {
 		_, err := r.Read(context.Background(), &logcache_v1.ReadRequest{
@@ -170,7 +152,7 @@ type spyStoreReader struct {
 	sourceID      string
 	start         time.Time
 	end           time.Time
-	envelopeTypes []store.EnvelopeType
+	envelopeTypes []logcache_v1.EnvelopeType
 	limit         int
 	descending    bool
 	metaResponse  map[string]store.MetaInfo
@@ -184,7 +166,7 @@ func (s *spyStoreReader) Get(
 	sourceID string,
 	start time.Time,
 	end time.Time,
-	envelopeTypes []store.EnvelopeType,
+	envelopeTypes []logcache_v1.EnvelopeType,
 	limit int,
 	descending bool,
 ) []*loggregator_v2.Envelope {

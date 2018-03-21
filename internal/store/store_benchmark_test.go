@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/store"
 )
@@ -81,7 +82,7 @@ func BenchmarkStoreGetLogType(b *testing.B) {
 		s.Put(e, e.GetSourceId())
 	}
 
-	logType := []store.EnvelopeType{&loggregator_v2.Log{}}
+	logType := []logcache_v1.EnvelopeType{logcache_v1.EnvelopeType_LOG}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

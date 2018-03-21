@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"github.com/emirpasic/gods/trees/avltree"
 	"github.com/emirpasic/gods/utils"
@@ -187,16 +188,13 @@ func (s *Store) truncate() {
 	}
 }
 
-// EnvelopeType is used to filter envelopes based on type.
-type EnvelopeType interface{}
-
 // Get fetches envelopes from the store based on the source ID, start and end
 // time. Start is inclusive while end is not: [start..end).
 func (s *Store) Get(
 	index string,
 	start time.Time,
 	end time.Time,
-	envelopeTypes []EnvelopeType,
+	envelopeTypes []logcache_v1.EnvelopeType,
 	limit int,
 	descending bool,
 ) []*loggregator_v2.Envelope {
@@ -227,7 +225,7 @@ func (s *Store) Get(
 	return res
 }
 
-func (s *Store) validEnvelopeType(e *loggregator_v2.Envelope, types []EnvelopeType) bool {
+func (s *Store) validEnvelopeType(e *loggregator_v2.Envelope, types []logcache_v1.EnvelopeType) bool {
 	if types == nil {
 		return true
 	}
@@ -291,21 +289,21 @@ func (s *Store) treeDescTraverse(
 	return s.treeDescTraverse(n.Children[0], start, end, f)
 }
 
-func (s *Store) checkEnvelopeType(e *loggregator_v2.Envelope, t EnvelopeType) bool {
-	if t == nil {
+func (s *Store) checkEnvelopeType(e *loggregator_v2.Envelope, t logcache_v1.EnvelopeType) bool {
+	if t == logcache_v1.EnvelopeType_ANY {
 		return true
 	}
 
-	switch t.(type) {
-	case *loggregator_v2.Log:
+	switch t {
+	case logcache_v1.EnvelopeType_LOG:
 		return e.GetLog() != nil
-	case *loggregator_v2.Counter:
+	case logcache_v1.EnvelopeType_COUNTER:
 		return e.GetCounter() != nil
-	case *loggregator_v2.Gauge:
+	case logcache_v1.EnvelopeType_GAUGE:
 		return e.GetGauge() != nil
-	case *loggregator_v2.Timer:
+	case logcache_v1.EnvelopeType_TIMER:
 		return e.GetTimer() != nil
-	case *loggregator_v2.Event:
+	case logcache_v1.EnvelopeType_EVENT:
 		return e.GetEvent() != nil
 	default:
 		// This should never happen. This implies the store is being used

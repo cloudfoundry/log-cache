@@ -9,6 +9,7 @@ import (
 	"time"
 
 	logcache "code.cloudfoundry.org/go-log-cache"
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	streamaggregator "code.cloudfoundry.org/go-stream-aggregator"
 	"code.cloudfoundry.org/log-cache/internal/store"
@@ -77,7 +78,7 @@ func (s *Storage) Get(
 	name string,
 	start time.Time,
 	end time.Time,
-	envelopeTypes []store.EnvelopeType,
+	envelopeTypes []logcache_v1.EnvelopeType,
 	limit int,
 	descending bool,
 	requesterID uint64,

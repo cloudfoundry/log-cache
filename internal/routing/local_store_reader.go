@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/store"
 	"golang.org/x/net/context"
@@ -25,7 +25,7 @@ type StoreReader interface {
 		sourceID string,
 		start time.Time,
 		end time.Time,
-		envelopeTypes []store.EnvelopeType,
+		envelopeTypes []logcache_v1.EnvelopeType,
 		limit int,
 		descending bool,
 	) []*loggregator_v2.Envelope
@@ -42,7 +42,7 @@ func NewLocalStoreReader(s StoreReader) *LocalStoreReader {
 }
 
 // Read returns data from the store.
-func (r *LocalStoreReader) Read(ctx context.Context, req *rpc.ReadRequest, opts ...grpc.CallOption) (*rpc.ReadResponse, error) {
+func (r *LocalStoreReader) Read(ctx context.Context, req *logcache_v1.ReadRequest, opts ...grpc.CallOption) (*logcache_v1.ReadResponse, error) {
 	if req.EndTime != 0 && req.StartTime > req.EndTime {
 		return nil, fmt.Errorf("StartTime (%d) must be before EndTime (%d)", req.StartTime, req.EndTime)
 	}
@@ -59,11 +59,10 @@ func (r *LocalStoreReader) Read(ctx context.Context, req *rpc.ReadRequest, opts 
 		req.Limit = 100
 	}
 
-	var t []store.EnvelopeType
+	var t []logcache_v1.EnvelopeType
 	for _, e := range req.GetEnvelopeTypes() {
-		se := r.convertEnvelopeType(e)
-		if se != nil {
-			t = append(t, se)
+		if e != logcache_v1.EnvelopeType_ANY {
+			t = append(t, e)
 		}
 	}
 	envs := r.s.Get(
@@ -74,7 +73,7 @@ func (r *LocalStoreReader) Read(ctx context.Context, req *rpc.ReadRequest, opts 
 		int(req.Limit),
 		req.Descending,
 	)
-	resp := &rpc.ReadResponse{
+	resp := &logcache_v1.ReadResponse{
 		Envelopes: &loggregator_v2.EnvelopeBatch{
 			Batch: envs,
 		},
@@ -83,12 +82,12 @@ func (r *LocalStoreReader) Read(ctx context.Context, req *rpc.ReadRequest, opts 
 	return resp, nil
 }
 
-func (r *LocalStoreReader) Meta(ctx context.Context, req *rpc.MetaRequest, opts ...grpc.CallOption) (*rpc.MetaResponse, error) {
+func (r *LocalStoreReader) Meta(ctx context.Context, req *logcache_v1.MetaRequest, opts ...grpc.CallOption) (*logcache_v1.MetaResponse, error) {
 	sourceIds := r.s.Meta()
 
-	metaInfo := make(map[string]*rpc.MetaInfo)
+	metaInfo := make(map[string]*logcache_v1.MetaInfo)
 	for sourceId, m := range sourceIds {
-		metaInfo[sourceId] = &rpc.MetaInfo{
+		metaInfo[sourceId] = &logcache_v1.MetaInfo{
 			Count:           int64(m.Count),
 			Expired:         int64(m.Expired),
 			NewestTimestamp: m.Newest.UnixNano(),
@@ -96,24 +95,7 @@ func (r *LocalStoreReader) Meta(ctx context.Context, req *rpc.MetaRequest, opts 
 		}
 	}
 
-	return &rpc.MetaResponse{
+	return &logcache_v1.MetaResponse{
 		Meta: metaInfo,
 	}, nil
-}
-
-func (r *LocalStoreReader) convertEnvelopeType(t rpc.EnvelopeType) store.EnvelopeType {
-	switch t {
-	case rpc.EnvelopeType_LOG:
-		return &loggregator_v2.Log{}
-	case rpc.EnvelopeType_COUNTER:
-		return &loggregator_v2.Counter{}
-	case rpc.EnvelopeType_GAUGE:
-		return &loggregator_v2.Gauge{}
-	case rpc.EnvelopeType_TIMER:
-		return &loggregator_v2.Timer{}
-	case rpc.EnvelopeType_EVENT:
-		return &loggregator_v2.Event{}
-	default:
-		return nil
-	}
 }
