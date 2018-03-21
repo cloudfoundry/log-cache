@@ -165,9 +165,7 @@ func (m nopMetrics) NewGauge(name string) func(float64) {
 // Start starts the LogCache. It has an internal go-routine that it creates
 // and therefore does not block.
 func (c *LogCache) Start() {
-	p := store.NewPruneConsultant(2, 70, NewMemoryAnalyzer(c.metrics))
-	store := store.NewStore(c.maxPerSource, c.min, p, c.metrics)
-	c.setupRouting(store)
+	c.setupRouting()
 }
 
 // Close will shutdown the gRPC server
@@ -177,11 +175,16 @@ func (c *LogCache) Close() error {
 	return nil
 }
 
-func (c *LogCache) setupRouting(s *store.Store) {
+func (c *LogCache) setupRouting() {
 	tableECMA := crc64.MakeTable(crc64.ECMA)
 	hasher := func(s string) uint64 {
 		return crc64.Checksum([]byte(s), tableECMA)
 	}
+
+	p := store.NewPruneConsultant(2, 70, NewMemoryAnalyzer(c.metrics))
+	s := store.NewMultiStore(func() store.SubStore {
+		return store.NewStore(c.maxPerSource, c.min, p, c.metrics)
+	}, hasher)
 
 	// gRPC
 	lis, err := net.Listen("tcp", c.addr)
@@ -196,7 +199,14 @@ func (c *LogCache) setupRouting(s *store.Store) {
 	}
 
 	lookup := routing.NewRoutingTable(c.nodeAddrs, hasher)
-	orch := routing.NewOrchestrator(lookup)
+	orch := routing.NewOrchestrator(routing.RangeSetterFunc(func(in *logcache_v1.SetRangesRequest) {
+		r, ok := in.Ranges[c.extAddr]
+		if ok {
+			s.SetRanges(r.Ranges)
+		}
+
+		lookup.SetRanges(context.Background(), in)
+	}))
 
 	var (
 		ingressClients []logcache_v1.IngressClient

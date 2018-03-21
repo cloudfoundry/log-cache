@@ -21,6 +21,15 @@ type RangeSetter interface {
 	SetRanges(ctx context.Context, in *rpc.SetRangesRequest) (*rpc.SetRangesResponse, error)
 }
 
+// RangeSetterFunc turns a function into a RangeSetter.
+type RangeSetterFunc func(in *rpc.SetRangesRequest)
+
+// SetRanges implements RangeSetter
+func (f RangeSetterFunc) SetRanges(ctx context.Context, in *rpc.SetRangesRequest) (*rpc.SetRangesResponse, error) {
+	f(in)
+	return &rpc.SetRangesResponse{}, nil
+}
+
 // NewOrchestrator returns a new Orchestrator.
 func NewOrchestrator(s RangeSetter) *Orchestrator {
 	return &Orchestrator{

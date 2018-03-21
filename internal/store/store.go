@@ -328,6 +328,12 @@ func (s *Store) Meta() map[string]logcache_v1.MetaInfo {
 	return meta
 }
 
+// Close is a nop.
+func (s *Store) Close() error {
+	// NOP
+	return nil
+}
+
 // treeStorage stores the trees and sorts them with respect to time. It
 // prevents overwrites for the same key.
 type treeStorage struct {
