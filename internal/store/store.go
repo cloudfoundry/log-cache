@@ -40,7 +40,7 @@ type Store struct {
 	// added and needs to be pruned, it is done so from here.
 	oldestValueTree *treeStorage
 
-	meta map[string]MetaInfo
+	meta map[string]logcache_v1.MetaInfo
 
 	// count is incremented each Put. It is used to determine when to prune. When
 	// an envelope is pruned, it is decremented.
@@ -63,7 +63,7 @@ func NewStore(maxPerSource, min int, p Pruner, m Metrics) *Store {
 		maxPerSource:    maxPerSource,
 		p:               p,
 		indexes:         make(map[string]*avltree.Tree),
-		meta:            make(map[string]MetaInfo),
+		meta:            make(map[string]logcache_v1.MetaInfo),
 		oldestValueTree: newTreeStorage(),
 		min:             min,
 
@@ -133,12 +133,12 @@ func (s *Store) Put(e *loggregator_v2.Envelope, index string) {
 
 	// Update the meta
 	m := s.meta[index]
-	if e.Timestamp > m.Newest.UnixNano() {
-		m.Newest = time.Unix(0, e.Timestamp)
+	if e.GetTimestamp() > m.NewestTimestamp {
+		m.NewestTimestamp = e.GetTimestamp()
 	}
 
 	if t.Size() > 0 {
-		m.Oldest = time.Unix(0, t.Left().Key.(int64))
+		m.OldestTimestamp = t.Left().Key.(int64)
 		s.meta[index] = m
 	}
 }
@@ -180,7 +180,7 @@ func (s *Store) truncate() {
 		// Update the meta
 		m := s.meta[index]
 		m.Expired++
-		m.Oldest = time.Unix(0, newOldest)
+		m.OldestTimestamp = newOldest
 		s.meta[index] = m
 
 		// Add tree back to oldestValueTree for future pruning.
@@ -312,25 +312,9 @@ func (s *Store) checkEnvelopeType(e *loggregator_v2.Envelope, t logcache_v1.Enve
 	}
 }
 
-// MetaInfo is used to describe each individual index.
-type MetaInfo struct {
-	// Count is the number of entries for the given index.
-	Count int
-
-	// Expired is the number of entries that have been pruned for the given
-	// index.
-	Expired int
-
-	// Oldest is the first available timestamp for the given index.
-	Oldest time.Time
-
-	// Newest is the last available timestamp for the given index.
-	Newest time.Time
-}
-
 // Meta returns each source ID tracked in the store.
-func (s *Store) Meta() map[string]MetaInfo {
-	meta := make(map[string]MetaInfo)
+func (s *Store) Meta() map[string]logcache_v1.MetaInfo {
+	meta := make(map[string]logcache_v1.MetaInfo)
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -338,7 +322,7 @@ func (s *Store) Meta() map[string]MetaInfo {
 	// Copy the map so that we don't leak the lock protected map beyond the
 	// locks.
 	for k, v := range s.meta {
-		v.Count = s.indexes[k].Size()
+		v.Count = int64(s.indexes[k].Size())
 		meta[k] = v
 	}
 	return meta

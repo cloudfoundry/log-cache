@@ -6,7 +6,6 @@ import (
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/routing"
-	"code.cloudfoundry.org/log-cache/internal/store"
 	"golang.org/x/net/context"
 
 	. "github.com/onsi/ginkgo"
@@ -107,18 +106,18 @@ var _ = Describe("LocalStoreReader", func() {
 	})
 
 	It("returns local source IDs from the store", func() {
-		spyStoreReader.metaResponse = map[string]store.MetaInfo{
+		spyStoreReader.metaResponse = map[string]logcache_v1.MetaInfo{
 			"source-1": {
-				Count:   1,
-				Expired: 2,
-				Oldest:  time.Unix(0, 3),
-				Newest:  time.Unix(0, 4),
+				Count:           1,
+				Expired:         2,
+				OldestTimestamp: 3,
+				NewestTimestamp: 4,
 			},
 			"source-2": {
-				Count:   5,
-				Expired: 6,
-				Oldest:  time.Unix(0, 7),
-				Newest:  time.Unix(0, 8),
+				Count:           5,
+				Expired:         6,
+				OldestTimestamp: 7,
+				NewestTimestamp: 8,
 			},
 		}
 
@@ -155,7 +154,7 @@ type spyStoreReader struct {
 	envelopeTypes []logcache_v1.EnvelopeType
 	limit         int
 	descending    bool
-	metaResponse  map[string]store.MetaInfo
+	metaResponse  map[string]logcache_v1.MetaInfo
 }
 
 func newSpyStoreReader() *spyStoreReader {
@@ -180,6 +179,6 @@ func (s *spyStoreReader) Get(
 	return s.getEnvelopes
 }
 
-func (s *spyStoreReader) Meta() map[string]store.MetaInfo {
+func (s *spyStoreReader) Meta() map[string]logcache_v1.MetaInfo {
 	return s.metaResponse
 }

@@ -6,7 +6,6 @@ import (
 
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"code.cloudfoundry.org/log-cache/internal/store"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
@@ -31,7 +30,7 @@ type StoreReader interface {
 	) []*loggregator_v2.Envelope
 
 	// Meta gets the metadata from Log Cache instances in the cluster.
-	Meta() map[string]store.MetaInfo
+	Meta() map[string]logcache_v1.MetaInfo
 }
 
 // NewLocalStoreReader creates and returns a new LocalStoreReader.
@@ -87,12 +86,10 @@ func (r *LocalStoreReader) Meta(ctx context.Context, req *logcache_v1.MetaReques
 
 	metaInfo := make(map[string]*logcache_v1.MetaInfo)
 	for sourceId, m := range sourceIds {
-		metaInfo[sourceId] = &logcache_v1.MetaInfo{
-			Count:           int64(m.Count),
-			Expired:         int64(m.Expired),
-			NewestTimestamp: m.Newest.UnixNano(),
-			OldestTimestamp: m.Oldest.UnixNano(),
-		}
+		// Shadow m so that the range function does not mess with the
+		// instance.
+		m := m
+		metaInfo[sourceId] = &m
 	}
 
 	return &logcache_v1.MetaResponse{

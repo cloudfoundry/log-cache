@@ -101,7 +101,7 @@ var _ = Describe("Store", func() {
 		s.Put(e4, e4.GetSourceId())
 
 		m := s.Meta()["a"]
-		Expect(m.Count).To(Equal(3))
+		Expect(m.Count).To(Equal(int64(3)))
 	})
 
 	DescribeTable("fetches data based on envelope type",
@@ -280,18 +280,18 @@ var _ = Describe("Store", func() {
 		// Does not contain index-0
 		Expect(meta).To(HaveLen(2))
 
-		Expect(meta).To(HaveKeyWithValue("index-1", store.MetaInfo{
-			Count:   1,
-			Expired: 1,
-			Oldest:  time.Unix(0, 5),
-			Newest:  time.Unix(0, 5),
+		Expect(meta).To(HaveKeyWithValue("index-1", logcache_v1.MetaInfo{
+			Count:           1,
+			Expired:         1,
+			OldestTimestamp: 5,
+			NewestTimestamp: 5,
 		}))
 
-		Expect(meta).To(HaveKeyWithValue("index-2", store.MetaInfo{
-			Count:   2,
-			Expired: 1,
-			Oldest:  time.Unix(0, 3),
-			Newest:  time.Unix(0, 4),
+		Expect(meta).To(HaveKeyWithValue("index-2", logcache_v1.MetaInfo{
+			Count:           2,
+			Expired:         1,
+			OldestTimestamp: 3,
+			NewestTimestamp: 4,
 		}))
 	})
 

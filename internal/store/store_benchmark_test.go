@@ -22,7 +22,7 @@ var (
 	gen         = randEnvGen()
 	sourceIDs   = []string{"0", "1", "2", "3", "4"}
 	results     []*loggregator_v2.Envelope
-	metaResults map[string]store.MetaInfo
+	metaResults map[string]logcache_v1.MetaInfo
 )
 
 func BenchmarkStoreWrite(b *testing.B) {
