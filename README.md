@@ -164,7 +164,7 @@ template.
 [log-cache]:                https://code.cloudfoundry.org/log-cache
 [go-doc-badge]:             https://godoc.org/code.cloudfoundry.org/log-cache?status.svg
 [go-doc]:                   https://godoc.org/code.cloudfoundry.org/log-cache
-[travis-badge]:             https://travis-ci.org/cloudfoundry-incubator/log-cache.svg?branch=master
-[travis]:                   https://travis-ci.org/cloudfoundry-incubator/log-cache?branch=master
+[travis-badge]:             https://travis-ci.org/cloudfoundry/log-cache.svg?branch=master
+[travis]:                   https://travis-ci.org/cloudfoundry/log-cache?branch=master
 [loggregator]:              https://github.com/cloudfoundry/loggregator
 [loggregator_v2]:           https://github.com/cloudfoundry/loggregator-api/blob/master/v2/envelope.proto
