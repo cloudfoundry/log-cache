@@ -17,9 +17,14 @@ Log Cache indexes everything by the `source_id` field on the [Loggregator Envelo
 
 ### Cloud Foundry
 
-In terms of Cloud Foundry, the source ID can either represent an application guid (e.g. `cf app <app-name> --guid`), or a component name (e.g. `doppler`).
+In terms of Cloud Foundry, the source ID can either represent an application
+guid (e.g. `cf app <app-name> --guid`), or a component name (e.g. `doppler`).
 
-Source IDs are used to authorize any attempt to read from Log Cache. Each request must have the `Authorization` header set with a UAA provided token. If the given scope has `doppler.firehose`, then it may see any Source ID. Otherwise, the CloudController is consuled to see if the token can read logs for the given Source ID. In the latter case, the Source ID must be an app guid.
+Each request must have the `Authorization` header set with a UAA provided token.
+If the token contains the `doppler.firehose` scope, the request will be able
+to read data from any source ID.
+If the source ID is an app guid, the Cloud Controller is consulted to verify
+if the provided token has the appropriate app access.
 
 ## Restful API via Gateway
 
@@ -33,18 +38,18 @@ Get data from Log Cache for the given `source-id`.
 
 Query Parameters:
 
-- **start_time** is UNIX timestamp in nanoseconds. It defaults to the start of the
+- **start_time** is a UNIX timestamp in nanoseconds. It defaults to the start of the
   cache (e.g. `date +%s`). Start time is inclusive. `[starttime..endtime)`
-- **end_time** is UNIX timestamp in nanoseconds. It defaults to current time of the
+- **end_time** is a UNIX timestamp in nanoseconds. It defaults to current time of the
   cache (e.g. `date +%s`). End time is exclusive. `[starttime..endtime)`
-- **envelope_type** is filter for Envelope Type. The available filters are:
+- **envelope_type** is a filter for Envelope Type. The available filters are:
   `LOG`, `COUNTER`, `GAUGE`, `TIMER`, and `EVENT`. If set, then only those
   types of envelopes will be emitted.
 - **limit** is the maximum number of envelopes to request. The max limit size
   is 1000 and defaults to 100.
 
 ```
-curl "http://<log-cache-addr>:8080/v1/read/<source-id>/?start_time=<start time>&end_time=<end time>"
+curl "http://<log-cache-addr>:8080/v1/read/<source-id>/?start_time=<start-time>&end_time=<end-time>"
 ```
 
 ##### Response Body
@@ -56,7 +61,7 @@ curl "http://<log-cache-addr>:8080/v1/read/<source-id>/?start_time=<start time>&
 
 ### **GET** `/v1/meta`
 
-Lists the available `SourceIDs` that Log Cache has persisted.
+Lists the available source IDs that Log Cache has persisted.
 
 ##### Response Body
 ```
@@ -88,7 +93,7 @@ Query Parameters:
   is 1000 and defaults to 100.
 
 ```
-curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>/?start_time=<start time>&end_time=<end time>&requester_id=<requester_id>"
+curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>/?start_time=<start-time>&end_time=<end-time>&requester_id=<requester-id>"
 ```
 
 ##### Response Body
@@ -100,9 +105,9 @@ curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>/?start_time=<star
 
 ### **PUT** `/v1/shard_group/<group-name>/`
 
-Adds the given source-ids to the given shard-group. If the group does not
-exist, then it creates it. Each shard-group may contain many sub-groups. Each
-sub-group may contain many source-ids. A shard-group will will be sharded
+Adds the given source ids to the given shard-group. If the shard-group does not
+exist, then it gets created. Each shard-group may contain many sub-groups. Each
+sub-group may contain many source-ids. A shard-group will be sharded
 evenly across requesters (distinguished by each request's `requester_id`). A
 sub-group ensures that each requester receives the given source-ids grouped
 together (and not spread across other requesters).
