@@ -23,6 +23,9 @@ type Config struct {
 	// NodeAddrs are all the LogCache addresses. They are in order according
 	// to their NodeIndex.
 	NodeAddrs []string `env:"NODE_ADDRS"`
+
+	// If empty, then the scheduler assumes it is always the leader.
+	LeaderElectionEndpoint string `env:"LEADER_ELECTION_ENDPOINT"`
 }
 
 // LoadConfig creates Config object from environment variables

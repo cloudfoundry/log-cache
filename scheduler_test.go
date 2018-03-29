@@ -23,6 +23,8 @@ var _ = Describe("Scheduler", func() {
 
 		groupSpy1 *spyOrchestration
 		groupSpy2 *spyOrchestration
+
+		leadershipSpy *spyLeadership
 	)
 
 	BeforeEach(func() {
@@ -30,6 +32,8 @@ var _ = Describe("Scheduler", func() {
 		logCacheSpy2 = startSpyOrchestration()
 		groupSpy1 = startSpyOrchestration()
 		groupSpy2 = startSpyOrchestration()
+		leadershipSpy = newSpyLeadership()
+		leadershipSpy.result = true
 
 		s = logcache.NewScheduler(
 			[]string{
@@ -43,6 +47,7 @@ var _ = Describe("Scheduler", func() {
 			logcache.WithSchedulerInterval(time.Millisecond),
 			logcache.WithSchedulerCount(7),
 			logcache.WithSchedulerReplicationFactor(2),
+			logcache.WithSchedulerLeadership(leadershipSpy.IsLeader),
 		)
 	})
 
@@ -220,6 +225,29 @@ var _ = Describe("Scheduler", func() {
 			Expect(groupSpy2.SetReqs()[0].Ranges).To(HaveLen(2))
 		})
 	})
+
+	Describe("leader and follower", func() {
+		It("does not schedule until it is the leader", func() {
+			leadershipSpy.result = false
+			s.Start()
+
+			Consistently(groupSpy1.SetCount).Should(BeZero())
+			Consistently(groupSpy2.SetCount).Should(BeZero())
+
+			Consistently(groupSpy1.AddReqs).Should(BeEmpty())
+			Consistently(groupSpy2.AddReqs).Should(BeEmpty())
+
+			Consistently(groupSpy1.RemoveReqs).Should(BeEmpty())
+			Consistently(groupSpy2.RemoveReqs).Should(BeEmpty())
+
+			leadershipSpy.result = true
+			Eventually(groupSpy1.SetCount).ShouldNot(BeZero())
+			Eventually(groupSpy2.SetCount).ShouldNot(BeZero())
+
+			Consistently(groupSpy1.AddReqs).ShouldNot(BeEmpty())
+			Consistently(groupSpy2.AddReqs).ShouldNot(BeEmpty())
+		})
+	})
 })
 
 type spyOrchestration struct {
@@ -325,4 +353,16 @@ func (s *spyOrchestration) SetReqs() []*rpc.SetRangesRequest {
 
 func (s *spyOrchestration) SetCount() int {
 	return len(s.SetReqs())
+}
+
+type spyLeadership struct {
+	result bool
+}
+
+func newSpyLeadership() *spyLeadership {
+	return &spyLeadership{}
+}
+
+func (s *spyLeadership) IsLeader() bool {
+	return s.result
 }

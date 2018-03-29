@@ -22,6 +22,7 @@ type Scheduler struct {
 	logCacheOrch      *orchestrator.Orchestrator
 	groupOrch         *orchestrator.Orchestrator
 	dialOpts          []grpc.DialOption
+	isLeader          func() bool
 
 	logCacheClients []clientInfo
 	groupClients    []clientInfo
@@ -37,6 +38,7 @@ func NewScheduler(logCacheAddrs, groupAddrs []string, opts ...SchedulerOption) *
 		count:             100,
 		replicationFactor: 1,
 		dialOpts:          []grpc.DialOption{grpc.WithInsecure()},
+		isLeader:          func() bool { return true },
 	}
 
 	for _, o := range opts {
@@ -44,11 +46,13 @@ func NewScheduler(logCacheAddrs, groupAddrs []string, opts ...SchedulerOption) *
 	}
 
 	s.logCacheOrch = orchestrator.New(&comm{
-		log: s.log,
+		log:      s.log,
+		isLeader: s.isLeader,
 	})
 
 	s.groupOrch = orchestrator.New(&comm{
-		log: s.log,
+		log:      s.log,
+		isLeader: s.isLeader,
 	})
 
 	for _, addr := range logCacheAddrs {
@@ -123,6 +127,15 @@ func WithSchedulerDialOpts(opts ...grpc.DialOption) SchedulerOption {
 	}
 }
 
+// WithSchedulerLeadership sets the leadership decsision function that returns
+// true if the scheduler node is the leader. Default to a fuction that returns
+// true.
+func WithSchedulerLeadership(isLeader func() bool) SchedulerOption {
+	return func(s *Scheduler) {
+		s.isLeader = isLeader
+	}
+}
+
 // Start starts the scheduler. It does not block.
 func (s *Scheduler) Start() {
 	for _, lc := range s.logCacheClients {
@@ -180,8 +193,10 @@ func (s *Scheduler) Start() {
 			s.logCacheOrch.NextTerm(context.Background())
 			s.groupOrch.NextTerm(context.Background())
 
-			s.setRemoteTables(s.logCacheClients, s.convertWorkerState(s.logCacheOrch.LastActual()))
-			s.setRemoteTables(s.groupClients, s.convertWorkerState(s.groupOrch.LastActual()))
+			if s.isLeader() {
+				s.setRemoteTables(s.logCacheClients, s.convertWorkerState(s.logCacheOrch.LastActual()))
+				s.setRemoteTables(s.groupClients, s.convertWorkerState(s.groupOrch.LastActual()))
+			}
 		}
 	}()
 }
@@ -223,8 +238,9 @@ type clientInfo struct {
 }
 
 type comm struct {
-	mu  sync.Mutex
-	log *log.Logger
+	isLeader func() bool
+	mu       sync.Mutex
+	log      *log.Logger
 }
 
 // List implements orchestrator.Communicator.
@@ -251,6 +267,10 @@ func (c *comm) List(ctx context.Context, worker interface{}) ([]interface{}, err
 
 // Add implements orchestrator.Communicator.
 func (c *comm) Add(ctx context.Context, worker interface{}, task interface{}) error {
+	if !c.isLeader() {
+		return nil
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -272,6 +292,10 @@ func (c *comm) Add(ctx context.Context, worker interface{}, task interface{}) er
 
 // Remvoe implements orchestrator.Communicator.
 func (c *comm) Remove(ctx context.Context, worker interface{}, task interface{}) error {
+	if !c.isLeader() {
+		return nil
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

@@ -25,9 +25,7 @@ func main() {
 
 	envstruct.WriteReport(cfg)
 
-	sched := logcache.NewScheduler(
-		cfg.GroupReaderNodeAddrs,
-		cfg.NodeAddrs,
+	opts := []logcache.SchedulerOption{
 		logcache.WithSchedulerLogger(log.New(os.Stderr, "", log.LstdFlags)),
 		logcache.WithSchedulerMetrics(metrics.New(expvar.NewMap("Scheduler"))),
 		logcache.WithSchedulerInterval(cfg.Interval),
@@ -36,6 +34,24 @@ func main() {
 		logcache.WithSchedulerDialOpts(
 			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
 		),
+	}
+
+	if cfg.LeaderElectionEndpoint != "" {
+		opts = append(opts, logcache.WithSchedulerLeadership(func() bool {
+			resp, err := http.Get(cfg.LeaderElectionEndpoint)
+			if err != nil {
+				log.Printf("failed to read from leaderhip endpoint: %s", err)
+				return false
+			}
+
+			return resp.StatusCode == http.StatusOK
+		}))
+	}
+
+	sched := logcache.NewScheduler(
+		cfg.GroupReaderNodeAddrs,
+		cfg.NodeAddrs,
+		opts...,
 	)
 
 	sched.Start()
