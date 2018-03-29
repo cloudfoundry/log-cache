@@ -228,7 +228,7 @@ var _ = Describe("Scheduler", func() {
 
 	Describe("leader and follower", func() {
 		It("does not schedule until it is the leader", func() {
-			leadershipSpy.result = false
+			leadershipSpy.setResult(false)
 			s.Start()
 
 			Consistently(groupSpy1.SetCount).Should(BeZero())
@@ -240,7 +240,7 @@ var _ = Describe("Scheduler", func() {
 			Consistently(groupSpy1.RemoveReqs).Should(BeEmpty())
 			Consistently(groupSpy2.RemoveReqs).Should(BeEmpty())
 
-			leadershipSpy.result = true
+			leadershipSpy.setResult(true)
 			Eventually(groupSpy1.SetCount).ShouldNot(BeZero())
 			Eventually(groupSpy2.SetCount).ShouldNot(BeZero())
 
@@ -356,6 +356,7 @@ func (s *spyOrchestration) SetCount() int {
 }
 
 type spyLeadership struct {
+	mu     sync.Mutex
 	result bool
 }
 
@@ -364,5 +365,13 @@ func newSpyLeadership() *spyLeadership {
 }
 
 func (s *spyLeadership) IsLeader() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.result
+}
+
+func (s *spyLeadership) setResult(b bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.result = b
 }
