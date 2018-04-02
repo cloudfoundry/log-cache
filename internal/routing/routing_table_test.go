@@ -52,6 +52,9 @@ var _ = Describe("RoutingTable", func() {
 		i := r.Lookup("some-id")
 		Expect(spyHasher.ids).To(ConsistOf("some-id"))
 		Expect(i).To(Equal([]int{3, 1}))
+
+		i = r.RangeLookup(rpc.Range{Start: 101, End: 200})
+		Expect(i).To(Equal([]int{3, 1}))
 	})
 
 	It("returns the correct index for the node", func() {

@@ -73,6 +73,22 @@ func (t *RoutingTable) LookupAll(item string) []int {
 	return result
 }
 
+// RangeLookup takes a range, and determines what nodes service it.
+func (t *RoutingTable) RangeLookup(r rpc.Range) []int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	var result []int
+	for _, ri := range t.table {
+		if ri.r != r {
+			continue
+		}
+		result = append(result, ri.idx)
+	}
+
+	return result
+}
+
 // SetRanges sets the routing table.
 func (t *RoutingTable) SetRanges(ctx context.Context, in *rpc.SetRangesRequest) (*rpc.SetRangesResponse, error) {
 	t.mu.Lock()

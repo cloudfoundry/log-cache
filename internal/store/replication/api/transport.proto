@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package replication.v1;
+
+service Transport {
+    rpc Talk(stream Message) returns (stream Message) {}
+}
+
+message Message {
+    bytes payload = 1;
+}

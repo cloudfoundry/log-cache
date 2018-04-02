@@ -2,6 +2,7 @@ package store
 
 import (
 	"io"
+	"sync"
 	"time"
 
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
@@ -12,6 +13,7 @@ import (
 // updated, ranges that are no longer tracked will be deleted (along with
 // their data), otherwise the data will be left alone.
 type MultiStore struct {
+	mu              sync.RWMutex
 	stores          map[logcache_v1.Range]SubStore
 	subStoreCreator SubStoreCreator
 	hasher          func(string) uint64
@@ -26,7 +28,7 @@ type SubStore interface {
 }
 
 // SubStoreCreator returns a new SubStore.
-type SubStoreCreator func() SubStore
+type SubStoreCreator func(logcache_v1.Range) SubStore
 
 // NewMultiStore returns a new MultiStore.
 func NewMultiStore(c SubStoreCreator, hasher func(string) uint64) *MultiStore {
@@ -46,6 +48,9 @@ func (s *MultiStore) Put(e *loggregator_v2.Envelope, index string) {
 }
 
 func (s *MultiStore) correspondingStore(index string) SubStore {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	idx := s.hasher(index)
 	for r, ss := range s.stores {
 		if idx >= r.Start && idx <= r.End {
@@ -75,6 +80,8 @@ func (s *MultiStore) Get(
 
 // Meta returns the MetaInfo aggregated across every store.
 func (s *MultiStore) Meta() map[string]logcache_v1.MetaInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	m := make(map[string]logcache_v1.MetaInfo)
 	for _, ss := range s.stores {
 		for k, v := range ss.Meta() {
@@ -90,6 +97,11 @@ func (s *MultiStore) Meta() map[string]logcache_v1.MetaInfo {
 // longer corresponds to a range. This does not delete data from a SubStore
 // that maintains a range.
 func (s *MultiStore) SetRanges(rs []*logcache_v1.Range) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Prune out stores that do not correspond to a range.
+	var notFound []logcache_v1.Range
 	for k := range s.stores {
 		var found bool
 		for _, r := range rs {
@@ -100,19 +112,18 @@ func (s *MultiStore) SetRanges(rs []*logcache_v1.Range) {
 		}
 
 		if !found {
-			s.stores[k].Close()
-			delete(s.stores, k)
-
-			// We can't continue iterating through stores because we have
-			// changed it.
-			s.SetRanges(rs)
-			return
+			notFound = append(notFound, k)
 		}
+	}
+
+	for _, r := range notFound {
+		s.stores[r].Close()
+		delete(s.stores, r)
 	}
 
 	for _, r := range rs {
 		if _, ok := s.stores[*r]; !ok {
-			s.stores[*r] = s.subStoreCreator()
+			s.stores[*r] = s.subStoreCreator(*r)
 		}
 	}
 }

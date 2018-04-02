@@ -30,6 +30,7 @@ var _ = Describe("LogCache", func() {
 		addrs = []string{
 			fmt.Sprintf("127.0.0.1:%d", 9999+(run*runIncBy)),
 			fmt.Sprintf("127.0.0.1:%d", 10000+(run*runIncBy)),
+			fmt.Sprintf("127.0.0.1:%d", 10001+(run*runIncBy)),
 		}
 
 		node1 = logcache.New(
@@ -48,6 +49,8 @@ var _ = Describe("LogCache", func() {
 			addrs, // Log Cache addrs
 			nil,   // Group Reader addrs
 			logcache.WithSchedulerInterval(50*time.Millisecond),
+			logcache.WithSchedulerReplicationFactor(3),
+			logcache.WithSchedulerCount(1),
 		)
 
 		node1.Start()
@@ -64,7 +67,8 @@ var _ = Describe("LogCache", func() {
 
 	It("reads data from Log Cache", func() {
 		Eventually(func() []int64 {
-			_, err := ingressClient(node1.Addr()).Send(context.Background(), &rpc.SendRequest{
+			ctx, _ := context.WithTimeout(context.Background(), time.Second)
+			_, err := ingressClient(node1.Addr()).Send(ctx, &rpc.SendRequest{
 				Envelopes: &loggregator_v2.EnvelopeBatch{
 					Batch: []*loggregator_v2.Envelope{
 						{SourceId: "a", Timestamp: 1},
@@ -80,7 +84,8 @@ var _ = Describe("LogCache", func() {
 				return nil
 			}
 
-			_, err = ingressClient(node2.Addr()).Send(context.Background(), &rpc.SendRequest{
+			ctx, _ = context.WithTimeout(context.Background(), time.Second)
+			_, err = ingressClient(node2.Addr()).Send(ctx, &rpc.SendRequest{
 				Envelopes: &loggregator_v2.EnvelopeBatch{
 					Batch: []*loggregator_v2.Envelope{
 						{SourceId: "a", Timestamp: 6},
@@ -96,7 +101,8 @@ var _ = Describe("LogCache", func() {
 				return nil
 			}
 
-			es, err := client.Read(context.Background(), "a", time.Unix(0, 0))
+			ctx, _ = context.WithTimeout(context.Background(), time.Second)
+			es, err := client.Read(ctx, "a", time.Unix(0, 0))
 			if err != nil {
 				return nil
 			}

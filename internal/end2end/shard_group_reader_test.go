@@ -63,6 +63,7 @@ var _ = Describe("ShardGroupReader", func() {
 			[]string{lcAddr}, // Log Cache addrs
 			addrs,            // Group Reader addrs
 			logcache.WithSchedulerInterval(50*time.Millisecond),
+			logcache.WithSchedulerCount(1),
 		)
 
 		node1.Start()
@@ -154,8 +155,10 @@ var _ = Describe("ShardGroupReader", func() {
 		}()
 
 		go func(addr string) {
+			c := ingressClient(addr)
 			for i := int64(0); atomic.LoadInt64(&done) == 0; i += 5 {
-				ingressClient(addr).Send(context.Background(), &rpc.SendRequest{
+				ctx, _ := context.WithTimeout(context.Background(), 500*time.Millisecond)
+				c.Send(ctx, &rpc.SendRequest{
 					Envelopes: &loggregator_v2.EnvelopeBatch{
 						Batch: []*loggregator_v2.Envelope{
 							{SourceId: "a", Timestamp: i + 0},
@@ -166,6 +169,7 @@ var _ = Describe("ShardGroupReader", func() {
 						},
 					},
 				})
+
 				time.Sleep(time.Millisecond)
 			}
 		}(logCache.Addr())

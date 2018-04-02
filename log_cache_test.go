@@ -5,11 +5,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"math"
 	"net"
 	"sync"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -30,6 +32,7 @@ var _ = Describe("LogCache", func() {
 		oc        rpc.OrchestrationClient
 
 		spyMetrics *spyMetrics
+		run        int
 	)
 
 	BeforeEach(func() {
@@ -46,9 +49,11 @@ var _ = Describe("LogCache", func() {
 		peerAddr := peer.start()
 		spyMetrics = newSpyMetrics()
 
+		addr := fmt.Sprintf("127.0.0.1:%d", 9000+run)
+
 		cache = logcache.New(
-			logcache.WithAddr("127.0.0.1:0"),
-			logcache.WithClustered(0, []string{"my-addr", peerAddr},
+			logcache.WithAddr(addr),
+			logcache.WithClustered(0, []string{addr, peerAddr},
 				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 			),
 			logcache.WithMetrics(spyMetrics),
@@ -90,18 +95,24 @@ var _ = Describe("LogCache", func() {
 	})
 
 	AfterEach(func() {
+		run++
 		cache.Close()
 	})
 
 	It("returns tail of data filtered by source ID", func() {
-		writeEnvelopes(cache.Addr(), []*loggregator_v2.Envelope{
-			// source-0 hashes to 7700738999732113484 (route to node 0)
-			{Timestamp: 1, SourceId: "source-0"},
-			// source-1 hashes to 15704273932878139171 (route to node 1)
-			{Timestamp: 2, SourceId: "source-1"},
-			{Timestamp: 3, SourceId: "source-0"},
-			{Timestamp: 4, SourceId: "source-0"},
-		})
+		go func() {
+			addr := cache.Addr()
+			for range time.Tick(time.Millisecond) {
+				writeEnvelopes(addr, []*loggregator_v2.Envelope{
+					// source-0 hashes to 7700738999732113484 (route to node 0)
+					{Timestamp: 1, SourceId: "source-0"},
+					// source-1 hashes to 15704273932878139171 (route to node 1)
+					{Timestamp: 2, SourceId: "source-1"},
+					{Timestamp: 3, SourceId: "source-0"},
+					{Timestamp: 4, SourceId: "source-0"},
+				})
+			}
+		}()
 
 		conn, err := grpc.Dial(cache.Addr(),
 			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
@@ -128,15 +139,15 @@ var _ = Describe("LogCache", func() {
 			es = resp.Envelopes.Batch
 			return nil
 		}
-		Eventually(f).Should(BeNil())
+		Eventually(f, 5).Should(BeNil())
 
 		Expect(es[0].Timestamp).To(Equal(int64(4)))
 		Expect(es[0].SourceId).To(Equal("source-0"))
 		Expect(es[1].Timestamp).To(Equal(int64(3)))
 		Expect(es[1].SourceId).To(Equal("source-0"))
 
-		Eventually(spyMetrics.getter("Ingress")).Should(Equal(uint64(3)))
-		Eventually(spyMetrics.getter("Egress")).Should(Equal(uint64(2)))
+		Eventually(spyMetrics.getter("Ingress")).Should(BeNumerically(">=", 3))
+		Eventually(spyMetrics.getter("Egress")).Should(BeNumerically(">=", 2))
 	})
 
 	It("uses the routes from the scheduler", func() {
@@ -154,14 +165,18 @@ var _ = Describe("LogCache", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		writeEnvelopes(cache.Addr(), []*loggregator_v2.Envelope{
-			{Timestamp: 1, SourceId: "source-0"},
-			{Timestamp: 2, SourceId: "source-1"},
-			{Timestamp: 3, SourceId: "source-0"},
-			{Timestamp: 4, SourceId: "source-0"},
-		})
+		Eventually(func() uint64 {
+			writeEnvelopes(cache.Addr(), []*loggregator_v2.Envelope{
+				{Timestamp: 1, SourceId: "source-0"},
+				{Timestamp: 2, SourceId: "source-1"},
+				{Timestamp: 3, SourceId: "source-0"},
+				{Timestamp: 4, SourceId: "source-0"},
+			})
 
-		Eventually(spyMetrics.getter("Ingress")).Should(Equal(uint64(4)))
+			return spyMetrics.getter("Ingress")()
+		}, 5).Should(BeNumerically(">=", 4))
+
+		Expect(peer.getEnvelopes()).To(BeEmpty())
 	})
 
 	It("routes envelopes to peers", func() {
@@ -173,18 +188,16 @@ var _ = Describe("LogCache", func() {
 			{Timestamp: 3, SourceId: "source-1"},
 		})
 
-		Eventually(peer.getEnvelopes).Should(HaveLen(2))
-		Expect(peer.getEnvelopes()[0].Timestamp).To(Equal(int64(2)))
-		Expect(peer.getEnvelopes()[1].Timestamp).To(Equal(int64(3)))
+		Eventually(func() int {
+			return len(peer.getEnvelopes())
+		}).Should(BeNumerically(">=", 2))
+
+		Expect(peer.getEnvelopes()).To(ContainElement(&loggregator_v2.Envelope{Timestamp: 2, SourceId: "source-1"}))
+		Expect(peer.getEnvelopes()).To(ContainElement(&loggregator_v2.Envelope{Timestamp: 3, SourceId: "source-1"}))
 		Expect(peer.getLocalOnlyValues()).ToNot(ContainElement(false))
 	})
 
 	It("accepts envelopes from peers", func() {
-		// source-0 hashes to 7700738999732113484 (route to node 0)
-		writeEnvelopes(cache.Addr(), []*loggregator_v2.Envelope{
-			{SourceId: "source-0", Timestamp: 1},
-		})
-
 		conn, err := grpc.Dial(cache.Addr(),
 			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 		)
@@ -194,6 +207,11 @@ var _ = Describe("LogCache", func() {
 
 		var es []*loggregator_v2.Envelope
 		f := func() error {
+			// source-0 hashes to 7700738999732113484 (route to node 0)
+			writeEnvelopes(cache.Addr(), []*loggregator_v2.Envelope{
+				{SourceId: "source-0", Timestamp: 1},
+			})
+
 			resp, err := client.Read(context.Background(), &rpc.ReadRequest{
 				SourceId: "source-0",
 			})
@@ -201,14 +219,14 @@ var _ = Describe("LogCache", func() {
 				return err
 			}
 
-			if len(resp.Envelopes.Batch) != 1 {
-				return errors.New("expected 1 envelopes")
+			if len(resp.Envelopes.Batch) == 0 {
+				return errors.New("expected atleast 1 envelope")
 			}
 
 			es = resp.Envelopes.Batch
 			return nil
 		}
-		Eventually(f).Should(BeNil())
+		Eventually(f, 5).Should(BeNil())
 
 		Expect(es[0].Timestamp).To(Equal(int64(1)))
 		Expect(es[0].SourceId).To(Equal("source-0"))
@@ -265,26 +283,24 @@ var _ = Describe("LogCache", func() {
 		ingressClient := rpc.NewIngressClient(conn)
 		egressClient := rpc.NewEgressClient(conn)
 
-		sendRequest := &rpc.SendRequest{
-			Envelopes: &loggregator_v2.EnvelopeBatch{
-				Batch: []*loggregator_v2.Envelope{
-					{SourceId: "source-0"},
-				},
-			},
-		}
-
-		ingressClient.Send(context.Background(), sendRequest)
 		Eventually(func() map[string]*rpc.MetaInfo {
+			sendRequest := &rpc.SendRequest{
+				Envelopes: &loggregator_v2.EnvelopeBatch{
+					Batch: []*loggregator_v2.Envelope{
+						{SourceId: "source-0"},
+					},
+				},
+			}
+
+			ingressClient.Send(context.Background(), sendRequest)
 			resp, err := egressClient.Meta(context.Background(), &rpc.MetaRequest{})
 			if err != nil {
 				return nil
 			}
 
 			return resp.Meta
-		}).Should(And(
-			HaveKeyWithValue("source-0", &rpc.MetaInfo{
-				Count: 1,
-			}),
+		}, 5).Should(And(
+			HaveKey("source-0"),
 			HaveKeyWithValue("source-1", &rpc.MetaInfo{
 				Count:           1,
 				Expired:         2,
@@ -321,14 +337,11 @@ func writeEnvelopes(addr string, es []*loggregator_v2.Envelope) {
 		})
 	}
 
-	_, err = client.Send(context.Background(), &rpc.SendRequest{
+	client.Send(context.Background(), &rpc.SendRequest{
 		Envelopes: &loggregator_v2.EnvelopeBatch{
 			Batch: envelopes,
 		},
 	})
-	if err != nil {
-		panic(err)
-	}
 }
 
 type spyLogCache struct {

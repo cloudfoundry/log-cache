@@ -15,14 +15,17 @@ import (
 var _ = Describe("MultiStore", func() {
 	var (
 		spySubStores []*spySubStore
+		ranges       []logcache_v1.Range
 
 		s *store.MultiStore
 	)
 
 	BeforeEach(func() {
 		spySubStores = nil
+		ranges = nil
 
-		creator := func() store.SubStore {
+		creator := func(r logcache_v1.Range) store.SubStore {
+			ranges = append(ranges, r)
 			spy := newSpySubStore()
 			spySubStores = append(spySubStores, spy)
 			return spy
@@ -55,6 +58,12 @@ var _ = Describe("MultiStore", func() {
 		})
 
 		Expect(spySubStores).To(HaveLen(4))
+		Expect(ranges).To(ConsistOf(
+			logcache_v1.Range{Start: 0, End: 10},
+			logcache_v1.Range{Start: 11, End: 20},
+			logcache_v1.Range{Start: 21, End: 30},
+			logcache_v1.Range{Start: 31, End: 40},
+		))
 	})
 
 	It("closes a SubStore when the corresponding range is removed", func() {

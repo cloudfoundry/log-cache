@@ -1,19 +1,25 @@
 package logcache
 
 import (
+	"encoding/json"
 	"hash/crc64"
 	"io/ioutil"
 	"log"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/raft"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"code.cloudfoundry.org/log-cache/internal/routing"
 	"code.cloudfoundry.org/log-cache/internal/store"
+	"code.cloudfoundry.org/log-cache/internal/store/replication"
+	replication_v1 "code.cloudfoundry.org/log-cache/internal/store/replication/api"
 )
 
 // LogCache is a in memory cache for Loggregator envelopes.
@@ -41,6 +47,9 @@ type LogCache struct {
 	// externally and instead will store all of it.
 	nodeAddrs []string
 	nodeIndex int
+
+	mu    sync.Mutex
+	rafts map[logcache_v1.Range]*replication.PeerManager
 }
 
 // NewLogCache creates a new LogCache.
@@ -49,10 +58,11 @@ func New(opts ...LogCacheOption) *LogCache {
 		log:          log.New(ioutil.Discard, "", 0),
 		metrics:      nopMetrics{},
 		maxPerSource: 100000,
-		min:          500000,
+		min:          1000,
 
 		addr:     ":8080",
 		dialOpts: []grpc.DialOption{grpc.WithInsecure()},
+		rafts:    make(map[logcache_v1.Range]*replication.PeerManager),
 	}
 
 	for _, o := range opts {
@@ -103,7 +113,7 @@ func WithServerOpts(opts ...grpc.ServerOption) LogCacheOption {
 }
 
 // WithMinimumSize sets the lower bound for pruning. It will not prune once
-// this size is reached. Defaults to 500000.
+// this size is reached. Defaults to 1000.
 func WithMinimumSize(min int) LogCacheOption {
 	return func(c *LogCache) {
 		c.min = min
@@ -171,21 +181,18 @@ func (c *LogCache) Start() {
 // Close will shutdown the gRPC server
 func (c *LogCache) Close() error {
 	atomic.AddInt64(&c.closing, 1)
-	c.server.GracefulStop()
+
+	c.mu.Lock()
+	for _, r := range c.rafts {
+		r.Close()
+	}
+	c.mu.Unlock()
+
+	c.server.Stop()
 	return nil
 }
 
 func (c *LogCache) setupRouting() {
-	tableECMA := crc64.MakeTable(crc64.ECMA)
-	hasher := func(s string) uint64 {
-		return crc64.Checksum([]byte(s), tableECMA)
-	}
-
-	p := store.NewPruneConsultant(2, 70, NewMemoryAnalyzer(c.metrics))
-	s := store.NewMultiStore(func() store.SubStore {
-		return store.NewStore(c.maxPerSource, c.min, p, c.metrics)
-	}, hasher)
-
 	// gRPC
 	lis, err := net.Listen("tcp", c.addr)
 	if err != nil {
@@ -198,14 +205,100 @@ func (c *LogCache) setupRouting() {
 		c.serverID = c.lis.Addr().String()
 	}
 
+	tableECMA := crc64.MakeTable(crc64.ECMA)
+	hasher := func(s string) uint64 {
+		return crc64.Checksum([]byte(s), tableECMA)
+	}
+
 	lookup := routing.NewRoutingTable(c.nodeAddrs, hasher)
+	raftTransport := replication.NewGRPCTransport(c.serverID, c.log, c.dialOpts...)
+
+	multiMetrics := metrics.NewMultiMetrics(c.metrics, map[string]func([]float64) float64{
+		"StoreSize": func(fs []float64) float64 {
+			// max
+			var max float64
+			for _, f := range fs {
+				if f > max {
+					max = f
+				}
+			}
+
+			return max
+		},
+	})
+
+	p := store.NewPruneConsultant(2, 70, NewMemoryAnalyzer(c.metrics))
+	s := store.NewMultiStore(func(r logcache_v1.Range) store.SubStore {
+		metrics := multiMetrics.SubMetrics()
+		subStore := store.NewStore(c.maxPerSource, c.min, p, metrics)
+		raftID, err := json.Marshal(r)
+		if err != nil {
+			c.log.Panic(err)
+		}
+
+		nodeIndices := lookup.RangeLookup(r)
+		var servers []raft.Server
+		var rangeAddrs []string
+		for _, idx := range nodeIndices {
+			servers = append(servers, raft.Server{
+				ID:       raft.ServerID(c.nodeAddrs[idx]),
+				Address:  raft.ServerAddress(c.nodeAddrs[idx]),
+				Suffrage: raft.Voter,
+			})
+			rangeAddrs = append(rangeAddrs, c.nodeAddrs[idx])
+		}
+
+		envelopeCache := replication.NewEnvelopeCache(10000, c.metrics)
+
+		raft := c.newRaftCluster(
+			c.serverID,
+			servers,
+			string(raftID),
+			subStore,
+			raftTransport,
+			envelopeCache,
+		)
+
+		c.mu.Lock()
+		peerManager := replication.NewPeerManager(raft, rangeAddrs)
+		c.rafts[r] = peerManager
+		c.mu.Unlock()
+
+		replStore := replication.NewStore(
+			subStore,
+			raft,
+			envelopeCache,
+			func() {
+				// On Close
+				c.mu.Lock()
+				defer c.mu.Unlock()
+				delete(c.rafts, r)
+				metrics.Close()
+			},
+			c.log,
+		)
+
+		return replication.NewAsyncStore(replStore, c.log)
+	}, hasher)
+
 	orch := routing.NewOrchestrator(routing.RangeSetterFunc(func(in *logcache_v1.SetRangesRequest) {
+		lookup.SetRanges(context.Background(), in)
+
 		r, ok := in.Ranges[c.serverID]
 		if ok {
 			s.SetRanges(r.Ranges)
 		}
 
-		lookup.SetRanges(context.Background(), in)
+		c.mu.Lock()
+		for r, pm := range c.rafts {
+			var rangeAddrs []string
+			for _, idx := range lookup.RangeLookup(r) {
+				rangeAddrs = append(rangeAddrs, c.nodeAddrs[idx])
+			}
+
+			pm.SetPeers(rangeAddrs)
+		}
+		c.mu.Unlock()
 	}))
 
 	var (
@@ -257,6 +350,7 @@ func (c *LogCache) setupRouting() {
 		logcache_v1.RegisterIngressServer(c.server, ingressReverseProxy)
 		logcache_v1.RegisterEgressServer(c.server, egressReverseProxy)
 		logcache_v1.RegisterOrchestrationServer(c.server, orch)
+		replication_v1.RegisterTransportServer(c.server, raftTransport)
 		if err := c.server.Serve(lis); err != nil && atomic.LoadInt64(&c.closing) == 0 {
 			c.log.Fatalf("failed to serve gRPC ingress server: %s %#v", err, err)
 		}
@@ -267,4 +361,55 @@ func (c *LogCache) setupRouting() {
 // valid after Start has been invoked.
 func (c *LogCache) Addr() string {
 	return c.lis.Addr().String()
+}
+
+func (c *LogCache) newRaftCluster(
+	serverID string,
+	peers []raft.Server,
+	raftID string,
+	s *store.Store,
+	t *replication.GRPCTransport,
+	envelopeCache *replication.EnvelopeCache,
+) *raft.Raft {
+
+	inmem := raft.NewInmemStore()
+	// inmemSnap := raft.NewInmemSnapshotStore()
+	onDemandSnap := replication.NewOnDemandSnapshotStore()
+	netTransport := raft.NewNetworkTransport(
+		t.StreamLayerFor(raftID),
+		100,
+		5*time.Second,
+		ioutil.Discard,
+	)
+
+	cfg := &raft.Config{
+		ProtocolVersion:    raft.ProtocolVersionMax,
+		LocalID:            raft.ServerID(serverID),
+		HeartbeatTimeout:   1000 * time.Millisecond,
+		ElectionTimeout:    1000 * time.Millisecond,
+		CommitTimeout:      500 * time.Millisecond,
+		MaxAppendEntries:   64,
+		SnapshotInterval:   10 * time.Second,
+		LeaderLeaseTimeout: 500 * time.Millisecond,
+		LogOutput:          ioutil.Discard,
+		TrailingLogs:       10240,
+	}
+
+	r, err := raft.NewRaft(
+		cfg,
+		replication.NewFSMAdapter(s, envelopeCache),
+		inmem,
+		inmem,
+		// inmemSnap,
+		onDemandSnap,
+		netTransport,
+	)
+
+	if err != nil {
+		c.log.Panic(err)
+	}
+
+	r.BootstrapCluster(raft.Configuration{Servers: peers})
+
+	return r
 }
