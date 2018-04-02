@@ -12,7 +12,7 @@ service ShardGroupReader {
     rpc SetShardGroup(SetShardGroupRequest) returns (SetShardGroupResponse) {
         option (google.api.http) = {
             put: "/v1/shard_group/{name}"
-            body: "*"
+            body: "sub_group"
         };
     }
 

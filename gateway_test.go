@@ -92,9 +92,7 @@ var _ = Describe("Gateway", func() {
 		path := "v1/shard_group/some-name"
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 		req, _ := http.NewRequest("PUT", URL, strings.NewReader(`{
-			"subGroup": {
-				"sourceIds": ["some-source/id"]
-			}
+			"sourceIds": ["some-source/id"]
 		}`))
 
 		resp, err := http.DefaultClient.Do(req)
