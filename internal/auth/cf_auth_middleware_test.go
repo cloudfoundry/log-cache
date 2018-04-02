@@ -251,7 +251,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 			BeforeEach(func() {
 				request.URL.Path = "/v1/shard_group/some-name"
 				request.Method = "PUT"
-				request.Body = ioutil.NopCloser(strings.NewReader(`{"subGroup":{"sourceIds":["some-id"]}}`))
+				request.Body = ioutil.NopCloser(strings.NewReader(`{"sourceIds":["some-id"]}`))
 			})
 
 			DescribeTable("prefixes group name for GET request with the client_id and user_id", func(sourceID string) {
@@ -269,7 +269,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 
 				request.URL.Path = "/v1/shard_group/some-name"
 				request.Method = "PUT"
-				request.Body = ioutil.NopCloser(strings.NewReader(fmt.Sprintf(`{"subGroup":{"sourceIds":["%s"]}}`, sourceID)))
+				request.Body = ioutil.NopCloser(strings.NewReader(fmt.Sprintf(`{"sourceIds":["%s"]}`, sourceID)))
 
 				spyLogAuthorizer.result = true
 
@@ -280,7 +280,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 				Expect(req.URL.Path).To(Equal("/v1/shard_group/some-client-id-some-user-id-some-name"))
 				Expect(spyOauth2ClientReader.token).To(Equal("valid-token"))
 
-				Expect(reqBody).To(MatchJSON(fmt.Sprintf(`{"subGroup":{"sourceIds":["%s"]}}`, sourceID)))
+				Expect(reqBody).To(MatchJSON(fmt.Sprintf(`{"sourceIds":["%s"]}`, sourceID)))
 
 				Expect(spyLogAuthorizer.sourceID).To(Equal(sourceID))
 				Expect(spyLogAuthorizer.token).To(Equal("valid-token"))

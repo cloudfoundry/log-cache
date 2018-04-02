@@ -101,8 +101,8 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 			return
 		}
 
-		var setShard rpc.SetShardGroupRequest
-		if err := jsonpb.Unmarshal(r.Body, &setShard); err != nil {
+		var groupedSourceIDs rpc.GroupedSourceIds
+		if err := jsonpb.Unmarshal(r.Body, &groupedSourceIDs); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			println(err.Error())
 			w.Write([]byte(fmt.Sprintf(`{"error": %q}`, err)))
@@ -116,7 +116,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 			return
 		}
 
-		for _, sourceID := range setShard.GetSubGroup().GetSourceIds() {
+		for _, sourceID := range groupedSourceIDs.GetSourceIds() {
 			if !c.IsAdmin {
 				if !m.logAuthorizer.IsAuthorized(sourceID, authToken) {
 					w.WriteHeader(http.StatusNotFound)
@@ -134,7 +134,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 
 		buf := &bytes.Buffer{}
 		m := jsonpb.Marshaler{}
-		m.Marshal(buf, &setShard)
+		m.Marshal(buf, &groupedSourceIDs)
 		r.Body = ioutil.NopCloser(buf)
 
 		h.ServeHTTP(w, r)
