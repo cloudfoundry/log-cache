@@ -40,26 +40,29 @@ func NewRPCReverseProxy(s []logcache_v1.ShardGroupReaderClient, local int, l Loo
 }
 
 // SetShardGroup implements logcache_v1.GroupReaderServer.
-func (r *RPCReverseProxy) SetShardGroup(c context.Context, req *logcache_v1.SetShardGroupRequest) (*logcache_v1.SetShardGroupResponse, error) {
+func (r *RPCReverseProxy) SetShardGroup(ctx context.Context, req *logcache_v1.SetShardGroupRequest) (*logcache_v1.SetShardGroupResponse, error) {
 	nodes := r.l.Lookup(req.GetName())
 	if len(nodes) == 0 {
 		return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
 	}
-	c, _ = context.WithTimeout(c, 3*time.Second)
+
+	const subCallTimeout = 5 * time.Second
 
 	if req.LocalOnly {
 		if !r.contains(r.local, nodes) {
 			return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
 		}
 
-		return r.s[r.local].SetShardGroup(c, req)
+		subCtx, _ := context.WithTimeout(ctx, subCallTimeout)
+		return r.s[r.local].SetShardGroup(subCtx, req)
 	}
 
 	req.LocalOnly = true
 	errs := make(chan error, len(nodes))
 	for _, n := range nodes {
 		go func(n int) {
-			_, err := r.s[n].SetShardGroup(c, req)
+			subCtx, _ := context.WithTimeout(ctx, subCallTimeout)
+			_, err := r.s[n].SetShardGroup(subCtx, req)
 			errs <- err
 		}(n)
 	}
