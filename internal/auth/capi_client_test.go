@@ -24,7 +24,7 @@ var _ = Describe("CAPIClient", func() {
 	Describe("IsAuthorized", func() {
 		It("hits CAPI correctly", func() {
 			client.IsAuthorized("some-id", "some-token")
-			r := capiClient.request
+			r := capiClient.requests[0]
 
 			Expect(r.Method).To(Equal(http.MethodGet))
 			Expect(r.URL.String()).To(Equal("https://capi.com/internal/v4/log_access/some-id"))
@@ -32,17 +32,17 @@ var _ = Describe("CAPIClient", func() {
 		})
 
 		It("returns true for authorized token", func() {
-			capiClient.status = http.StatusOK
+			capiClient.resps = []response{{status: http.StatusOK}}
 			Expect(client.IsAuthorized("some-id", "some-token")).To(BeTrue())
 		})
 
 		It("returns false when CAPI returns non 200", func() {
-			capiClient.status = http.StatusNotFound
+			capiClient.resps = []response{{status: http.StatusNotFound}}
 			Expect(client.IsAuthorized("some-id", "some-token")).To(BeFalse())
 		})
 
 		It("returns false when CAPI request fails", func() {
-			capiClient.err = errors.New("intentional error")
+			capiClient.resps = []response{{err: errors.New("intentional error")}}
 			Expect(client.IsAuthorized("some-id", "some-token")).To(BeFalse())
 		})
 	})
@@ -50,7 +50,7 @@ var _ = Describe("CAPIClient", func() {
 	Describe("AvailableSourceIDs", func() {
 		It("hits CAPI correctly", func() {
 			client.AvailableSourceIDs("some-token")
-			r := capiClient.request
+			r := capiClient.requests[0]
 
 			Expect(r.Method).To(Equal(http.MethodGet))
 			Expect(r.URL.String()).To(Equal("http://external.capi.com/v3/apps"))
@@ -58,23 +58,20 @@ var _ = Describe("CAPIClient", func() {
 		})
 
 		It("returns the available source IDs", func() {
-			capiClient.body = []byte(`{"resources": [{"guid": "source-0"}, {"guid": "source-1"}]}`)
+			capiClient.resps = []response{{status: http.StatusOK, body: []byte(`{"resources": [{"guid": "source-0"}, {"guid": "source-1"}]}`)}}
 			sourceIDs := client.AvailableSourceIDs("some-token")
 
 			Expect(sourceIDs).To(ConsistOf("source-0", "source-1"))
 		})
 
 		It("returns empty slice when CAPI returns non 200", func() {
-			capiClient.body = []byte(`{"resources": [{"guid": "source-0"}, {"guid": "source-1"}]}`)
-			capiClient.status = http.StatusNotFound
+			capiClient.resps = []response{{status: http.StatusNotFound}}
 			Expect(client.AvailableSourceIDs("some-token")).To(BeEmpty())
 		})
 
 		It("returns empty slice when CAPI request fails", func() {
-			capiClient.body = []byte(`{"resources": [{"guid": "source-0"}, {"guid": "source-1"}]}`)
-			capiClient.err = errors.New("intentional error")
+			capiClient.resps = []response{{err: errors.New("intentional error")}}
 			Expect(client.AvailableSourceIDs("some-token")).To(BeEmpty())
 		})
-
 	})
 })

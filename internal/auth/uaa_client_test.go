@@ -32,8 +32,11 @@ var _ = Describe("UAAClient", func() {
 			"client_id": "some-client",
 		})
 		Expect(err).ToNot(HaveOccurred())
-		httpClient.body = data
-		httpClient.status = http.StatusOK
+
+		httpClient.resps = []response{{
+			body:   data,
+			status: http.StatusOK,
+		}}
 
 		c, err := client.Read("valid-token")
 		Expect(err).ToNot(HaveOccurred())
@@ -49,8 +52,10 @@ var _ = Describe("UAAClient", func() {
 			"client_id": "some-client",
 		})
 		Expect(err).ToNot(HaveOccurred())
-		httpClient.body = data
-		httpClient.status = http.StatusOK
+		httpClient.resps = []response{{
+			body:   data,
+			status: http.StatusOK,
+		}}
 
 		c, err := client.Read("valid-token")
 		Expect(err).ToNot(HaveOccurred())
@@ -63,7 +68,7 @@ var _ = Describe("UAAClient", func() {
 		token := "my-token"
 		client.Read(token)
 
-		r := httpClient.request
+		r := httpClient.requests[0]
 
 		Expect(r.Method).To(Equal(http.MethodPost))
 		Expect(r.Header.Get("Content-Type")).To(
@@ -95,8 +100,10 @@ var _ = Describe("UAAClient", func() {
 			"client_id": "some-client",
 		})
 		Expect(err).ToNot(HaveOccurred())
-		httpClient.body = data
-		httpClient.status = http.StatusOK
+		httpClient.resps = []response{{
+			body:   data,
+			status: http.StatusOK,
+		}}
 
 		c, err := client.Read("invalid-token")
 		Expect(err).ToNot(HaveOccurred())
@@ -105,14 +112,19 @@ var _ = Describe("UAAClient", func() {
 	})
 
 	It("returns false when the request fails", func() {
-		httpClient.err = errors.New("some-err")
+		httpClient.resps = []response{{
+			err: errors.New("some-err"),
+		}}
 
 		_, err := client.Read("valid-token")
 		Expect(err).To(HaveOccurred())
 	})
 
 	It("returns false when the response from the UAA is invalid", func() {
-		httpClient.body = []byte("garbage")
+		httpClient.resps = []response{{
+			body:   []byte("garbage"),
+			status: http.StatusOK,
+		}}
 
 		_, err := client.Read("valid-token")
 		Expect(err).To(HaveOccurred())
@@ -120,28 +132,40 @@ var _ = Describe("UAAClient", func() {
 })
 
 type spyHTTPClient struct {
-	request *http.Request
-	status  int
-	err     error
-	body    []byte
+	requests []*http.Request
+	resps    []response
+}
+
+type response struct {
+	status int
+	err    error
+	body   []byte
 }
 
 func newSpyHTTPClient() *spyHTTPClient {
-	return &spyHTTPClient{
-		status: http.StatusOK,
-	}
+	return &spyHTTPClient{}
 }
 
 func (s *spyHTTPClient) Do(r *http.Request) (*http.Response, error) {
-	s.request = r
+	s.requests = append(s.requests, r)
 
-	resp := http.Response{
-		StatusCode: s.status,
-		Body:       ioutil.NopCloser(bytes.NewReader(s.body)),
+	if len(s.resps) == 0 {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       ioutil.NopCloser(bytes.NewReader(nil)),
+		}, nil
 	}
 
-	if s.err != nil {
-		return nil, s.err
+	result := s.resps[0]
+	s.resps = s.resps[1:]
+
+	resp := http.Response{
+		StatusCode: result.status,
+		Body:       ioutil.NopCloser(bytes.NewReader(result.body)),
+	}
+
+	if result.err != nil {
+		return nil, result.err
 	}
 
 	return &resp, nil
