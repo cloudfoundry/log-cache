@@ -1,6 +1,8 @@
 package auth_test
 
 import (
+	"sync"
+
 	"code.cloudfoundry.org/log-cache/internal/auth"
 
 	"bytes"
@@ -132,6 +134,7 @@ var _ = Describe("UAAClient", func() {
 })
 
 type spyHTTPClient struct {
+	mu       sync.Mutex
 	requests []*http.Request
 	resps    []response
 }
@@ -147,6 +150,9 @@ func newSpyHTTPClient() *spyHTTPClient {
 }
 
 func (s *spyHTTPClient) Do(r *http.Request) (*http.Response, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.requests = append(s.requests, r)
 
 	if len(s.resps) == 0 {
