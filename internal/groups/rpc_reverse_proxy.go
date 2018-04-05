@@ -85,19 +85,20 @@ func (r *RPCReverseProxy) SetShardGroup(ctx context.Context, req *logcache_v1.Se
 }
 
 // Read implements logcache_v1.GroupReaderServer.
-func (r *RPCReverseProxy) Read(c context.Context, req *logcache_v1.ShardGroupReadRequest) (*logcache_v1.ShardGroupReadResponse, error) {
+func (r *RPCReverseProxy) Read(ctx context.Context, req *logcache_v1.ShardGroupReadRequest) (*logcache_v1.ShardGroupReadResponse, error) {
 	nodes := r.l.Lookup(req.GetName())
 	if len(nodes) == 0 {
 		return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
 	}
-	c, _ = context.WithTimeout(c, 3*time.Second)
 
+	const subCallTimeout = 5 * time.Second
 	if req.LocalOnly {
 		if !r.contains(r.local, nodes) {
 			return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
 		}
 
-		return r.s[r.local].Read(c, req)
+		subCtx, _ := context.WithTimeout(ctx, subCallTimeout)
+		return r.s[r.local].Read(subCtx, req)
 	}
 
 	// We want each node to know about all the requester IDs for sharding.
@@ -119,35 +120,40 @@ func (r *RPCReverseProxy) Read(c context.Context, req *logcache_v1.ShardGroupRea
 	req.LocalOnly = true
 	for i, n := range nodes {
 		if i != int(req.GetRequesterId())%len(nodes) {
-			r.s[n].Read(c, ping)
+			subCtx, _ := context.WithTimeout(ctx, subCallTimeout)
+			r.s[n].Read(subCtx, ping)
 			continue
 		}
 
-		resp, err = r.s[n].Read(c, req)
+		subCtx, _ := context.WithTimeout(ctx, subCallTimeout)
+		resp, err = r.s[n].Read(subCtx, req)
 	}
 
 	return resp, err
 }
 
 // ShardGroup implements logcache_v1.GroupReaderServer.
-func (r *RPCReverseProxy) ShardGroup(c context.Context, req *logcache_v1.ShardGroupRequest) (*logcache_v1.ShardGroupResponse, error) {
+func (r *RPCReverseProxy) ShardGroup(ctx context.Context, req *logcache_v1.ShardGroupRequest) (*logcache_v1.ShardGroupResponse, error) {
 	nodes := r.l.Lookup(req.GetName())
 	if len(nodes) == 0 {
 		return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
 	}
-	c, _ = context.WithTimeout(c, 3*time.Second)
+
+	const subCallTimeout = 5 * time.Second
 
 	if req.LocalOnly {
 		if !r.contains(r.local, nodes) {
 			return nil, grpc.Errorf(codes.Unavailable, "unable to route request. Try again...")
 		}
 
-		return r.s[r.local].ShardGroup(c, req)
+		subCtx, _ := context.WithTimeout(ctx, subCallTimeout)
+		return r.s[r.local].ShardGroup(subCtx, req)
 	}
 
 	req.LocalOnly = true
 	n := nodes[rand.Intn(len(nodes))]
-	return r.s[n].ShardGroup(c, req)
+	subCtx, _ := context.WithTimeout(ctx, subCallTimeout)
+	return r.s[n].ShardGroup(subCtx, req)
 }
 
 func (r *RPCReverseProxy) contains(a int, b []int) bool {
