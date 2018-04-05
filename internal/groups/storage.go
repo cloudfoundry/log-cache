@@ -22,9 +22,6 @@ type Storage struct {
 	r       Reader
 	backoff time.Duration
 
-	ctx    context.Context
-	cancel func()
-
 	// key=name
 	m map[string]*aggregator
 
@@ -57,14 +54,11 @@ func NewStorage(
 	m Metrics,
 	log *log.Logger,
 ) *Storage {
-	ctx, cancel := context.WithCancel(context.Background())
 	s := &Storage{
 		log:       log,
 		r:         r,
 		backoff:   backoff,
 		streamAgg: streamaggregator.New(),
-		ctx:       ctx,
-		cancel:    cancel,
 		store:     store.NewStore(1000, 1000, p, m),
 		m:         make(map[string]*aggregator),
 	}
