@@ -1,8 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
+
+	"net/http"
+	_ "net/http/pprof"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
 	"code.cloudfoundry.org/log-cache"
@@ -30,6 +34,11 @@ func main() {
 			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
 		),
 	)
+
+	// health endpoints (pprof)
+	go func() {
+		log.Printf("Health: %s", http.ListenAndServe(fmt.Sprintf("localhost:%d", cfg.HealthPort), nil))
+	}()
 
 	gateway.Start()
 }
