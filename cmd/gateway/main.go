@@ -26,7 +26,6 @@ func main() {
 
 	gateway := logcache.NewGateway(cfg.LogCacheAddr, cfg.GroupReaderAddr, cfg.Addr,
 		logcache.WithGatewayLogger(log.New(os.Stderr, "[GATEWAY] ", log.LstdFlags)),
-		logcache.WithGatewayBlock(),
 		logcache.WithGatewayLogCacheDialOpts(
 			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
 		),
@@ -35,10 +34,8 @@ func main() {
 		),
 	)
 
-	// health endpoints (pprof)
-	go func() {
-		log.Printf("Health: %s", http.ListenAndServe(fmt.Sprintf("localhost:%d", cfg.HealthPort), nil))
-	}()
-
 	gateway.Start()
+
+	// health endpoints (pprof)
+	log.Printf("Health: %s", http.ListenAndServe(fmt.Sprintf("localhost:%d", cfg.HealthPort), nil))
 }
