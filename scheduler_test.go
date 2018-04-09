@@ -80,7 +80,7 @@ var _ = Describe("Scheduler", func() {
 		}
 
 		s.Start()
-		Eventually(spy2.reqCount, 2).Should(BeNumerically(">=", 50))
+		Eventually(spy2.reqCount, 5).Should(BeNumerically(">=", 50))
 
 		m := make(map[rpc.Range]int)
 
