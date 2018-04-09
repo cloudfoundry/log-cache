@@ -32,8 +32,7 @@ var _ = Describe("Scheduler", func() {
 		logCacheSpy2 = startSpyOrchestration()
 		groupSpy1 = startSpyOrchestration()
 		groupSpy2 = startSpyOrchestration()
-		leadershipSpy = newSpyLeadership()
-		leadershipSpy.result = true
+		leadershipSpy = newSpyLeadership(true)
 
 		s = logcache.NewScheduler(
 			[]string{
@@ -360,8 +359,10 @@ type spyLeadership struct {
 	result bool
 }
 
-func newSpyLeadership() *spyLeadership {
-	return &spyLeadership{}
+func newSpyLeadership(result bool) *spyLeadership {
+	return &spyLeadership{
+		result: result,
+	}
 }
 
 func (s *spyLeadership) IsLeader() bool {
