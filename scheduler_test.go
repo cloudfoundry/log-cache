@@ -81,11 +81,11 @@ var _ = Describe("Scheduler", func() {
 		}
 
 		s.Start()
-		Eventually(spy2.ReqCount, 2).Should(BeNumerically(">=", 50))
+		Eventually(spy2.reqCount, 2).Should(BeNumerically(">=", 50))
 
 		m := make(map[rpc.Range]int)
 
-		for _, r := range spy2.AddReqs() {
+		for _, r := range spy2.addReqs() {
 			m[*r]++
 		}
 
@@ -107,8 +107,8 @@ var _ = Describe("Scheduler", func() {
 			start += x + 1
 		}
 
-		Expect(spy1.AddReqs()).To(BeEmpty())
-		Expect(spy1.RemoveReqs()).To(BeEmpty())
+		Expect(spy1.addReqs()).To(BeEmpty())
+		Expect(spy1.removeReqs()).To(BeEmpty())
 	},
 		// Why are these functions? Go is eager and therefore if we passed the
 		// spy in directly, the BeforeEach would not have a chance to
@@ -127,11 +127,11 @@ var _ = Describe("Scheduler", func() {
 		It("sets the range table after listing all the nodes", func() {
 			s.Start()
 
-			Eventually(logCacheSpy1.SetCount).ShouldNot(BeZero())
-			Eventually(logCacheSpy2.SetCount).ShouldNot(BeZero())
+			Eventually(logCacheSpy1.setCount).ShouldNot(BeZero())
+			Eventually(logCacheSpy2.setCount).ShouldNot(BeZero())
 
-			Expect(logCacheSpy1.SetReqs()[0].Ranges).To(HaveLen(2))
-			Expect(logCacheSpy2.SetReqs()[0].Ranges).To(HaveLen(2))
+			Expect(logCacheSpy1.setReqs()[0].Ranges).To(HaveLen(2))
+			Expect(logCacheSpy2.setReqs()[0].Ranges).To(HaveLen(2))
 		})
 
 		It("rebalances ranges", func() {
@@ -175,11 +175,11 @@ var _ = Describe("Scheduler", func() {
 			s.Start()
 
 			Eventually(func() int {
-				return len(logCacheSpy1.RemoveReqs())
+				return len(logCacheSpy1.removeReqs())
 			}).Should(BeNumerically(">=", 3))
 
 			Eventually(func() int {
-				return len(logCacheSpy2.AddReqs())
+				return len(logCacheSpy2.addReqs())
 			}).Should(BeNumerically(">=", 3))
 		})
 	})
@@ -187,10 +187,10 @@ var _ = Describe("Scheduler", func() {
 	Describe("Group Ranges", func() {
 		It("schedules the ranges evenly across the nodes", func() {
 			s.Start()
-			Eventually(groupSpy1.ReqCount, 2).Should(BeNumerically(">=", 50))
-			Eventually(groupSpy2.ReqCount, 2).Should(BeNumerically(">=", 50))
+			Eventually(groupSpy1.reqCount, 2).Should(BeNumerically(">=", 50))
+			Eventually(groupSpy2.reqCount, 2).Should(BeNumerically(">=", 50))
 
-			reqs := append(groupSpy1.AddReqs(), groupSpy2.AddReqs()...)
+			reqs := append(groupSpy1.addReqs(), groupSpy2.addReqs()...)
 
 			count := 7
 
@@ -218,11 +218,11 @@ var _ = Describe("Scheduler", func() {
 		It("sets the range table after listing all the nodes", func() {
 			s.Start()
 
-			Eventually(groupSpy1.SetCount).ShouldNot(BeZero())
-			Eventually(groupSpy2.SetCount).ShouldNot(BeZero())
+			Eventually(groupSpy1.setCount).ShouldNot(BeZero())
+			Eventually(groupSpy2.setCount).ShouldNot(BeZero())
 
-			Expect(groupSpy1.SetReqs()[0].Ranges).To(HaveLen(2))
-			Expect(groupSpy2.SetReqs()[0].Ranges).To(HaveLen(2))
+			Expect(groupSpy1.setReqs()[0].Ranges).To(HaveLen(2))
+			Expect(groupSpy2.setReqs()[0].Ranges).To(HaveLen(2))
 		})
 	})
 
@@ -231,39 +231,39 @@ var _ = Describe("Scheduler", func() {
 			leadershipSpy.setResult(false)
 			s.Start()
 
-			Consistently(groupSpy1.SetCount).Should(BeZero())
-			Consistently(groupSpy2.SetCount).Should(BeZero())
+			Consistently(groupSpy1.setCount).Should(BeZero())
+			Consistently(groupSpy2.setCount).Should(BeZero())
 
-			Consistently(groupSpy1.AddReqs).Should(BeEmpty())
-			Consistently(groupSpy2.AddReqs).Should(BeEmpty())
+			Consistently(groupSpy1.addReqs).Should(BeEmpty())
+			Consistently(groupSpy2.addReqs).Should(BeEmpty())
 
-			Consistently(groupSpy1.RemoveReqs).Should(BeEmpty())
-			Consistently(groupSpy2.RemoveReqs).Should(BeEmpty())
+			Consistently(groupSpy1.removeReqs).Should(BeEmpty())
+			Consistently(groupSpy2.removeReqs).Should(BeEmpty())
 
 			leadershipSpy.setResult(true)
-			Eventually(groupSpy1.SetCount).ShouldNot(BeZero())
-			Eventually(groupSpy2.SetCount).ShouldNot(BeZero())
+			Eventually(groupSpy1.setCount).ShouldNot(BeZero())
+			Eventually(groupSpy2.setCount).ShouldNot(BeZero())
 
-			Consistently(groupSpy1.AddReqs).ShouldNot(BeEmpty())
-			Consistently(groupSpy2.AddReqs).ShouldNot(BeEmpty())
+			Consistently(groupSpy1.addReqs).ShouldNot(BeEmpty())
+			Consistently(groupSpy2.addReqs).ShouldNot(BeEmpty())
 		})
 	})
 })
 
 type spyOrchestration struct {
-	mu      sync.Mutex
-	lis     net.Listener
-	addReqs []*rpc.Range
-	addErr  error
+	mu       sync.Mutex
+	lis      net.Listener
+	addReqs_ []*rpc.Range
+	addErr   error
 
-	removeReqs []*rpc.Range
-	removeErr  error
+	removeReqs_ []*rpc.Range
+	removeErr   error
 
 	listReqs   []*rpc.ListRangesRequest
 	listRanges []*rpc.Range
 	listErr    error
 
-	setReqs []*rpc.SetRangesRequest
+	setReqs_ []*rpc.SetRangesRequest
 }
 
 func startSpyOrchestration() *spyOrchestration {
@@ -291,37 +291,17 @@ func (s *spyOrchestration) AddRange(ctx context.Context, r *rpc.AddRangeRequest)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.addReqs = append(s.addReqs, r.Range)
+	s.addReqs_ = append(s.addReqs_, r.Range)
 	return &rpc.AddRangeResponse{}, s.addErr
-}
-
-func (s *spyOrchestration) AddReqs() []*rpc.Range {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	addReqs := make([]*rpc.Range, len(s.addReqs))
-	copy(addReqs, s.addReqs)
-	return addReqs
-}
-
-func (s *spyOrchestration) ReqCount() int {
-	return len(s.AddReqs())
 }
 
 func (s *spyOrchestration) RemoveRange(ctx context.Context, r *rpc.RemoveRangeRequest) (*rpc.RemoveRangeResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.removeReqs = append(s.removeReqs, r.Range)
+	s.removeReqs_ = append(s.removeReqs_, r.Range)
 
 	return &rpc.RemoveRangeResponse{}, s.removeErr
-}
-
-func (s *spyOrchestration) RemoveReqs() []*rpc.Range {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return s.removeReqs
 }
 
 func (s *spyOrchestration) ListRanges(ctx context.Context, r *rpc.ListRangesRequest) (*rpc.ListRangesResponse, error) {
@@ -338,21 +318,41 @@ func (s *spyOrchestration) SetRanges(ctx context.Context, r *rpc.SetRangesReques
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.setReqs = append(s.setReqs, r)
+	s.setReqs_ = append(s.setReqs_, r)
 	return &rpc.SetRangesResponse{}, nil
 }
 
-func (s *spyOrchestration) SetReqs() []*rpc.SetRangesRequest {
+func (s *spyOrchestration) addReqs() []*rpc.Range {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	setReqs := make([]*rpc.SetRangesRequest, len(s.setReqs))
-	copy(setReqs, s.setReqs)
+	addReqs := make([]*rpc.Range, len(s.addReqs_))
+	copy(addReqs, s.addReqs_)
+	return addReqs
+}
+
+func (s *spyOrchestration) reqCount() int {
+	return len(s.addReqs())
+}
+
+func (s *spyOrchestration) removeReqs() []*rpc.Range {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.removeReqs_
+}
+
+func (s *spyOrchestration) setReqs() []*rpc.SetRangesRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	setReqs := make([]*rpc.SetRangesRequest, len(s.setReqs_))
+	copy(setReqs, s.setReqs_)
 	return setReqs
 }
 
-func (s *spyOrchestration) SetCount() int {
-	return len(s.SetReqs())
+func (s *spyOrchestration) setCount() int {
+	return len(s.setReqs())
 }
 
 type spyLeadership struct {
