@@ -27,6 +27,7 @@ func NewPruneConsultant(stepBy int, percentToFill float64, m Memory) *PruneConsu
 // Prune reports how many entries should be removed.
 func (a *PruneConsultant) Prune() int {
 	heap, avail, total := a.m.Memory()
+
 	if float64(heap*100)/float64(total) > a.percentToFill {
 		return a.stepBy
 	}

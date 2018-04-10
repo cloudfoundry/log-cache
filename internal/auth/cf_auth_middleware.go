@@ -104,7 +104,6 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		var groupedSourceIDs rpc.GroupedSourceIds
 		if err := jsonpb.Unmarshal(r.Body, &groupedSourceIDs); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			println(err.Error())
 			w.Write([]byte(fmt.Sprintf(`{"error": %q}`, err)))
 			return
 		}
