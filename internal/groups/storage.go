@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"sort"
-	"strings"
 	"time"
 
 	logcache "code.cloudfoundry.org/go-log-cache"
@@ -103,8 +102,8 @@ func (g sourceIDGroups) Swap(i, j int) {
 }
 
 func (g sourceIDGroups) Less(i, j int) bool {
-	a := strings.Join(g[i], ",")
-	b := strings.Join(g[j], ",")
+	a := concat(g[i])
+	b := concat(g[j])
 
 	return a < b
 }
@@ -156,10 +155,10 @@ func (s *Storage) Remove(name string, sourceIDs []string) {
 		return
 	}
 
-	a := strings.Join(sourceIDs, ",")
+	a := concat(sourceIDs)
 
 	for i, id := range agg.sourceIDs {
-		b := strings.Join(id, ",")
+		b := concat(id)
 		if b == a {
 			agg.sourceIDs = append(agg.sourceIDs[:i], agg.sourceIDs[i+1:]...)
 		}
@@ -253,10 +252,11 @@ type requester struct {
 }
 
 func containsSourceIDs(ids [][]string, sid []string) bool {
+	b := concat(sid)
+
 	for _, s := range ids {
 		// TODO: This could be more performant.
-		a := strings.Join(s, ",")
-		b := strings.Join(sid, ",")
+		a := concat(s)
 		if a == b {
 			return true
 		}
@@ -295,9 +295,9 @@ func (a *aggregator) add(id uint64, sourceIDs []string) error {
 
 func (a *aggregator) remove(id uint64, sourceIDs []string) error {
 	req := a.requesterIDs[id]
-	sid := strings.Join(sourceIDs, ",")
+	sid := concat(sourceIDs)
 	for i, x := range req.sourceIDs {
-		b := strings.Join(x, ",")
+		b := concat(x)
 		if sid == b {
 			req.sourceIDs = append(req.sourceIDs[:i], req.sourceIDs[i+1:]...)
 		}

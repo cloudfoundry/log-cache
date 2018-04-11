@@ -1,9 +1,9 @@
 package groups
 
 import (
+	"bytes"
 	"context"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -88,7 +88,7 @@ func (m *Manager) SetShardGroup(ctx context.Context, r *logcache_v1.SetShardGrou
 	// Ensure that sourceID is not already tracked.
 	sourceIDs := r.GetSubGroup().GetSourceIds()
 	sort.Strings(sourceIDs)
-	allSourceIDs := strings.Join(sourceIDs, ",")
+	allSourceIDs := concat(sourceIDs)
 
 	if subGroup, ok := gi.groupedSourceIDs[allSourceIDs]; ok {
 		m.resetExpire(subGroup.t)
@@ -244,4 +244,14 @@ type groupInfo struct {
 type subGroupInfo struct {
 	t         *time.Timer
 	sourceIDs []string
+}
+
+func concat(strs []string) string {
+	buf := bytes.Buffer{}
+
+	for _, s := range strs {
+		buf.WriteString(s)
+	}
+
+	return buf.String()
 }
