@@ -13,7 +13,8 @@ This repository should be imported as:
 
 ## Source IDs
 
-Log Cache indexes everything by the `source_id` field on the [Loggregator Envelope][loggregator_v2]. The source ID should distinguish the cluster from other clusters. It should not distinguish a specific instance.
+Log Cache indexes everything by the `source_id` field on the [Loggregator Envelope][loggregator_v2].
+The source ID should distinguish the cluster from other clusters. It should not distinguish a specific instance.
 
 ### Cloud Foundry
 
@@ -25,6 +26,12 @@ If the token contains the `doppler.firehose` scope, the request will be able
 to read data from any source ID.
 If the source ID is an app guid, the Cloud Controller is consulted to verify
 if the provided token has the appropriate app access.
+
+## Shard Groups
+
+Shard groups can be used to split up consumption among multiple readers. With
+a shard group and set of requester IDs, Log Cache will do its best to evenly
+spread results among the requesters.
 
 ## Restful API via Gateway
 
@@ -67,12 +74,17 @@ Lists the available source IDs that Log Cache has persisted.
 ```
 {
   "meta":{
-    "source-id-0":{},
-    "source-id-1":{},
+    "source-id-0":{"count":"100000","expired":"129452","oldestTimestamp":"1524071322998223702","newestTimestamp":"1524081739994226961"},
+    "source-id-1":{"count":"2114","oldestTimestamp":"1524057384976840476","newestTimestamp":"1524081729980342902"},
     ...
   }
 }
 ```
+##### Response fields
+ - **count** contains the number of envelopes held in Log Cache
+ - **expired**, if present, is a count of envelopes that have been pruned
+ - **oldestTimestamp** and **newestTimestamp** are the oldest and newest
+   entries for the source, in nanoseconds since the Unix epoch.
 
 ### **GET** `/v1/shard_group/<group-name>`
 
@@ -81,7 +93,8 @@ Reads from the given shard-group. The shard-group's source-ids are merged and so
 Query Parameters:
 
 - **requester_id** is a string used to shard data across multiple clients. This
-  string should be unique for each client reading from the group.
+  string should be unique for each client reading from the group. If multiple
+  clients use the same requester ID, sharding may not be reliable.
 - **start_time** is UNIX timestamp in nanoseconds. It defaults to the start of the
   cache (e.g. `date +%s`). Start time is inclusive. `[starttime..endtime)`
 - **end_time** is UNIX timestamp in nanoseconds. It defaults to current time of the
@@ -105,12 +118,12 @@ curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>/?start_time=<star
 
 ### **PUT** `/v1/shard_group/<group-name>/`
 
-Adds the given source ids to the given shard-group. If the shard-group does not
-exist, then it gets created. Each shard-group may contain many sub-groups. Each
-sub-group may contain many source-ids. A shard-group will be sharded
-evenly across requesters (distinguished by each request's `requester_id`). A
-sub-group ensures that each requester receives the given source-ids grouped
-together (and not spread across other requesters).
+Adds the given source ids to the given shard-group. If the shard-group does
+not exist, then it gets created. Each shard-group may contain many sub-groups.
+Each sub-group may contain many source-ids. Each requester (identified by a
+`requester_id`) will receive an equal subset of the shard group. A sub-group
+ensures that each requester receives envelopes for the given source-ids
+grouped together (and not spread across other requesters).
 
 ##### Request Body
 
@@ -147,15 +160,10 @@ curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>/meta"
 }
 ```
 
-##### Normal Mode
+## Cloud Foundry CLI Plugin
 
-LogCache will be queried periodically and pass a batch of envelopes to the
-template.
-
-##### Follow Mode
-
-LogCache will be queried rapidly and pass a single envelope to the
-template.
+Log Cache provides a [plugin][log-cache-cli] for the Cloud Foundry command
+line tool, which makes interacting with the API simpler.
 
 [slack-badge]:              https://slack.cloudfoundry.org/badge.svg
 [loggregator-slack]:        https://cloudfoundry.slack.com/archives/loggregator
@@ -166,3 +174,4 @@ template.
 [travis]:                   https://travis-ci.org/cloudfoundry/log-cache?branch=master
 [loggregator]:              https://github.com/cloudfoundry/loggregator
 [loggregator_v2]:           https://github.com/cloudfoundry/loggregator-api/blob/master/v2/envelope.proto
+[log-cache-cli]:            https://code.cloudfoundry.org/log-cache-cli
