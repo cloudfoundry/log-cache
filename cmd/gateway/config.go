@@ -10,7 +10,7 @@ type Config struct {
 	Addr            string `env:"ADDR, required"`
 	LogCacheAddr    string `env:"LOG_CACHE_ADDR, required"`
 	GroupReaderAddr string `env:"GROUP_READER_ADDR, required"`
-	HealthPort      int    `env:"HEALTH_PORT"`
+	HealthAddr      string `env:"HEALTH_ADDR"`
 	TLS             tls.TLS
 }
 
@@ -18,7 +18,7 @@ type Config struct {
 func LoadConfig() (*Config, error) {
 	c := Config{
 		Addr:            ":8081",
-		HealthPort:      6063,
+		HealthAddr:      "localhost:6063",
 		LogCacheAddr:    "localhost:8080",
 		GroupReaderAddr: "localhost:8082",
 	}

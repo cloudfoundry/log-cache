@@ -11,7 +11,7 @@ type Config struct {
 	LogsProviderTLS LogsProviderTLS
 
 	LogCacheAddr string `env:"LOG_CACHE_ADDR, required"`
-	HealthPort   int    `env:"HEALTH_PORT"`
+	HealthAddr string `env:"HEALTH_ADDR"`
 
 	LogCacheTLS tls.TLS
 }
@@ -27,7 +27,7 @@ type LogsProviderTLS struct {
 func LoadConfig() (*Config, error) {
 	c := Config{
 		LogCacheAddr: ":8080",
-		HealthPort:   6061,
+		HealthAddr: "localhost:6061",
 	}
 
 	if err := envstruct.Load(&c); err != nil {

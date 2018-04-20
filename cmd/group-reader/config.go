@@ -9,8 +9,7 @@ import (
 type Config struct {
 	Addr         string `env:"ADDR, required"`
 	LogCacheAddr string `env:"LOG_CACHE_ADDR, required"`
-	LogCacheTLS  tls.TLS
-	HealthPort   int `env:"HEALTH_PORT"`
+	HealthAddr   string `env:"HEALTH_ADDR"`
 
 	// NodeIndex determines what data the node stores. It splits up the range
 	// of 0 - 18446744073709551615 evenly. If a group name falls out of range
@@ -23,6 +22,8 @@ type Config struct {
 	// If NodeAddrs is emptpy or size 1, then requests is not routed as it is
 	// assumed that the current node is the only one.
 	NodeAddrs []string `env:"NODE_ADDRS"`
+
+	LogCacheTLS tls.TLS
 }
 
 // LoadConfig creates Config object from environment variables
@@ -30,7 +31,7 @@ func LoadConfig() (*Config, error) {
 	c := Config{
 		Addr:         ":8082",
 		LogCacheAddr: "localhost:8080",
-		HealthPort:   6062,
+		HealthAddr:   "localhost:6062",
 	}
 
 	if err := envstruct.Load(&c); err != nil {

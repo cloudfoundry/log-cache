@@ -2,7 +2,6 @@ package main
 
 import (
 	"expvar"
-	"fmt"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -57,5 +56,5 @@ func main() {
 	sched.Start()
 
 	// health endpoints (pprof and expvar)
-	log.Printf("Health: %s", http.ListenAndServe(fmt.Sprintf("localhost:%d", cfg.HealthPort), nil))
+	log.Printf("Health: %s", http.ListenAndServe(cfg.HealthAddr, nil))
 }

@@ -8,8 +8,7 @@ import (
 // Config is the configuration for a LogCache.
 type Config struct {
 	Addr       string `env:"ADDR, required"`
-	TLS        tls.TLS
-	HealthPort int `env:"HEALTH_PORT"`
+	HealthAddr string `env:"HEALTH_ADDR"`
 
 	// MinimumSize sets the lower bound for pruning. It will not prune beyond
 	// the set size. Defaults to 500000.
@@ -26,13 +25,15 @@ type Config struct {
 	// If NodeAddrs is emptpy or size 1, then data is not routed as it is
 	// assumed that the current node is the only one.
 	NodeAddrs []string `env:"NODE_ADDRS"`
+	
+	TLS        tls.TLS
 }
 
 // LoadConfig creates Config object from environment variables
 func LoadConfig() (*Config, error) {
 	c := Config{
 		Addr:        ":8080",
-		HealthPort:  6060,
+		HealthAddr:  "localhost:6060",
 		MinimumSize: 500000,
 	}
 

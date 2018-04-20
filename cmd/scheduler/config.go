@@ -9,8 +9,7 @@ import (
 
 // Config is the configuration for a Scheduler.
 type Config struct {
-	TLS        tls.TLS
-	HealthPort int `env:"HEALTH_PORT"`
+	HealthAddr string `env:"HEALTH_ADDR"`
 
 	Interval          time.Duration `env:"INTERVAL"`
 	Count             int           `env:"COUNT"`
@@ -26,12 +25,14 @@ type Config struct {
 
 	// If empty, then the scheduler assumes it is always the leader.
 	LeaderElectionEndpoint string `env:"LEADER_ELECTION_ENDPOINT"`
+
+	TLS tls.TLS
 }
 
 // LoadConfig creates Config object from environment variables
 func LoadConfig() (*Config, error) {
 	c := Config{
-		HealthPort:        6064,
+		HealthAddr:        "localhost:6064",
 		Count:             100,
 		ReplicationFactor: 1,
 		Interval:          time.Minute,
