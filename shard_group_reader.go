@@ -31,6 +31,8 @@ type ShardGroupReader struct {
 
 	serverOpts []grpc.ServerOption
 	dialOpts   []grpc.DialOption
+
+	maxPerSource int
 }
 
 // NewGroupReader creates a new ShardGroupReader. NodeAddrs has the hostport of
@@ -47,8 +49,9 @@ func NewGroupReader(logCacheAddr string, nodeAddrs []string, nodeIndex int, opts
 		metrics:  nopMetrics{},
 		dialOpts: []grpc.DialOption{grpc.WithInsecure()},
 
-		nodeAddrs: na,
-		nodeIndex: nodeIndex,
+		nodeAddrs:    na,
+		nodeIndex:    nodeIndex,
+		maxPerSource: 1000,
 	}
 
 	for _, o := range opts {
@@ -105,6 +108,15 @@ func WithGroupReaderExternalAddr(addr string) GroupReaderOption {
 	}
 }
 
+// WithGroupReaderMaxPerSource returns a GroupReaderOption that configures the
+// store's memory size as number of envelopes for a specific sourceID.
+// Defaults to 1000 envelopes.
+func WithGroupReaderMaxPerSource(size int) GroupReaderOption {
+	return func(g *ShardGroupReader) {
+		g.maxPerSource = size
+	}
+}
+
 // Start starts servicing for group requests. It does not block.
 func (g *ShardGroupReader) Start() {
 	lis, err := net.Listen("tcp", g.addr)
@@ -129,7 +141,7 @@ func (g *ShardGroupReader) Start() {
 		}
 
 		p := store.NewPruneConsultant(2, 70, NewMemoryAnalyzer(g.metrics))
-		s := groups.NewStorage(g.client.Read, time.Second, p, g.metrics, g.log)
+		s := groups.NewStorage(g.maxPerSource, g.client.Read, time.Second, p, g.metrics, g.log)
 
 		m := groups.NewManager(s, time.Minute)
 		lookup := routing.NewRoutingTable(g.nodeAddrs, hasher)

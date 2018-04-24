@@ -26,7 +26,7 @@ var _ = Describe("Storage", func() {
 		spyMetrics = newSpyMetrics()
 		reader = newSpyReader()
 		spyPruner = newSpyPruner()
-		s = groups.NewStorage(reader.Read, time.Millisecond, spyPruner, spyMetrics, log.New(GinkgoWriter, "", 0))
+		s = groups.NewStorage(1000, reader.Read, time.Millisecond, spyPruner, spyMetrics, log.New(GinkgoWriter, "", 0))
 	})
 
 	It("returns data sorted by timestamp", func() {

@@ -23,6 +23,10 @@ type Config struct {
 	// assumed that the current node is the only one.
 	NodeAddrs []string `env:"NODE_ADDRS"`
 
+	// MaxPerSource is the store's memory size as number of envelopes for a
+	// specific sourceID. Defaults to 1000 envelopes.
+	MaxPerSource int `env:"MAX_PER_SOURCE"`
+
 	LogCacheTLS tls.TLS
 }
 
@@ -32,6 +36,7 @@ func LoadConfig() (*Config, error) {
 		Addr:         ":8082",
 		LogCacheAddr: "localhost:8080",
 		HealthAddr:   "localhost:6062",
+		MaxPerSource: 1000,
 	}
 
 	if err := envstruct.Load(&c); err != nil {

@@ -47,6 +47,7 @@ type Metrics interface {
 
 // NewStorage returns new Storage.
 func NewStorage(
+	maxPerSource int,
 	r Reader,
 	backoff time.Duration,
 	p store.Pruner,
@@ -58,7 +59,7 @@ func NewStorage(
 		r:         r,
 		backoff:   backoff,
 		streamAgg: streamaggregator.New(),
-		store:     store.NewStore(1000, 1000, p, m),
+		store:     store.NewStore(maxPerSource, 1000, p, m),
 		m:         make(map[string]*aggregator),
 	}
 
