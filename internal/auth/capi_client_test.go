@@ -91,28 +91,62 @@ var _ = Describe("CAPIClient", func() {
 	Describe("AvailableSourceIDs", func() {
 		It("hits CAPI correctly", func() {
 			client.AvailableSourceIDs("some-token")
-			r := capiClient.requests[0]
+			Expect(capiClient.requests).To(HaveLen(2))
 
-			Expect(r.Method).To(Equal(http.MethodGet))
-			Expect(r.URL.String()).To(Equal("http://external.capi.com/v3/apps"))
-			Expect(r.Header.Get("Authorization")).To(Equal("some-token"))
+			appsReq := capiClient.requests[0]
+			Expect(appsReq.Method).To(Equal(http.MethodGet))
+			Expect(appsReq.URL.String()).To(Equal("http://external.capi.com/v3/apps"))
+			Expect(appsReq.Header.Get("Authorization")).To(Equal("some-token"))
+
+			servicesReq := capiClient.requests[1]
+			Expect(servicesReq.Method).To(Equal(http.MethodGet))
+			Expect(servicesReq.URL.String()).To(Equal("http://external.capi.com/v2/service_instances"))
+			Expect(servicesReq.Header.Get("Authorization")).To(Equal("some-token"))
 		})
 
-		It("returns the available source IDs", func() {
-			capiClient.resps = []response{{status: http.StatusOK, body: []byte(`{"resources": [{"guid": "source-0"}, {"guid": "source-1"}]}`)}}
+		It("returns the available app and service instance IDs", func() {
+			capiClient.resps = []response{
+				{status: http.StatusOK, body: []byte(`{"resources": [{"guid": "app-0"}, {"guid": "app-1"}]}`)},
+				{status: http.StatusOK, body: []byte(`{"resources": [{"metadata":{"guid": "service-2"}}, {"metadata":{"guid": "service-3"}}]}`)},
+			}
 			sourceIDs := client.AvailableSourceIDs("some-token")
-
-			Expect(sourceIDs).To(ConsistOf("source-0", "source-1"))
+			Expect(sourceIDs).To(ConsistOf("app-0", "app-1", "service-2", "service-3"))
 		})
 
-		It("returns empty slice when CAPI returns non 200", func() {
-			capiClient.resps = []response{{status: http.StatusNotFound}}
-			Expect(client.AvailableSourceIDs("some-token")).To(BeEmpty())
+		It("returns empty slice when CAPI apps request returns non 200", func() {
+			capiClient.resps = []response{
+				{status: http.StatusNotFound},
+				{status: http.StatusOK, body: []byte(`{"resources": [{"metadata":{"guid": "service-2"}}, {"metadata":{"guid": "service-3"}}]}`)},
+			}
+			sourceIDs := client.AvailableSourceIDs("some-token")
+			Expect(sourceIDs).To(BeEmpty())
 		})
 
-		It("returns empty slice when CAPI request fails", func() {
-			capiClient.resps = []response{{err: errors.New("intentional error")}}
-			Expect(client.AvailableSourceIDs("some-token")).To(BeEmpty())
+		It("returns empty slice when CAPI apps request fails", func() {
+			capiClient.resps = []response{
+				{err: errors.New("intentional error")},
+				{status: http.StatusOK, body: []byte(`{"resources": [{"metadata":{"guid": "service-2"}}, {"metadata":{"guid": "service-3"}}]}`)},
+			}
+			sourceIDs := client.AvailableSourceIDs("some-token")
+			Expect(sourceIDs).To(BeEmpty())
+		})
+
+		It("returns empty slice when CAPI service_instances request returns non 200", func() {
+			capiClient.resps = []response{
+				{status: http.StatusOK, body: []byte(`{"resources": [{"guid": "app-0"}, {"guid": "app-1"}]}`)},
+				{status: http.StatusNotFound},
+			}
+			sourceIDs := client.AvailableSourceIDs("some-token")
+			Expect(sourceIDs).To(BeEmpty())
+		})
+
+		It("returns empty slice when CAPI service_instances request fails", func() {
+			capiClient.resps = []response{
+				{status: http.StatusOK, body: []byte(`{"resources": [{"guid": "app-0"}, {"guid": "app-1"}]}`)},
+				{err: errors.New("intentional error")},
+			}
+			sourceIDs := client.AvailableSourceIDs("some-token")
+			Expect(sourceIDs).To(BeEmpty())
 		})
 
 		It("is goroutine safe", func() {

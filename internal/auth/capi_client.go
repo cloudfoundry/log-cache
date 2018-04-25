@@ -69,6 +69,7 @@ func (c *CAPIClient) IsAuthorized(sourceID, token string) bool {
 }
 
 func (c *CAPIClient) AvailableSourceIDs(token string) []string {
+	var sourceIDs []string
 	req, err := http.NewRequest(http.MethodGet, c.externalCapi+"/v3/apps", nil)
 	if err != nil {
 		log.Printf("failed to build authorize log access request: %s", err)
@@ -82,21 +83,52 @@ func (c *CAPIClient) AvailableSourceIDs(token string) []string {
 		return nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("CAPI request failed: %d", resp.StatusCode)
+		log.Printf("CAPI request failed (/v3/apps): %d", resp.StatusCode)
 		return nil
 	}
 
-	var sources struct {
+	var appSources struct {
 		Resources []struct {
 			Guid string `json:"guid"`
 		} `json:"resources"`
 	}
 
-	json.NewDecoder(resp.Body).Decode(&sources)
+	json.NewDecoder(resp.Body).Decode(&appSources)
 
-	var sourceIDs []string
-	for _, v := range sources.Resources {
+	for _, v := range appSources.Resources {
 		sourceIDs = append(sourceIDs, v.Guid)
 	}
+
+	req, err = http.NewRequest(http.MethodGet, c.externalCapi+"/v2/service_instances", nil)
+	if err != nil {
+		log.Printf("failed to build authorize service instance access request: %s", err)
+		return nil
+	}
+
+	req.Header.Set("Authorization", token)
+	resp, err = c.client.Do(req)
+	if err != nil {
+		log.Printf("External CAPI request failed: %s", err)
+		return nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("CAPI request failed (/v2/service_instances): %d", resp.StatusCode)
+		return nil
+	}
+
+	var serviceSources struct {
+		Resources []struct {
+			Metadata struct {
+				Guid string `json:"guid"`
+			} `json:"metadata"`
+		} `json:"resources"`
+	}
+
+	json.NewDecoder(resp.Body).Decode(&serviceSources)
+	for _, v := range serviceSources.Resources {
+		sourceIDs = append(sourceIDs, v.Metadata.Guid)
+	}
+
 	return sourceIDs
 }
