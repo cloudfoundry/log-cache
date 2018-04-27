@@ -111,20 +111,20 @@ func countEnvelopes(cfg *Config, start, end time.Time, sourceID string, emitCoun
 func sendToDatadog(cfg *Config, ddc *datadog.Client, emitCount, receivedCount int) {
 	var metrics []datadog.Metric
 	mType := "gauge"
-	name := "log_cache_grpc_blackbox.logs_sent"
+	nameSent := "log_cache_grpc_blackbox.logs_sent"
 
 	timestamp := time.Now().UnixNano()
 	metrics = append(metrics, datadog.Metric{
-		Metric: &name,
+		Metric: &nameSent,
 		Points: toDataPoint(timestamp, float64(emitCount)),
 		Type:   &mType,
 		Host:   &cfg.DatadogOriginHost,
 		Tags:   cfg.DatadogTags,
 	})
 
-	name = "log_cache_grpc_blackbox.logs_received"
+	nameReceived := "log_cache_grpc_blackbox.logs_received"
 	metrics = append(metrics, datadog.Metric{
-		Metric: &name,
+		Metric: &nameReceived,
 		Points: toDataPoint(timestamp, float64(receivedCount)),
 		Type:   &mType,
 		Host:   &cfg.DatadogOriginHost,
