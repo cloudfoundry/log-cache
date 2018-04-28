@@ -223,7 +223,7 @@ func (s *Storage) initAggregator(name string) *aggregator {
 }
 
 func (s *Storage) start(encodedName string, req *requester) {
-	for e := range req.agg.Consume(req.ctx, nil) {
+	for e := range req.agg.Consume(req.ctx, nil, streamaggregator.WithConsumeChannelLength(100)) {
 		s.store.Put(e.(*loggregator_v2.Envelope), encodedName)
 	}
 }
