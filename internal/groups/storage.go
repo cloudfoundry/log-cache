@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	diodes "code.cloudfoundry.org/go-diodes"
 	logcache "code.cloudfoundry.org/go-log-cache"
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
@@ -25,7 +26,9 @@ type Storage struct {
 	m map[string]*aggregator
 
 	streamAgg *streamaggregator.StreamAggregator
-	store     *store.Store
+
+	diode *diodes.Poller
+	store *store.Store
 }
 
 // Reader reads envelopes from LogCache.
@@ -60,8 +63,13 @@ func NewStorage(
 		backoff:   backoff,
 		streamAgg: streamaggregator.New(),
 		store:     store.NewStore(maxPerSource, 1000, p, m),
-		m:         make(map[string]*aggregator),
+		diode: diodes.NewPoller(diodes.NewManyToOne(10000, diodes.AlertFunc(func(dropped int) {
+			log.Printf("dropped %d", dropped)
+		}))),
+		m: make(map[string]*aggregator),
 	}
+
+	go s.run()
 
 	return s
 }
@@ -222,9 +230,24 @@ func (s *Storage) initAggregator(name string) *aggregator {
 	return agg
 }
 
+type envelopeWrapper struct {
+	e           *loggregator_v2.Envelope
+	encodedName string
+}
+
+func (s *Storage) run() {
+	for {
+		e := (*envelopeWrapper)(s.diode.Next())
+		s.store.Put(e.e, e.encodedName)
+	}
+}
+
 func (s *Storage) start(encodedName string, req *requester) {
-	for e := range req.agg.Consume(req.ctx, nil, streamaggregator.WithConsumeChannelLength(100)) {
-		s.store.Put(e.(*loggregator_v2.Envelope), encodedName)
+	for e := range req.agg.Consume(req.ctx, nil) {
+		s.diode.Set(diodes.GenericDataType(&envelopeWrapper{
+			e:           e.(*loggregator_v2.Envelope),
+			encodedName: encodedName,
+		}))
 	}
 }
 
