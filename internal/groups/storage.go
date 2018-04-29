@@ -59,7 +59,7 @@ func NewStorage(
 		r:         r,
 		backoff:   backoff,
 		streamAgg: streamaggregator.New(),
-		store:     store.NewStore(maxPerSource, 1000, p, m),
+		store:     store.NewStore(maxPerSource, 100000, p, m),
 		m:         make(map[string]*aggregator),
 	}
 
