@@ -125,9 +125,18 @@ func (g *Gateway) listenAndServe() {
 		g.log.Fatalf("failed to register LogCache handler: %s", err)
 	}
 
+	err = logcache_v1.RegisterPromQLQuerierHandlerClient(
+		context.Background(),
+		mux,
+		logcache_v1.NewPromQLQuerierClient(conn),
+	)
+	if err != nil {
+		g.log.Fatalf("failed to register PromQLQuerier handler: %s", err)
+	}
+
 	gconn, err := grpc.Dial(g.groupReaderAddr, g.groupReaderDialOpts...)
 	if err != nil {
-		g.log.Fatalf("failed to dial Group Reader: %s", err)
+		g.log.Fatalf("failed to dial Shard Group Reader: %s", err)
 	}
 
 	err = logcache_v1.RegisterShardGroupReaderHandlerClient(
@@ -136,7 +145,7 @@ func (g *Gateway) listenAndServe() {
 		logcache_v1.NewShardGroupReaderClient(gconn),
 	)
 	if err != nil {
-		g.log.Fatalf("failed to register GroupReader handler: %s", err)
+		g.log.Fatalf("failed to register ShardGroupReader handler: %s", err)
 	}
 
 	server := &http.Server{Handler: mux}

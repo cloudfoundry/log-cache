@@ -162,6 +162,23 @@ curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>/meta"
 }
 ```
 
+### **GET** `/v1/promql`
+
+Issues a PromQL query against Log Cache data.
+
+```
+curl -XGET "http://<log-cache-addr>:8080/v1/promql" --data-urlencode 'query=metrics{source_id="source-id-1"}'
+```
+
+##### Response Body
+```
+{
+  "vector": {
+    "samples": [{ "metric": {...}, "point": {...} }]
+  }
+}
+```
+
 ## Cloud Foundry CLI Plugin
 
 Log Cache provides a [plugin][log-cache-cli] for the Cloud Foundry command

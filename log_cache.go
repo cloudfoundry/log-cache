@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc"
 
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	"code.cloudfoundry.org/log-cache/internal/promql"
 	"code.cloudfoundry.org/log-cache/internal/routing"
 	"code.cloudfoundry.org/log-cache/internal/store"
 )
@@ -241,12 +242,14 @@ func (c *LogCache) setupRouting(s *store.Store) {
 
 	ingressReverseProxy := routing.NewIngressReverseProxy(lookup.Lookup, ingressClients, localIdx, c.log)
 	egressReverseProxy := routing.NewEgressReverseProxy(lookup.Lookup, egressClients, localIdx, c.log)
+	promQL := promql.New(egressReverseProxy, c.log)
 	c.server = grpc.NewServer(c.serverOpts...)
 
 	go func() {
 		logcache_v1.RegisterIngressServer(c.server, ingressReverseProxy)
 		logcache_v1.RegisterEgressServer(c.server, egressReverseProxy)
 		logcache_v1.RegisterOrchestrationServer(c.server, orch)
+		logcache_v1.RegisterPromQLQuerierServer(c.server, promQL)
 		if err := c.server.Serve(lis); err != nil && atomic.LoadInt64(&c.closing) == 0 {
 			c.log.Fatalf("failed to serve gRPC ingress server: %s %#v", err, err)
 		}

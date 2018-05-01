@@ -16,11 +16,16 @@ import (
 	"github.com/gorilla/mux"
 )
 
+type PromQLParser interface {
+	Parse(query string) ([]string, error)
+}
+
 type CFAuthMiddlewareProvider struct {
 	oauth2Reader  Oauth2ClientReader
 	logAuthorizer LogAuthorizer
 	metaFetcher   MetaFetcher
 	marshaller    jsonpb.Marshaler
+	parser        PromQLParser
 }
 
 type Oauth2Client struct {
@@ -46,11 +51,13 @@ func NewCFAuthMiddlewareProvider(
 	oauth2Reader Oauth2ClientReader,
 	logAuthorizer LogAuthorizer,
 	metaFetcher MetaFetcher,
+	parser PromQLParser,
 ) CFAuthMiddlewareProvider {
 	return CFAuthMiddlewareProvider{
 		oauth2Reader:  oauth2Reader,
 		logAuthorizer: logAuthorizer,
 		metaFetcher:   metaFetcher,
+		parser:        parser,
 	}
 }
 
@@ -81,6 +88,46 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 			if !m.logAuthorizer.IsAuthorized(sourceID, authToken) {
 				w.WriteHeader(http.StatusNotFound)
 				return
+			}
+		}
+
+		h.ServeHTTP(w, r)
+	})
+
+	router.HandleFunc("/v1/promql", func(w http.ResponseWriter, r *http.Request) {
+		authToken := r.Header.Get("Authorization")
+		if authToken == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		query := r.URL.Query().Get("query")
+		sourceIDs, err := m.parser.Parse(query)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(fmt.Sprintf(`{"error":%q}`, err)))
+			return
+		}
+
+		if len(sourceIDs) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":"query does not request any source_ids"}`))
+			return
+		}
+
+		c, err := m.oauth2Reader.Read(authToken)
+		if err != nil {
+			log.Printf("failed to read from Oauth2 server: %s", err)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		if !c.IsAdmin {
+			for _, sourceID := range sourceIDs {
+				if !m.logAuthorizer.IsAuthorized(sourceID, authToken) {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
 			}
 		}
 

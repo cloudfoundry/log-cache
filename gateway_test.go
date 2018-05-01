@@ -104,4 +104,19 @@ var _ = Describe("Gateway", func() {
 		Expect(reqs[0].Name).To(Equal("some-name"))
 		Expect(reqs[0].GetSubGroup().GetSourceIds()).To(ConsistOf("some-source/id"))
 	})
+
+	It("upgrades HTTP requests for PromQLQuerier GETs into gRPC requests", func() {
+		path := `v1/promql?query=metric{source_id="some-id"}&time=1234`
+		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
+		req, _ := http.NewRequest("GET", URL, nil)
+
+		resp, err := http.DefaultClient.Do(req)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+		reqs := spyLogCache.getQueryRequests()
+		Expect(reqs).To(HaveLen(1))
+		Expect(reqs[0].Query).To(Equal(`metric{source_id="some-id"}`))
+		Expect(reqs[0].Time).To(Equal(int64(1234)))
+	})
 })

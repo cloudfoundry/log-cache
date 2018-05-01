@@ -10,6 +10,7 @@ import (
 	"math"
 	"net"
 	"sync"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -137,6 +138,49 @@ var _ = Describe("LogCache", func() {
 
 		Eventually(spyMetrics.getter("Ingress")).Should(Equal(uint64(3)))
 		Eventually(spyMetrics.getter("Egress")).Should(Equal(uint64(2)))
+	})
+
+	It("queries data via PromQL", func() {
+		now := time.Now()
+		writeEnvelopes(cache.Addr(), []*loggregator_v2.Envelope{
+			// source-0 hashes to 7700738999732113484 (route to node 0)
+			{
+				Timestamp: now.Add(-2 * time.Second).UnixNano(),
+				SourceId:  "source-0",
+				Message: &loggregator_v2.Envelope_Counter{
+					Counter: &loggregator_v2.Counter{
+						Name:  "metric",
+						Total: 99,
+					},
+				},
+			},
+		})
+
+		conn, err := grpc.Dial(cache.Addr(),
+			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer conn.Close()
+		client := rpc.NewPromQLQuerierClient(conn)
+
+		var samples []*rpc.PromQL_Sample
+		f := func() error {
+			resp, err := client.InstantQuery(context.Background(), &rpc.PromQL_InstantQueryRequest{
+				Query: `metric{source_id="source-0"}`,
+				Time:  now.UnixNano(),
+			})
+			if err != nil {
+				return err
+			}
+
+			if len(resp.GetVector().GetSamples()) != 1 {
+				return errors.New("expected 1 samples")
+			}
+
+			samples = resp.GetVector().GetSamples()
+			return nil
+		}
+		Eventually(f).Should(BeNil())
 	})
 
 	It("uses the routes from the scheduler", func() {
@@ -318,6 +362,7 @@ func writeEnvelopes(addr string, es []*loggregator_v2.Envelope) {
 		envelopes = append(envelopes, &loggregator_v2.Envelope{
 			Timestamp: e.Timestamp,
 			SourceId:  e.SourceId,
+			Message:   e.Message,
 		})
 	}
 
@@ -336,6 +381,7 @@ type spyLogCache struct {
 	localOnlyValues []bool
 	envelopes       []*loggregator_v2.Envelope
 	readRequests    []*rpc.ReadRequest
+	queryRequests   []*rpc.PromQL_InstantQueryRequest
 	readEnvelopes   map[string]func() []*loggregator_v2.Envelope
 	metaResponses   map[string]*rpc.MetaInfo
 	tlsConfig       *tls.Config
@@ -359,6 +405,7 @@ func (s *spyLogCache) start() string {
 	)
 	rpc.RegisterIngressServer(srv, s)
 	rpc.RegisterEgressServer(srv, s)
+	rpc.RegisterPromQLQuerierServer(srv, s)
 	go srv.Serve(lis)
 
 	return lis.Addr().String()
@@ -425,6 +472,32 @@ func (s *spyLogCache) Meta(ctx context.Context, r *rpc.MetaRequest) (*rpc.MetaRe
 	return &rpc.MetaResponse{
 		Meta: s.metaResponses,
 	}, nil
+}
+
+func (s *spyLogCache) InstantQuery(ctx context.Context, r *rpc.PromQL_InstantQueryRequest) (*rpc.PromQL_QueryResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.queryRequests = append(s.queryRequests, r)
+
+	return &rpc.PromQL_QueryResult{
+		Result: &rpc.PromQL_QueryResult_Scalar{
+			Scalar: &rpc.PromQL_Scalar{
+				Time:  99,
+				Value: 101,
+			},
+		},
+	}, nil
+}
+
+func (s *spyLogCache) getQueryRequests() []*rpc.PromQL_InstantQueryRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	r := make([]*rpc.PromQL_InstantQueryRequest, len(s.queryRequests))
+	copy(r, s.queryRequests)
+
+	return r
 }
 
 func newTLSConfig(caPath, certPath, keyPath, cn string) (*tls.Config, error) {
