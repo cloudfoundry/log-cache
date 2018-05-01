@@ -49,9 +49,10 @@ Query Parameters:
   cache (e.g. `date +%s`). Start time is inclusive. `[starttime..endtime)`
 - **end_time** is a UNIX timestamp in nanoseconds. It defaults to current time of the
   cache (e.g. `date +%s`). End time is exclusive. `[starttime..endtime)`
-- **envelope_type** is a filter for Envelope Type. The available filters are:
+- **envelope_types** is a filter for Envelope Type. The available filters are:
   `LOG`, `COUNTER`, `GAUGE`, `TIMER`, and `EVENT`. If set, then only those
-  types of envelopes will be emitted.
+  types of envelopes will be emitted. This parameter may be specified multiple times
+  to include more types.
 - **limit** is the maximum number of envelopes to request. The max limit size
   is 1000 and defaults to 100.
 
@@ -99,9 +100,10 @@ Query Parameters:
   cache (e.g. `date +%s`). Start time is inclusive. `[starttime..endtime)`
 - **end_time** is UNIX timestamp in nanoseconds. It defaults to current time of the
   cache (e.g. `date +%s`). End time is exclusive. `[starttime..endtime)`
-- **envelope_type** is filter for Envelope Type. The available filters are:
+- **envelope_types** is a filter for Envelope Type. The available filters are:
   `LOG`, `COUNTER`, `GAUGE`, `TIMER`, and `EVENT`. If set, then only those
-  types of envelopes will be emitted.
+  types of envelopes will be emitted. This parameter may be specified multiple times
+  to include more types.
 - **limit** is the maximum number of envelopes to request. The max limit size
   is 1000 and defaults to 100.
 
