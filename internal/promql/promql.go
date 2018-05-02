@@ -9,9 +9,9 @@ import (
 
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/storage"
+	"github.com/loggregator/prometheus/pkg/labels"
+	"github.com/loggregator/prometheus/promql"
+	"github.com/loggregator/prometheus/storage"
 )
 
 type PromQL struct {
