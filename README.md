@@ -167,7 +167,7 @@ curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>/meta"
 Issues a PromQL query against Log Cache data.
 
 ```
-curl -XGET "http://<log-cache-addr>:8080/v1/promql" --data-urlencode 'query=metrics{source_id="source-id-1"}'
+curl -G "http://<log-cache-addr>:8080/v1/promql" --data-urlencode 'query=metrics{source_id="source-id-1"}'
 ```
 
 ##### Response Body
