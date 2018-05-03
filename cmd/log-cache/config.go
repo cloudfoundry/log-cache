@@ -7,26 +7,26 @@ import (
 
 // Config is the configuration for a LogCache.
 type Config struct {
-	Addr       string `env:"ADDR, required"`
-	HealthAddr string `env:"HEALTH_ADDR"`
+	Addr       string `env:"ADDR, required, report"`
+	HealthAddr string `env:"HEALTH_ADDR, report"`
 
 	// MinimumSize sets the lower bound for pruning. It will not prune beyond
 	// the set size. Defaults to 500000.
-	MinimumSize int `env:"MINIMUM_SIZE"`
+	MinimumSize int `env:"MINIMUM_SIZE, report"`
 
 	// NodeIndex determines what data the node stores. It splits up the range
 	// of 0 - 18446744073709551615 evenly. If data falls out of range of the
 	// given node, it will be routed to theh correct one.
-	NodeIndex int `env:"NODE_INDEX"`
+	NodeIndex int `env:"NODE_INDEX, report"`
 
 	// NodeAddrs are all the LogCache addresses (including the current
 	// address). They are in order according to their NodeIndex.
 	//
 	// If NodeAddrs is emptpy or size 1, then data is not routed as it is
 	// assumed that the current node is the only one.
-	NodeAddrs []string `env:"NODE_ADDRS"`
-	
-	TLS        tls.TLS
+	NodeAddrs []string `env:"NODE_ADDRS, report"`
+
+	TLS tls.TLS
 }
 
 // LoadConfig creates Config object from environment variables

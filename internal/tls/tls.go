@@ -11,9 +11,9 @@ import (
 )
 
 type TLS struct {
-	CAPath   string `env:"CA_PATH,   required"`
-	CertPath string `env:"CERT_PATH, required"`
-	KeyPath  string `env:"KEY_PATH,  required"`
+	CAPath   string `env:"CA_PATH,   required, report"`
+	CertPath string `env:"CERT_PATH, required, report"`
+	KeyPath  string `env:"KEY_PATH,  required, report"`
 }
 
 func (t TLS) Credentials(cn string) credentials.TransportCredentials {

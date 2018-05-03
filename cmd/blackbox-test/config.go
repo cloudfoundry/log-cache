@@ -8,14 +8,14 @@ import (
 )
 
 type Config struct {
-	Interval time.Duration `env:"RUN_INTERVAL"`
+	Interval time.Duration `env:"RUN_INTERVAL, report"`
 
-	LogCacheAddr string `env:"LOG_CACHE_ADDR, required"`
+	LogCacheAddr string `env:"LOG_CACHE_ADDR, required, report"`
 	TLS          tls.TLS
 
 	DatadogAPIKey     string   `env:"DATADOG_API_KEY"`
-	DatadogTags       []string `env:"DATADOG_TAGS"`
-	DatadogOriginHost string   `env:"DATADOG_ORIGIN_HOST"`
+	DatadogTags       []string `env:"DATADOG_TAGS, report"`
+	DatadogOriginHost string   `env:"DATADOG_ORIGIN_HOST, report"`
 }
 
 func LoadConfig() (*Config, error) {

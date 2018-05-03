@@ -9,22 +9,22 @@ import (
 
 // Config is the configuration for a Scheduler.
 type Config struct {
-	HealthAddr string `env:"HEALTH_ADDR"`
+	HealthAddr string `env:"HEALTH_ADDR, report"`
 
-	Interval          time.Duration `env:"INTERVAL"`
-	Count             int           `env:"COUNT"`
-	ReplicationFactor int           `env:"REPLICATION_FACTOR"`
+	Interval          time.Duration `env:"INTERVAL, report"`
+	Count             int           `env:"COUNT, report"`
+	ReplicationFactor int           `env:"REPLICATION_FACTOR, report"`
 
 	// GroupReaderNodeAddrs are all the GroupReader addresses. They are in
 	// order according to their NodeIndex.
-	GroupReaderNodeAddrs []string `env:"GROUP_READER_NODE_ADDRS"`
+	GroupReaderNodeAddrs []string `env:"GROUP_READER_NODE_ADDRS, report"`
 
 	// NodeAddrs are all the LogCache addresses. They are in order according
 	// to their NodeIndex.
-	NodeAddrs []string `env:"NODE_ADDRS"`
+	NodeAddrs []string `env:"NODE_ADDRS, report"`
 
 	// If empty, then the scheduler assumes it is always the leader.
-	LeaderElectionEndpoint string `env:"LEADER_ELECTION_ENDPOINT"`
+	LeaderElectionEndpoint string `env:"LEADER_ELECTION_ENDPOINT, report"`
 
 	TLS tls.TLS
 }

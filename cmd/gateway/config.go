@@ -7,10 +7,10 @@ import (
 
 // Config is the configuration for a LogCache Gateway.
 type Config struct {
-	Addr            string `env:"ADDR, required"`
-	LogCacheAddr    string `env:"LOG_CACHE_ADDR, required"`
-	GroupReaderAddr string `env:"GROUP_READER_ADDR, required"`
-	HealthAddr      string `env:"HEALTH_ADDR"`
+	Addr            string `env:"ADDR, required, report"`
+	LogCacheAddr    string `env:"LOG_CACHE_ADDR, required, report"`
+	GroupReaderAddr string `env:"GROUP_READER_ADDR, required, report"`
+	HealthAddr      string `env:"HEALTH_ADDR, report"`
 	TLS             tls.TLS
 }
 
