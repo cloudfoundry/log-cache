@@ -33,10 +33,10 @@ type DataStorage interface {
 		limit int,
 		descending bool,
 		requesterID uint64,
-	) []*loggregator_v2.Envelope
+	) (envelopes []*loggregator_v2.Envelope, args []string)
 
 	// Add starts fetching data for the given sourceID group.
-	Add(name string, sourceIDs []string)
+	Add(name, arg string, sourceIDs []string)
 
 	// AddRequester adds a requester ID for a given group.
 	AddRequester(name string, requesterID uint64, remoteOnly bool)
@@ -76,6 +76,10 @@ func (m *Manager) SetShardGroup(ctx context.Context, r *logcache_v1.SetShardGrou
 		}
 	}
 
+	if len(r.GetSubGroup().GetArg()) > 128 {
+		return nil, grpc.Errorf(codes.InvalidArgument, "arg field can only be 128 bytes long")
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -96,6 +100,7 @@ func (m *Manager) SetShardGroup(ctx context.Context, r *logcache_v1.SetShardGrou
 	}
 
 	sg := subGroupInfo{
+		arg:       r.GetSubGroup().GetArg(),
 		sourceIDs: sourceIDs,
 		t: time.AfterFunc(m.timeout, func() {
 			m.removeFromGroup(r.GetName(), allSourceIDs, r.GetSubGroup().GetSourceIds())
@@ -104,7 +109,7 @@ func (m *Manager) SetShardGroup(ctx context.Context, r *logcache_v1.SetShardGrou
 	gi.groupedSourceIDs[allSourceIDs] = sg
 
 	m.m[r.Name] = gi
-	m.s.Add(r.GetName(), r.GetSubGroup().GetSourceIds())
+	m.s.Add(r.GetName(), r.GetSubGroup().GetArg(), r.GetSubGroup().GetSourceIds())
 
 	return &logcache_v1.SetShardGroupResponse{}, nil
 }
@@ -173,7 +178,7 @@ func (m *Manager) Read(ctx context.Context, r *logcache_v1.ShardGroupReadRequest
 	if r.GetLimit() == 0 {
 		r.Limit = 100
 	}
-	batch := m.s.Get(
+	batch, args := m.s.Get(
 		r.GetName(),
 		time.Unix(0, r.GetStartTime()),
 		time.Unix(0, r.GetEndTime()),
@@ -184,6 +189,7 @@ func (m *Manager) Read(ctx context.Context, r *logcache_v1.ShardGroupReadRequest
 	)
 
 	return &logcache_v1.ShardGroupReadResponse{
+		Args: args,
 		Envelopes: &loggregator_v2.EnvelopeBatch{
 			Batch: batch,
 		},
@@ -204,15 +210,21 @@ func (m *Manager) ShardGroup(ctx context.Context, r *logcache_v1.ShardGroupReque
 	}
 
 	var subGroups []*logcache_v1.GroupedSourceIds
+	var args []string
 	for _, g := range a.groupedSourceIDs {
 		subGroups = append(subGroups, &logcache_v1.GroupedSourceIds{
 			SourceIds: g.sourceIDs,
 		})
+
+		if g.arg != "" {
+			args = append(args, g.arg)
+		}
 	}
 
 	return &logcache_v1.ShardGroupResponse{
 		SubGroups:    subGroups,
 		RequesterIds: reqIds,
+		Args:         args,
 	}, nil
 }
 
@@ -244,6 +256,7 @@ type groupInfo struct {
 type subGroupInfo struct {
 	t         *time.Timer
 	sourceIDs []string
+	arg       string
 }
 
 func concat(strs []string) string {

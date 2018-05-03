@@ -44,18 +44,20 @@ var _ = Describe("Storage", func() {
 		})
 
 		s.AddRequester("some-name", 0, false)
-		s.Add("some-name", []string{"a", "c"})
-		s.Add("some-name", []string{"b"})
+		s.Add("some-name", "ac", []string{"a", "c"})
+		s.Add("some-name", "b", []string{"b"})
 		// Ensure we don't "clear" the existing state
 		s.AddRequester("some-name", 0, false)
 
 		var ts []int64
 
+		var args []string
 		Eventually(func() []string {
 			var r []string
 			ts = nil
 			// [100, 104)
-			for _, e := range s.Get("some-name", time.Unix(0, 100), time.Unix(0, 104), nil, 100, false, 0) {
+			es, a := s.Get("some-name", time.Unix(0, 100), time.Unix(0, 104), nil, 100, false, 0)
+			for _, e := range es {
 				r = append(r, e.GetSourceId())
 				ts = append(ts, e.GetTimestamp())
 			}
@@ -65,8 +67,11 @@ var _ = Describe("Storage", func() {
 				return nil
 			}
 
+			args = a
 			return r
 		}).Should(And(ContainElement("a"), ContainElement("b"), ContainElement("c")))
+
+		Expect(args).To(ConsistOf("ac", "b"))
 
 		Expect(sort.IsSorted(int64s(ts))).To(BeTrue())
 	})
@@ -84,8 +89,8 @@ var _ = Describe("Storage", func() {
 			{Timestamp: 104, SourceId: "b"},
 		})
 
-		s.Add("some-name", []string{"a"})
-		s.Add("some-name", []string{"b"})
+		s.Add("some-name", "a", []string{"a"})
+		s.Add("some-name", "b", []string{"b"})
 		s.AddRequester("some-name", 0, true)
 		s.AddRequester("some-name", 1, false)
 
@@ -110,12 +115,13 @@ var _ = Describe("Storage", func() {
 			{Timestamp: 99, SourceId: "a"},
 		})
 
-		s.Add("some-name", []string{"a"})
+		s.Add("some-name", "a", []string{"a"})
 		s.Remove("some-name", []string{"a"})
 		s.AddRequester("some-name", 0, false)
 
 		f := func() []*loggregator_v2.Envelope {
-			return s.Get("some-name", time.Unix(0, 100), time.Unix(0, 101), nil, 100, false, 0)
+			es, _ := s.Get("some-name", time.Unix(0, 100), time.Unix(0, 101), nil, 100, false, 0)
+			return es
 		}()
 
 		Eventually(f).Should(BeEmpty())
@@ -125,8 +131,8 @@ var _ = Describe("Storage", func() {
 	It("shards data by source ID", func() {
 		s.AddRequester("some-name", 0, false)
 		s.AddRequester("some-name", 1, false)
-		s.Add("some-name", []string{"a", "c"})
-		s.Add("some-name", []string{"b"})
+		s.Add("some-name", "ac", []string{"a", "c"})
+		s.Add("some-name", "b", []string{"b"})
 
 		go func(reader *spyReader) {
 			for range time.Tick(time.Millisecond) {
@@ -148,7 +154,7 @@ var _ = Describe("Storage", func() {
 		Eventually(func() []string {
 			var r []string
 			// [100, 104)
-			for _, e := range s.Get(
+			es, _ := s.Get(
 				"some-name",
 				time.Unix(0, 100),
 				time.Unix(0, 104),
@@ -156,7 +162,8 @@ var _ = Describe("Storage", func() {
 				100,   // limit
 				false, // ascending
 				1,     // requesterID
-			) {
+			)
+			for _, e := range es {
 				r = append(r, e.GetSourceId())
 			}
 			return r
@@ -167,7 +174,7 @@ var _ = Describe("Storage", func() {
 		Eventually(func() []string {
 			var r []string
 			// [100, 104)
-			for _, e := range s.Get(
+			es, _ := s.Get(
 				"some-name",
 				time.Unix(0, 100),
 				time.Unix(0, 104),
@@ -175,7 +182,8 @@ var _ = Describe("Storage", func() {
 				100,   // limit
 				false, // ascending
 				0,     // requesterID
-			) {
+			)
+			for _, e := range es {
 				r = append(r, e.GetSourceId())
 			}
 			return r
@@ -189,8 +197,8 @@ var _ = Describe("Storage", func() {
 	})
 
 	It("ensures each source ID is serviced when a requester is removed", func() {
-		s.Add("some-name", []string{"a"})
-		s.Add("some-name", []string{"b"})
+		s.Add("some-name", "a", []string{"a"})
+		s.Add("some-name", "b", []string{"b"})
 		s.AddRequester("some-name", 0, false)
 		s.AddRequester("some-name", 1, false)
 		s.RemoveRequester("some-name", 1)
@@ -207,13 +215,16 @@ var _ = Describe("Storage", func() {
 			{Timestamp: 104, SourceId: "b"},
 		})
 
+		var args []string
 		Eventually(func() []string {
 			// [100, 104)
-			s.Get("some-name", time.Unix(0, 100), time.Unix(0, 104), nil, 100, false, 0)
+			_, args = s.Get("some-name", time.Unix(0, 100), time.Unix(0, 104), nil, 100, false, 0)
 			return reader.truncateSourceIDs()
 		}).Should(
 			And(ContainElement("a"), ContainElement("b")),
 		)
+
+		Expect(args).To(ConsistOf("a", "b"))
 	})
 })
 

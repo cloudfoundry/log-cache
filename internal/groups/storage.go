@@ -76,21 +76,27 @@ func (s *Storage) Get(
 	limit int,
 	descending bool,
 	requesterID uint64,
-) []*loggregator_v2.Envelope {
+) (envelopes []*loggregator_v2.Envelope, args []string) {
+	if agg, ok := s.m[name]; ok {
+		for _, sid := range agg.sourceIDs {
+			args = append(args, sid.arg)
+		}
+	}
+
 	encodedName := s.encodeName(name, requesterID)
-	return s.store.Get(encodedName, start, end, envelopeTypes, limit, descending)
+	return s.store.Get(encodedName, start, end, envelopeTypes, limit, descending), args
 }
 
 // Add adds a SourceID group for the storage to fetch.
-func (s *Storage) Add(name string, sourceIDs []string) {
+func (s *Storage) Add(name, arg string, sourceIDs []string) {
 	agg := s.initAggregator(name)
 
-	agg.sourceIDs = append(agg.sourceIDs, sourceIDs)
+	agg.sourceIDs = append(agg.sourceIDs, subGroupWithArg{sourceIDs: sourceIDs, arg: arg})
 	sort.Sort(sourceIDGroups(agg.sourceIDs))
 	s.assignSourceIDs(agg)
 }
 
-type sourceIDGroups [][]string
+type sourceIDGroups []subGroupWithArg
 
 func (g sourceIDGroups) Len() int {
 	return len(g)
@@ -103,8 +109,8 @@ func (g sourceIDGroups) Swap(i, j int) {
 }
 
 func (g sourceIDGroups) Less(i, j int) bool {
-	a := concat(g[i])
-	b := concat(g[j])
+	a := concat(g[i].sourceIDs)
+	b := concat(g[j].sourceIDs)
 
 	return a < b
 }
@@ -159,7 +165,7 @@ func (s *Storage) Remove(name string, sourceIDs []string) {
 	a := concat(sourceIDs)
 
 	for i, id := range agg.sourceIDs {
-		b := concat(id)
+		b := concat(id.sourceIDs)
 		if b == a {
 			agg.sourceIDs = append(agg.sourceIDs[:i], agg.sourceIDs[i+1:]...)
 		}
@@ -183,7 +189,7 @@ func (s *Storage) assignSourceIDs(agg *aggregator) {
 	expected := make(map[uint64][][]string)
 	for si, sourceID := range agg.sourceIDs {
 		reqID := agg.requesters[si%len(agg.requesters)].ID
-		expected[reqID] = append(expected[reqID], sourceID)
+		expected[reqID] = append(expected[reqID], sourceID.sourceIDs)
 	}
 
 	// Find Delta of sourceIds per Requester
@@ -234,13 +240,18 @@ func (s *Storage) encodeName(name string, requesterID uint64) string {
 
 type aggregator struct {
 	r            Reader
-	sourceIDs    [][]string
+	sourceIDs    []subGroupWithArg
 	requesterIDs map[uint64]*requester
 	requesters   []*requester
 	backoff      time.Duration
 
 	ctx    context.Context
 	cancel func()
+}
+
+type subGroupWithArg struct {
+	sourceIDs []string
+	arg       string
 }
 
 type requester struct {
