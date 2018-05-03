@@ -114,7 +114,8 @@ curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>/?start_time=<star
 ##### Response Body
 ```
 {
-  "envelopes": {"batch": [...] }
+  "envelopes": {"batch": [...] },
+  "args": [...]
 }
 ```
 
@@ -125,7 +126,10 @@ not exist, then it gets created. Each shard-group may contain many sub-groups.
 Each sub-group may contain many source-ids. Each requester (identified by a
 `requester_id`) will receive an equal subset of the shard group. A sub-group
 ensures that each requester receives envelopes for the given source-ids
-grouped together (and not spread across other requesters).
+grouped together (and not spread across other requesters). When setting a
+shard-group, an `arg` can also be provided. This arg will be returned when
+reading back from the group. This gives context as to what data has been
+read.
 
 ##### Request Body
 
@@ -134,7 +138,8 @@ grouped together (and not spread across other requesters).
   "sourceIds": [
     "source-id-1",
     "source-id-2"
-  ]
+  ],
+  "arg": "some-arg"
 }
 ```
 
@@ -158,7 +163,9 @@ curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>/meta"
 ##### Response Body
 ```
 {
-  "source_ids": [...]
+  "source_ids": [...],
+  "requester_ids": [...],
+  "args": [...]
 }
 ```
 

@@ -40,6 +40,10 @@ message SetShardGroupRequest {
 
 message GroupedSourceIds {
     repeated string source_ids = 1;
+
+    // arg are given back to the requester when they recieve the given
+    // sub_group.
+    string arg = 2;
 }
 
 message SetShardGroupResponse {
@@ -60,6 +64,10 @@ message ShardGroupReadRequest {
 
 message ShardGroupReadResponse {
     loggregator.v2.EnvelopeBatch envelopes = 1;
+
+    // args are given back to the requester when they recieve the given
+    // sub_group.
+    repeated string args = 2;
 }
 
 message ShardGroupRequest {
@@ -72,5 +80,6 @@ message ShardGroupRequest {
 message ShardGroupResponse {
     repeated GroupedSourceIds sub_groups = 1;
     repeated uint64 requester_ids = 2;
+    repeated string args = 3;
 }
 

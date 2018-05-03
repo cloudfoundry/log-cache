@@ -27,16 +27,18 @@ var _ = Describe("Manager", func() {
 		m = groups.NewManager(spyDataStorage, time.Hour)
 	})
 
-	It("keeps track of source IDs for groups", func() {
+	It("keeps track of source IDs and args for groups", func() {
 		r, err := m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "a",
 			SubGroup: &logcache_v1.GroupedSourceIds{
+				Arg:       "some-arg",
 				SourceIds: []string{"1", "2"},
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r).ToNot(BeNil())
 		Expect(spyDataStorage.addNames).To(ContainElement("a"))
+		Expect(spyDataStorage.addArgs).To(ContainElement("some-arg"))
 
 		// Add sourceID 1 and 2 twice to ensure it is only reported once
 		r, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
@@ -75,6 +77,7 @@ var _ = Describe("Manager", func() {
 			&logcache_v1.GroupedSourceIds{SourceIds: []string{"1", "2"}},
 			&logcache_v1.GroupedSourceIds{SourceIds: []string{"3"}},
 		))
+		Expect(resp.Args).To(ConsistOf("some-arg"))
 	})
 
 	It("keeps track of requester IDs for a group", func() {
@@ -236,6 +239,7 @@ var _ = Describe("Manager", func() {
 		_, err := m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "a",
 			SubGroup: &logcache_v1.GroupedSourceIds{
+				Arg:       "arg-1",
 				SourceIds: []string{"1"},
 			},
 		})
@@ -244,6 +248,7 @@ var _ = Describe("Manager", func() {
 		_, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "a",
 			SubGroup: &logcache_v1.GroupedSourceIds{
+				Arg:       "arg-2",
 				SourceIds: []string{"2"},
 			},
 		})
@@ -258,6 +263,7 @@ var _ = Describe("Manager", func() {
 			&loggregator_v2.Envelope{Timestamp: 1},
 			&loggregator_v2.Envelope{Timestamp: 2},
 		))
+		Expect(resp.GetArgs()).To(ConsistOf("a", "b"))
 
 		Expect(spyDataStorage.adds).To(ConsistOf([]string{"1"}, []string{"2"}))
 	})
@@ -288,7 +294,7 @@ var _ = Describe("Manager", func() {
 		Expect(grpc.Code(err)).To(Equal(codes.NotFound))
 	})
 
-	It("rejects empty group names and source IDs or either that are too long", func() {
+	It("rejects empty group names, source IDs and args or either that are too long", func() {
 		_, err := m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
 			Name: "",
 			SubGroup: &logcache_v1.GroupedSourceIds{
@@ -320,6 +326,16 @@ var _ = Describe("Manager", func() {
 			Name: "a",
 			SubGroup: &logcache_v1.GroupedSourceIds{
 				SourceIds: []string{strings.Repeat("x", 129)},
+			},
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(grpc.Code(err)).To(Equal(codes.InvalidArgument))
+
+		_, err = m.SetShardGroup(context.Background(), &logcache_v1.SetShardGroupRequest{
+			Name: "a",
+			SubGroup: &logcache_v1.GroupedSourceIds{
+				Arg:       strings.Repeat("x", 129),
+				SourceIds: []string{"x"},
 			},
 		})
 		Expect(err).To(HaveOccurred())
@@ -361,6 +377,7 @@ var _ = Describe("Manager", func() {
 type spyDataStorage struct {
 	adds     [][]string
 	addNames []string
+	addArgs  []string
 
 	removes     [][]string
 	removeNames []string
@@ -394,7 +411,7 @@ func (s *spyDataStorage) Get(
 	limit int,
 	descending bool,
 	requesterID uint64,
-) []*loggregator_v2.Envelope {
+) ([]*loggregator_v2.Envelope, []string) {
 	s.getNames = append(s.getNames, name)
 	s.getStarts = append(s.getStarts, start.UnixNano())
 	s.getEnds = append(s.getEnds, end.UnixNano())
@@ -403,11 +420,12 @@ func (s *spyDataStorage) Get(
 	s.getDescending = append(s.getDescending, descending)
 	s.getRequestIDs = append(s.getRequestIDs, requesterID)
 
-	return s.getResult
+	return s.getResult, []string{"a", "b"}
 }
 
-func (s *spyDataStorage) Add(name string, sourceIDs []string) {
+func (s *spyDataStorage) Add(name, arg string, sourceIDs []string) {
 	s.addNames = append(s.addNames, name)
+	s.addArgs = append(s.addArgs, arg)
 	s.adds = append(s.adds, sourceIDs)
 }
 
