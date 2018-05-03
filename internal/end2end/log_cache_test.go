@@ -63,8 +63,10 @@ var _ = Describe("LogCache", func() {
 	})
 
 	It("reads data from Log Cache", func() {
+		ic1 := ingressClient(node1.Addr())
+		ic2 := ingressClient(node2.Addr())
 		Eventually(func() []int64 {
-			_, err := ingressClient(node1.Addr()).Send(context.Background(), &rpc.SendRequest{
+			_, err := ic1.Send(context.Background(), &rpc.SendRequest{
 				Envelopes: &loggregator_v2.EnvelopeBatch{
 					Batch: []*loggregator_v2.Envelope{
 						{SourceId: "a", Timestamp: 1},
@@ -80,7 +82,7 @@ var _ = Describe("LogCache", func() {
 				return nil
 			}
 
-			_, err = ingressClient(node2.Addr()).Send(context.Background(), &rpc.SendRequest{
+			_, err = ic2.Send(context.Background(), &rpc.SendRequest{
 				Envelopes: &loggregator_v2.EnvelopeBatch{
 					Batch: []*loggregator_v2.Envelope{
 						{SourceId: "a", Timestamp: 6},

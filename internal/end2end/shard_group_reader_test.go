@@ -54,9 +54,11 @@ var _ = Describe("ShardGroupReader", func() {
 
 		node1 = logcache.NewGroupReader(lcAddr, addrs, 0,
 			logcache.WithGroupReaderLogger(log.New(GinkgoWriter, "", 0)),
+			logcache.WithGroupReaderMaxPerSource(5),
 		)
 		node2 = logcache.NewGroupReader(lcAddr, addrs, 1,
 			logcache.WithGroupReaderLogger(log.New(GinkgoWriter, "", 0)),
+			logcache.WithGroupReaderMaxPerSource(5),
 		)
 
 		scheduler = logcache.NewScheduler(
@@ -108,8 +110,9 @@ var _ = Describe("ShardGroupReader", func() {
 			}
 		}(client1, client2)
 
+		ic := ingressClient(logCache.Addr())
 		Eventually(func() []int {
-			_, err := ingressClient(logCache.Addr()).Send(context.Background(), &rpc.SendRequest{
+			_, err := ic.Send(context.Background(), &rpc.SendRequest{
 				Envelopes: &loggregator_v2.EnvelopeBatch{
 					Batch: []*loggregator_v2.Envelope{
 						{SourceId: "a", Timestamp: 1},
@@ -154,8 +157,9 @@ var _ = Describe("ShardGroupReader", func() {
 		}()
 
 		go func(addr string) {
+			ic := ingressClient(addr)
 			for i := int64(0); atomic.LoadInt64(&done) == 0; i += 5 {
-				ingressClient(addr).Send(context.Background(), &rpc.SendRequest{
+				ic.Send(context.Background(), &rpc.SendRequest{
 					Envelopes: &loggregator_v2.EnvelopeBatch{
 						Batch: []*loggregator_v2.Envelope{
 							{SourceId: "a", Timestamp: i + 0},

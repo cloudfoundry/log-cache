@@ -186,8 +186,12 @@ var _ = Describe("Scheduler", func() {
 	Describe("Group Ranges", func() {
 		It("schedules the ranges evenly across the nodes", func() {
 			s.Start()
-			Eventually(groupSpy1.reqCount, 2).Should(BeNumerically(">=", 50))
-			Eventually(groupSpy2.reqCount, 2).Should(BeNumerically(">=", 50))
+
+			Eventually(func() int {
+				return groupSpy1.reqCount() + groupSpy2.reqCount()
+			}, 5).Should(BeNumerically(">", 20))
+
+			Expect(groupSpy1.reqCount() - groupSpy2.reqCount()).To(BeNumerically("~", 0, 5))
 
 			reqs := append(groupSpy1.addReqs(), groupSpy2.addReqs()...)
 
@@ -338,7 +342,10 @@ func (s *spyOrchestration) removeReqs() []*rpc.Range {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.removeReqs_
+	removeReqs := make([]*rpc.Range, len(s.removeReqs_))
+	copy(removeReqs, s.removeReqs_)
+
+	return removeReqs
 }
 
 func (s *spyOrchestration) setReqs() []*rpc.SetRangesRequest {
