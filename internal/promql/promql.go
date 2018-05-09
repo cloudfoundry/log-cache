@@ -18,8 +18,6 @@ type PromQL struct {
 	r        DataReader
 	log      *log.Logger
 	failures int
-
-	result int64
 }
 
 type DataReader interface {
@@ -31,9 +29,8 @@ func New(
 	log *log.Logger,
 ) *PromQL {
 	q := &PromQL{
-		r:      r,
-		log:    log,
-		result: 1,
+		r:   r,
+		log: log,
 	}
 
 	return q
@@ -263,7 +260,7 @@ func (l *LogCacheQuerier) Select(ll ...*labels.Matcher) (storage.SeriesSet, erro
 			continue
 		}
 
-		e.Timestamp = time.Unix(0, e.GetTimestamp()).Truncate(l.interval).UnixNano()
+		e.Timestamp = time.Unix(0, e.GetTimestamp()).Truncate(l.interval).UnixNano() / int64(time.Millisecond)
 
 		var f float64
 		switch e.Message.(type) {
@@ -277,7 +274,7 @@ func (l *LogCacheQuerier) Select(ll ...*labels.Matcher) (storage.SeriesSet, erro
 		}
 
 		builder.add(e.Tags, sample{
-			t: e.GetTimestamp() / int64(time.Millisecond),
+			t: e.GetTimestamp(),
 			v: f,
 		})
 	}

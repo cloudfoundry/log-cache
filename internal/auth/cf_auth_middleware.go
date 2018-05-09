@@ -134,6 +134,118 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		h.ServeHTTP(w, r)
 	})
 
+	router.HandleFunc("/v1/shard_promql/{name}", func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			io.Copy(ioutil.Discard, r.Body)
+			r.Body.Close()
+		}()
+
+		vars := mux.Vars(r)
+
+		authToken := r.Header.Get("Authorization")
+		if authToken == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		var setQuery rpc.PromQL_SetShardQuery
+		if err := jsonpb.Unmarshal(r.Body, &setQuery); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(fmt.Sprintf(`{"error": %q}`, err)))
+			return
+		}
+
+		c, err := m.oauth2Reader.Read(authToken)
+		if err != nil {
+			log.Printf("failed to read from Oauth2 server: %s", err)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		sourceIDs, err := m.parser.Parse(setQuery.GetQuery())
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(fmt.Sprintf(`{"error": %q}`, err)))
+			return
+		}
+
+		for _, sourceID := range sourceIDs {
+			if !c.IsAdmin {
+				if !m.logAuthorizer.IsAuthorized(sourceID, authToken) {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+			}
+		}
+
+		r.URL.Path = fmt.Sprintf(
+			"/v1/shard_promql/%s-%s-%s",
+			c.ClientID,
+			c.UserID,
+			vars["name"],
+		)
+
+		buf := &bytes.Buffer{}
+		m := jsonpb.Marshaler{}
+		m.Marshal(buf, &setQuery)
+		r.Body = ioutil.NopCloser(buf)
+
+		h.ServeHTTP(w, r)
+	}).Methods("PUT")
+
+	router.HandleFunc("/v1/shard_promql/{name}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+
+		authToken := r.Header.Get("Authorization")
+		if authToken == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		c, err := m.oauth2Reader.Read(authToken)
+		if err != nil {
+			log.Printf("failed to read from Oauth2 server: %s", err)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		prefixedName := fmt.Sprintf("%s-%s-%s", c.ClientID, c.UserID, vars["name"])
+		r.URL.Path = "/v1/shard_promql/" + prefixedName
+
+		interceptor := &interceptingResponseWriter{
+			ResponseWriter: w,
+			search:         []byte(prefixedName),
+			replace:        []byte(vars["name"]),
+		}
+		h.ServeHTTP(interceptor, r)
+	}).Methods("GET")
+
+	router.HandleFunc("/v1/shard_promql/{name}/meta", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+
+		authToken := r.Header.Get("Authorization")
+		if authToken == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		c, err := m.oauth2Reader.Read(authToken)
+		if err != nil {
+			log.Printf("failed to read from Oauth2 server: %s", err)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		r.URL.Path = fmt.Sprintf(
+			"/v1/shard_promql/%s-%s-%s/meta",
+			c.ClientID,
+			c.UserID,
+			vars["name"],
+		)
+
+		h.ServeHTTP(w, r)
+	}).Methods("GET")
+
 	router.HandleFunc("/v1/shard_group/{name}", func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			io.Copy(ioutil.Discard, r.Body)

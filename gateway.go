@@ -148,6 +148,15 @@ func (g *Gateway) listenAndServe() {
 		g.log.Fatalf("failed to register ShardGroupReader handler: %s", err)
 	}
 
+	err = logcache_v1.RegisterPromQLShardReaderHandlerClient(
+		context.Background(),
+		mux,
+		logcache_v1.NewPromQLShardReaderClient(gconn),
+	)
+	if err != nil {
+		g.log.Fatalf("failed to register ShardGroupReader handler: %s", err)
+	}
+
 	server := &http.Server{Handler: mux}
 	if err := server.Serve(g.lis); err != nil {
 		g.log.Fatalf("failed to serve HTTP endpoint: %s", err)

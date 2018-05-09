@@ -12,6 +12,27 @@ service PromQLQuerier {
     }
 }
 
+service PromQLShardReader {
+    rpc SetShardPromQL(PromQL.SetShardRequest) returns (PromQL.SetShardResponse) {
+        option (google.api.http) = {
+            put: "/v1/shard_promql/{name}"
+            body: "query"
+        };
+    }
+
+    rpc ReadPromQL(PromQL.ShardReadRequest) returns (PromQL.ShardReadResponse) {
+        option (google.api.http) = {
+            get: "/v1/shard_promql/{name}"
+        };
+    }
+
+    rpc ShardPromQL(PromQL.ShardRequest) returns (PromQL.ShardResponse) {
+        option (google.api.http) = {
+            get: "/v1/shard_promql/{name}/meta"
+        };
+    }
+}
+
 message PromQL {
     message InstantQueryRequest {
         string query = 1;
@@ -52,5 +73,41 @@ message PromQL {
     message Series {
         map<string, string> metric = 1;
         repeated Point points = 2;
+    }
+
+    message SetShardRequest {
+        string name = 1;
+        SetShardQuery query = 2;
+    }
+
+    message SetShardQuery {
+        string query = 1;
+
+        // arg are given back to the requester when they recieve the given
+        // query result.
+        string arg = 2;
+    }
+
+    message SetShardResponse {}
+
+    message ShardReadRequest {
+        string name = 1;
+        uint64 requester_id = 2;
+    }
+
+    message ShardReadResponse {
+        // results is a map of the set 'arg' to the result of the
+        // corresponding query.
+        map<string,QueryResult> results = 1;
+    }
+
+    message ShardRequest {
+        string name = 1;
+    }
+
+    message ShardResponse {
+        repeated string queries = 1;
+        repeated uint64 requester_ids = 2;
+        repeated string args = 3;
     }
 }

@@ -9,9 +9,12 @@ import (
 
 	"code.cloudfoundry.org/go-log-cache"
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/groups"
+	"code.cloudfoundry.org/log-cache/internal/promql"
 	"code.cloudfoundry.org/log-cache/internal/routing"
 	"code.cloudfoundry.org/log-cache/internal/store"
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 
@@ -153,6 +156,22 @@ func (g *ShardGroupReader) Start() {
 
 		rpc.RegisterShardGroupReaderServer(srv, rp)
 		rpc.RegisterOrchestrationServer(srv, orch)
+
+		promQLParser := promql.New(nil, nil)
+		promQLSharding := promql.NewSharding(promQLParser, promql.QuerierFunc(func(
+			ctx context.Context,
+			query string,
+			envelopes []*loggregator_v2.Envelope,
+		) (*rpc.PromQL_QueryResult, error) {
+
+			dataReader := promql.NewEnvelopesDataReader(envelopes)
+			p := promql.New(dataReader, log.New(ioutil.Discard, "", 0))
+			return p.InstantQuery(ctx, &rpc.PromQL_InstantQueryRequest{
+				Query: query,
+			})
+		}), rp)
+
+		rpc.RegisterPromQLShardReaderServer(srv, promQLSharding)
 		if err := srv.Serve(lis); err != nil {
 			g.log.Fatalf("failed to serve: %v", err)
 		}

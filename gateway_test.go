@@ -119,4 +119,34 @@ var _ = Describe("Gateway", func() {
 		Expect(reqs[0].Query).To(Equal(`metric{source_id="some-id"}`))
 		Expect(reqs[0].Time).To(Equal(int64(1234)))
 	})
+
+	It("upgrades HTTP requests for PromQLShardReader into gRPC requests", func() {
+		path := "v1/shard_promql/some-name?requester_id=99"
+		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
+		resp, err := http.Get(URL)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+		reqs := spyShardGroupReader.ReadPromQLRequests()
+		Expect(reqs).To(HaveLen(1))
+		Expect(reqs[0].Name).To(Equal("some-name"))
+		Expect(reqs[0].RequesterId).To(Equal(uint64(99)))
+	})
+
+	It("upgrades HTTP requests for ShardGroupReader PUTs into gRPC requests", func() {
+		path := "v1/shard_promql/some-name"
+		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
+		req, _ := http.NewRequest("PUT", URL, strings.NewReader(`{
+			"query":"some-query"
+		}`))
+
+		resp, err := http.DefaultClient.Do(req)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+		reqs := spyShardGroupReader.SetPromQLRequests()
+		Expect(reqs).To(HaveLen(1))
+		Expect(reqs[0].GetName()).To(Equal("some-name"))
+		Expect(reqs[0].GetQuery().GetQuery()).To(Equal("some-query"))
+	})
 })

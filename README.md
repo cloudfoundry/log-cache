@@ -93,7 +93,7 @@ Reads from the given shard-group. The shard-group's source-ids are merged and so
 
 Query Parameters:
 
-- **requester_id** is a string used to shard data across multiple clients. This
+- **requester_id** is an uint64 used to shard data across multiple clients. This
   string should be unique for each client reading from the group. If multiple
   clients use the same requester ID, sharding may not be reliable.
 - **start_time** is UNIX timestamp in nanoseconds. It defaults to the start of the
@@ -183,6 +183,74 @@ curl -G "http://<log-cache-addr>:8080/v1/promql" --data-urlencode 'query=metrics
   "vector": {
     "samples": [{ "metric": {...}, "point": {...} }]
   }
+}
+```
+
+### **GET** `/v1/shard_promql/<group-name>`
+
+Shards the promQL results across requesters.
+
+Query Parameters:
+
+- **requester_id** is an uint64 used to shard data across multiple clients.
+  This string should be unique for each client reading from the group. If
+  multiple clients use the same requester ID, sharding may not be reliable.
+
+```
+curl "http://<log-cache-addr>:8080/v1/shard_promql/<group-name>/?requester_id=<requester-id>"
+```
+
+##### Response Body
+```
+{
+  "results": {"some-arg": {
+    "vector": { ... }
+  }
+ }
+}
+```
+
+### **PUT** `/v1/shard_promql/<group-name>/`
+
+Adds the given promQL query to the given shard-group for sharding. If the
+shard-group does not exist, then it gets created. Each requester (identified
+by a `requester_id`) will receive an equal subset of query results. When
+setting a shard-group, an `arg` can also be provided. This arg will be
+returned when reading back from the group. This gives context as to what data
+has been read.
+
+##### Request Body
+
+```
+{
+  "query": "some-promql-query",
+  "arg": "some-arg"
+}
+```
+
+```
+curl "http://<log-cache-addr>:8080/v1/shard_promql/<group-name>" -XPUT -d'{"query":"some-promql-query"}'
+```
+
+##### Response Body
+```
+{}
+```
+
+### **GET** `/v1/shard_promql/<group-name>/meta`
+
+Gets meta information about the promQL shard-group.
+
+```
+curl "http://<log-cache-addr>:8080/v1/shard_promql/<group-name>/meta"
+```
+
+##### Response Body
+```
+{
+  "queries": [...],
+  "requester_ids": [...],
+  "args": [...]
 }
 ```
 

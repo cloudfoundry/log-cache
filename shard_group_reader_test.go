@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"net"
 	"sync"
+	"time"
 
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
@@ -20,6 +21,7 @@ var _ = Describe("ShardGroupReader", func() {
 	var (
 		g  *logcache.ShardGroupReader
 		c  rpc.ShardGroupReaderClient
+		pc rpc.PromQLShardReaderClient
 		oc rpc.OrchestrationClient
 
 		spy         *spyShardGroupReader
@@ -54,7 +56,7 @@ var _ = Describe("ShardGroupReader", func() {
 		)
 		g.Start()
 
-		c, oc = newShardGroupReaderClient(g.Addr(), tlsConfig)
+		c, pc, oc = newShardGroupReaderClient(g.Addr(), tlsConfig)
 
 		_, err = oc.AddRange(context.Background(), &rpc.AddRangeRequest{
 			Range: &rpc.Range{
@@ -137,6 +139,61 @@ var _ = Describe("ShardGroupReader", func() {
 
 			return result
 		}).Should(Equal([]int64{99, 100, 101, 102}))
+	})
+
+	It("reads data from a group of sourceIDs via PromQL", func() {
+		spyLogCache.readEnvelopes["source-0"] = func() []*loggregator_v2.Envelope {
+			return []*loggregator_v2.Envelope{
+				{
+					Timestamp: time.Now().Add(-2 * time.Second).UnixNano(),
+					SourceId:  "source-0",
+					Message: &loggregator_v2.Envelope_Counter{
+						Counter: &loggregator_v2.Counter{
+							Name:  "metric",
+							Total: 99,
+						},
+					},
+				},
+			}
+		}
+
+		spyLogCache.readEnvelopes["source-1"] = func() []*loggregator_v2.Envelope {
+			return []*loggregator_v2.Envelope{
+				{
+					Timestamp: time.Now().Add(-2 * time.Second).UnixNano(),
+					SourceId:  "source-1",
+					Message: &loggregator_v2.Envelope_Counter{
+						Counter: &loggregator_v2.Counter{
+							Name:  "metric",
+							Total: 101,
+						},
+					},
+				},
+			}
+		}
+
+		_, err := pc.SetShardPromQL(context.Background(), &rpc.PromQL_SetShardRequest{
+			Name: "some-name-a",
+			Query: &rpc.PromQL_SetShardQuery{
+				Arg:   "some-arg",
+				Query: `metric{source_id="source-0"}+metric{source_id="source-1"}`,
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		Eventually(func() []float64 {
+			resp, err := pc.ReadPromQL(context.Background(), &rpc.PromQL_ShardReadRequest{
+				Name: "some-name-a",
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			var results []float64
+			for _, s := range resp.Results["some-arg"].GetVector().GetSamples() {
+				results = append(results, s.GetPoint().GetValue())
+			}
+
+			return results
+		}).Should(ConsistOf(200.0))
 	})
 
 	It("shards data from a group of sourceIDs", func() {
@@ -312,7 +369,7 @@ var _ = Describe("ShardGroupReader", func() {
 	})
 })
 
-func newShardGroupReaderClient(addr string, tlsConfig *tls.Config) (rpc.ShardGroupReaderClient, rpc.OrchestrationClient) {
+func newShardGroupReaderClient(addr string, tlsConfig *tls.Config) (rpc.ShardGroupReaderClient, rpc.PromQLShardReaderClient, rpc.OrchestrationClient) {
 	conn, err := grpc.Dial(
 		addr,
 		grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
@@ -321,13 +378,18 @@ func newShardGroupReaderClient(addr string, tlsConfig *tls.Config) (rpc.ShardGro
 		panic(err)
 	}
 
-	return rpc.NewShardGroupReaderClient(conn), rpc.NewOrchestrationClient(conn)
+	return rpc.NewShardGroupReaderClient(conn), rpc.NewPromQLShardReaderClient(conn), rpc.NewOrchestrationClient(conn)
 }
 
 type spyShardGroupReader struct {
-	mu        sync.Mutex
-	addReqs   []*rpc.SetShardGroupRequest
-	readReqs  []*rpc.ShardGroupReadRequest
+	mu sync.Mutex
+
+	addReqs  []*rpc.SetShardGroupRequest
+	readReqs []*rpc.ShardGroupReadRequest
+
+	setPromQLReqs  []*rpc.PromQL_SetShardRequest
+	readPromQLReqs []*rpc.PromQL_ShardReadRequest
+
 	tlsConfig *tls.Config
 }
 
@@ -341,10 +403,11 @@ func (s *spyShardGroupReader) start() string {
 		panic(err)
 	}
 
-	go func() {
-		srv := grpc.NewServer(grpc.Creds(credentials.NewTLS(s.tlsConfig)))
+	srv := grpc.NewServer(grpc.Creds(credentials.NewTLS(s.tlsConfig)))
+	rpc.RegisterPromQLShardReaderServer(srv, s)
+	rpc.RegisterShardGroupReaderServer(srv, s)
 
-		rpc.RegisterShardGroupReaderServer(srv, s)
+	go func() {
 		if err := srv.Serve(lis); err != nil {
 			panic(err)
 		}
@@ -395,5 +458,43 @@ func (s *spyShardGroupReader) getReadRequests() []*rpc.ShardGroupReadRequest {
 }
 
 func (s *spyShardGroupReader) ShardGroup(context.Context, *rpc.ShardGroupRequest) (*rpc.ShardGroupResponse, error) {
+	panic("not implemented")
+}
+
+func (s *spyShardGroupReader) SetShardPromQL(c context.Context, r *rpc.PromQL_SetShardRequest) (*rpc.PromQL_SetShardResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.setPromQLReqs = append(s.setPromQLReqs, r)
+	return &rpc.PromQL_SetShardResponse{}, nil
+}
+
+func (s *spyShardGroupReader) SetPromQLRequests() []*rpc.PromQL_SetShardRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	r := make([]*rpc.PromQL_SetShardRequest, len(s.setPromQLReqs))
+	copy(r, s.setPromQLReqs)
+	return r
+}
+
+func (s *spyShardGroupReader) ReadPromQL(c context.Context, r *rpc.PromQL_ShardReadRequest) (*rpc.PromQL_ShardReadResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.readPromQLReqs = append(s.readPromQLReqs, r)
+
+	return &rpc.PromQL_ShardReadResponse{}, nil
+}
+
+func (s *spyShardGroupReader) ReadPromQLRequests() []*rpc.PromQL_ShardReadRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	r := make([]*rpc.PromQL_ShardReadRequest, len(s.readPromQLReqs))
+	copy(r, s.readPromQLReqs)
+
+	return r
+}
+
+func (s *spyShardGroupReader) ShardPromQL(context.Context, *rpc.PromQL_ShardRequest) (*rpc.PromQL_ShardResponse, error) {
 	panic("not implemented")
 }
