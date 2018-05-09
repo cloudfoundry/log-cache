@@ -11,6 +11,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
+	logcache "code.cloudfoundry.org/go-log-cache"
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/log-cache/internal/promql"
 	"code.cloudfoundry.org/log-cache/internal/routing"
@@ -242,7 +243,13 @@ func (c *LogCache) setupRouting(s *store.Store) {
 
 	ingressReverseProxy := routing.NewIngressReverseProxy(lookup.Lookup, ingressClients, localIdx, c.log)
 	egressReverseProxy := routing.NewEgressReverseProxy(lookup.Lookup, egressClients, localIdx, c.log)
-	promQL := promql.New(egressReverseProxy, c.log)
+
+	promQL := promql.New(
+		promql.NewWalkingDataReader(
+			logcache.NewClient(c.Addr(), logcache.WithViaGRPC(c.dialOpts...)).Read,
+		),
+		c.log,
+	)
 	c.server = grpc.NewServer(c.serverOpts...)
 
 	go func() {
