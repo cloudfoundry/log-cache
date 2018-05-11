@@ -298,6 +298,11 @@ func (a *aggregator) add(id uint64, sourceIDs []string) error {
 				},
 				logcache.Reader(a.r),
 				logcache.WithWalkBackoff(logcache.NewAlwaysRetryBackoff(a.backoff)),
+
+				// We can assume if someone is consuming from a shard group
+				// that they are in it for the long haul. We would rather
+				// ensure the data is of high quality and induce some delay.
+				logcache.WithWalkDelay(15*time.Second),
 			)
 		}))
 	}
