@@ -116,6 +116,11 @@ var _ = Describe("PromQL", func() {
 		Eventually(spyDataReader.ReadSourceIDs).Should(
 			ConsistOf("some-id-1", "some-id-2"),
 		)
+
+		Expect(time.Unix(0, actualTime)).To(BeTemporally("~", spyDataReader.readEnds[0]))
+		Expect(
+			spyDataReader.readEnds[0].Sub(spyDataReader.readStarts[0]),
+		).To(Equal(time.Minute*5 + time.Second))
 	})
 
 	It("returns a matrix", func() {
@@ -362,6 +367,7 @@ type spyDataReader struct {
 	mu            sync.Mutex
 	readSourceIDs []string
 	readStarts    []time.Time
+	readEnds      []time.Time
 
 	readResults [][]*loggregator_v2.Envelope
 	readErrs    []error
@@ -380,6 +386,7 @@ func (s *spyDataReader) Read(
 
 	s.readSourceIDs = append(s.readSourceIDs, req.SourceId)
 	s.readStarts = append(s.readStarts, time.Unix(0, req.StartTime))
+	s.readEnds = append(s.readEnds, time.Unix(0, req.EndTime))
 
 	if len(s.readResults) != len(s.readErrs) {
 		panic("readResults and readErrs are out of sync")
