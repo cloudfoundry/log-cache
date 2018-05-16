@@ -57,7 +57,7 @@ Query Parameters:
   is 1000 and defaults to 100.
 
 ```
-curl "http://<log-cache-addr>:8080/v1/read/<source-id>/?start_time=<start-time>&end_time=<end-time>"
+curl "http://<log-cache-addr>:8080/v1/read/<source-id>?start_time=<start-time>&end_time=<end-time>"
 ```
 
 ##### Response Body
@@ -108,7 +108,7 @@ Query Parameters:
   is 1000 and defaults to 100.
 
 ```
-curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>/?start_time=<start-time>&end_time=<end-time>&requester_id=<requester-id>"
+curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>?start_time=<start-time>&end_time=<end-time>&requester_id=<requester-id>"
 ```
 
 ##### Response Body
