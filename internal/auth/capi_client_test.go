@@ -17,11 +17,13 @@ var _ = Describe("CAPIClient", func() {
 	var (
 		capiClient *spyHTTPClient
 		client     *auth.CAPIClient
+		metrics    *spyMetrics
 	)
 
 	BeforeEach(func() {
 		capiClient = newSpyHTTPClient()
-		client = auth.NewCAPIClient("https://capi.com", "http://external.capi.com", capiClient)
+		metrics = newSpyMetrics()
+		client = auth.NewCAPIClient("https://capi.com", "http://external.capi.com", capiClient, metrics)
 	})
 
 	Describe("IsAuthorized", func() {
@@ -68,6 +70,16 @@ var _ = Describe("CAPIClient", func() {
 		It("returns false when CAPI request fails", func() {
 			capiClient.resps = []response{{err: errors.New("intentional error")}}
 			Expect(client.IsAuthorized("some-id", "some-token")).To(BeFalse())
+		})
+
+		It("stores the latency", func() {
+			capiClient.resps = []response{
+				{status: http.StatusNotFound},
+			}
+			client.IsAuthorized("source-id", "my-token")
+
+			Expect(metrics.m["LastCAPIV4LogAccessLatency"]).ToNot(BeZero())
+			Expect(metrics.m["LastCAPIV2ServiceInstancesLatency"]).ToNot(BeZero())
 		})
 
 		It("is goroutine safe", func() {
@@ -147,6 +159,13 @@ var _ = Describe("CAPIClient", func() {
 			}
 			sourceIDs := client.AvailableSourceIDs("some-token")
 			Expect(sourceIDs).To(BeEmpty())
+		})
+
+		It("stores the latency", func() {
+			client.AvailableSourceIDs("my-token")
+
+			Expect(metrics.m["LastCAPIV3AppsLatency"]).ToNot(BeZero())
+			Expect(metrics.m["LastCAPIV2ListServiceInstancesLatency"]).ToNot(BeZero())
 		})
 
 		It("is goroutine safe", func() {

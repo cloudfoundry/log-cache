@@ -9,7 +9,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
+
+type Metrics interface {
+	NewGauge(name string) func(value float64)
+}
 
 type HTTPClient interface {
 	Do(r *http.Request) (*http.Response, error)
@@ -20,9 +25,10 @@ type UAAClient struct {
 	uaa          *url.URL
 	client       string
 	clientSecret string
+	storeLatency func(float64)
 }
 
-func NewUAAClient(uaaAddr, client, clientSecret string, httpClient HTTPClient) *UAAClient {
+func NewUAAClient(uaaAddr, client, clientSecret string, httpClient HTTPClient, m Metrics) *UAAClient {
 	u, err := url.Parse(uaaAddr)
 	if err != nil {
 		panic(err)
@@ -34,6 +40,7 @@ func NewUAAClient(uaaAddr, client, clientSecret string, httpClient HTTPClient) *
 		client:       client,
 		clientSecret: clientSecret,
 		httpClient:   httpClient,
+		storeLatency: m.NewGauge("LastUAALatency"),
 	}
 }
 
@@ -54,7 +61,9 @@ func (c *UAAClient) Read(token string) (Oauth2Client, error) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(c.client, c.clientSecret)
 
+	start := time.Now()
 	resp, err := c.httpClient.Do(req)
+	c.storeLatency(float64(time.Since(start)))
 	if err != nil {
 		log.Printf("UAA request failed: %s", err)
 		return Oauth2Client{}, err

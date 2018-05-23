@@ -20,11 +20,13 @@ var _ = Describe("UAAClient", func() {
 	var (
 		client     *auth.UAAClient
 		httpClient *spyHTTPClient
+		metrics    *spyMetrics
 	)
 
 	BeforeEach(func() {
 		httpClient = newSpyHTTPClient()
-		client = auth.NewUAAClient("https://uaa.com", "some-client", "some-client-secret", httpClient)
+		metrics = newSpyMetrics()
+		client = auth.NewUAAClient("https://uaa.com", "some-client", "some-client-secret", httpClient, metrics)
 	})
 
 	It("returns IsAdmin when scopes include doppler.firehose with correct clientID and UserID", func() {
@@ -88,6 +90,12 @@ var _ = Describe("UAAClient", func() {
 		urlValues, err := url.ParseQuery(string(reqBytes))
 		Expect(err).ToNot(HaveOccurred())
 		Expect(urlValues.Get("token")).To(Equal(token))
+	})
+
+	It("sets the last request latency metric", func() {
+		client.Read("my-token")
+
+		Expect(metrics.m["LastUAALatency"]).ToNot(BeZero())
 	})
 
 	It("returns error when token is blank", func() {
@@ -175,4 +183,23 @@ func (s *spyHTTPClient) Do(r *http.Request) (*http.Response, error) {
 	}
 
 	return &resp, nil
+}
+
+type spyMetrics struct {
+	mu sync.Mutex
+	m  map[string]float64
+}
+
+func newSpyMetrics() *spyMetrics {
+	return &spyMetrics{
+		m: make(map[string]float64),
+	}
+}
+
+func (s *spyMetrics) NewGauge(name string) func(float64) {
+	return func(v float64) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.m[name] = v
+	}
 }

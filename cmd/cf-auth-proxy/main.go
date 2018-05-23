@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"time"
 
 	"crypto/tls"
@@ -29,25 +30,24 @@ func main() {
 	}
 	envstruct.WriteReport(cfg)
 
+	metrics := metrics.New(expvar.NewMap("CFAuthProxy"))
+
 	uaaClient := auth.NewUAAClient(
 		cfg.UAA.Addr,
 		cfg.UAA.ClientID,
 		cfg.UAA.ClientSecret,
 		buildUAAClient(cfg),
+		metrics,
 	)
 
 	capiClient := auth.NewCAPIClient(
 		cfg.CAPI.Addr,
 		cfg.CAPI.ExternalAddr,
 		buildCAPIClient(cfg),
+		metrics,
 	)
 
 	metaFetcher := gologcache.NewClient(cfg.LogCacheGatewayAddr)
-
-	// TODO: We don't currently have a health endpoint, however the promql
-	// parser requires an object for metrics. We eventually will want metrics
-	// here, so this is a placeholder.
-	metrics := metrics.New(expvar.NewMap("CFAuthProxy"))
 
 	promQLParser := promql.New(nil, metrics, log.New(ioutil.Discard, "", 0))
 
@@ -62,9 +62,11 @@ func main() {
 		cfg.LogCacheGatewayAddr,
 		cfg.Addr,
 		logcache.WithAuthMiddleware(middlewareProvider.Middleware),
-		logcache.WithCFAuthProxyBlock(),
 	)
 	proxy.Start()
+
+	// health endpoints (pprof and expvar)
+	log.Printf("Health: %s", http.ListenAndServe(cfg.HealthAddr, nil))
 }
 
 func buildUAAClient(cfg *Config) *http.Client {

@@ -6,29 +6,40 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"time"
 )
 
 type CAPIClient struct {
-	client       HTTPClient
-	capi         string
-	externalCapi string
+	client                           HTTPClient
+	capi                             string
+	externalCapi                     string
+	storeAppsLatency                 func(float64)
+	storeListServiceInstancesLatency func(float64)
+	storeLogAccessLatency            func(float64)
+	storeServiceInstancesLatency     func(float64)
 }
 
-func NewCAPIClient(capiAddr, externalCapiAddr string, client HTTPClient) *CAPIClient {
+func NewCAPIClient(capiAddr, externalCapiAddr string, client HTTPClient, m Metrics) *CAPIClient {
 	_, err := url.Parse(capiAddr)
 	if err != nil {
+		// TODO: Use log.Fatal so we can have a timestamp
 		panic(err)
 	}
 
 	_, err = url.Parse(externalCapiAddr)
 	if err != nil {
+		// TODO: Use log.Fatal so we can have a timestamp
 		panic(err)
 	}
 
 	return &CAPIClient{
-		client:       client,
-		capi:         capiAddr,
-		externalCapi: externalCapiAddr,
+		client:                           client,
+		capi:                             capiAddr,
+		externalCapi:                     externalCapiAddr,
+		storeAppsLatency:                 m.NewGauge("LastCAPIV3AppsLatency"),
+		storeListServiceInstancesLatency: m.NewGauge("LastCAPIV2ListServiceInstancesLatency"),
+		storeLogAccessLatency:            m.NewGauge("LastCAPIV4LogAccessLatency"),
+		storeServiceInstancesLatency:     m.NewGauge("LastCAPIV2ServiceInstancesLatency"),
 	}
 }
 
@@ -41,7 +52,10 @@ func (c *CAPIClient) IsAuthorized(sourceID, token string) bool {
 	}
 
 	req.Header.Set("Authorization", token)
+	start := time.Now()
 	resp, err := c.client.Do(req)
+	c.storeLogAccessLatency(float64(time.Since(start)))
+
 	if err != nil {
 		log.Printf("CAPI request failed: %s", err)
 		return false
@@ -59,7 +73,9 @@ func (c *CAPIClient) IsAuthorized(sourceID, token string) bool {
 	}
 
 	req.Header.Set("Authorization", token)
+	start = time.Now()
 	resp, err = c.client.Do(req)
+	c.storeServiceInstancesLatency(float64(time.Since(start)))
 	if err != nil {
 		log.Printf("External CAPI request failed: %s", err)
 		return false
@@ -77,7 +93,9 @@ func (c *CAPIClient) AvailableSourceIDs(token string) []string {
 	}
 
 	req.Header.Set("Authorization", token)
+	start := time.Now()
 	resp, err := c.client.Do(req)
+	c.storeAppsLatency(float64(time.Since(start)))
 	if err != nil {
 		log.Printf("CAPI request failed: %s", err)
 		return nil
@@ -106,7 +124,9 @@ func (c *CAPIClient) AvailableSourceIDs(token string) []string {
 	}
 
 	req.Header.Set("Authorization", token)
+	start = time.Now()
 	resp, err = c.client.Do(req)
+	c.storeListServiceInstancesLatency(float64(time.Since(start)))
 	if err != nil {
 		log.Printf("External CAPI request failed: %s", err)
 		return nil
