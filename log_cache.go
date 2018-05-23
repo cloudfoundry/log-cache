@@ -221,6 +221,7 @@ func (c *LogCache) setupRouting(s *store.Store) {
 				100,
 				250*time.Millisecond,
 				logcache_v1.NewIngressClient(conn),
+				c.metrics,
 				c.log,
 			)
 

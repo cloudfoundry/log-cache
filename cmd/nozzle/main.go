@@ -35,13 +35,17 @@ func main() {
 		log.Fatalf("invalid LogsProviderTLS configuration: %s", err)
 	}
 
+	m := metrics.New(expvar.NewMap("Nozzle"))
 	loggr := log.New(os.Stderr, "[LOGGR] ", log.LstdFlags)
+
+	dropped := m.NewCounter("Dropped")
 	streamConnector := loggregator.NewEnvelopeStreamConnector(
 		cfg.LogProviderAddr,
 		tlsCfg,
 		loggregator.WithEnvelopeStreamLogger(loggr),
 		loggregator.WithEnvelopeStreamBuffer(10000, func(missed int) {
 			loggr.Printf("dropped %d envelope batches", missed)
+			dropped(uint64(missed))
 		}),
 	)
 
@@ -49,7 +53,7 @@ func main() {
 		streamConnector,
 		cfg.LogCacheAddr,
 		logcache.WithNozzleLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		logcache.WithNozzleMetrics(metrics.New(expvar.NewMap("Nozzle"))),
+		logcache.WithNozzleMetrics(m),
 		logcache.WithNozzleDialOpts(
 			grpc.WithTransportCredentials(
 				cfg.LogCacheTLS.Credentials("log-cache"),

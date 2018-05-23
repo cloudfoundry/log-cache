@@ -3,6 +3,7 @@ package routing_test
 import (
 	"io/ioutil"
 	"log"
+	"sync"
 	"time"
 
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
@@ -16,13 +17,15 @@ import (
 
 var _ = Describe("BatchedIngressClient", func() {
 	var (
-		spyIngressClient *spyIngressClient
-		c                *routing.BatchedIngressClient
+		spyMetrics    *spyMetrics
+		ingressClient *spyIngressClient
+		c             *routing.BatchedIngressClient
 	)
 
 	BeforeEach(func() {
-		spyIngressClient = newSpyIngressClient()
-		c = routing.NewBatchedIngressClient(5, time.Hour, spyIngressClient, log.New(ioutil.Discard, "", 0))
+		spyMetrics = newSpyMetrics()
+		ingressClient = newSpyIngressClient()
+		c = routing.NewBatchedIngressClient(5, time.Hour, ingressClient, spyMetrics, log.New(ioutil.Discard, "", 0))
 	})
 
 	It("sends envelopes with LocalOnly set to true", func() {
@@ -37,11 +40,11 @@ var _ = Describe("BatchedIngressClient", func() {
 			Expect(err).ToNot(HaveOccurred())
 		}
 
-		Eventually(spyIngressClient.Requests).Should(HaveLen(1))
-		Expect(spyIngressClient.Requests()[0].Envelopes.Batch).To(HaveLen(5))
-		Expect(spyIngressClient.Requests()[0].LocalOnly).To(BeTrue())
+		Eventually(ingressClient.Requests).Should(HaveLen(1))
+		Expect(ingressClient.Requests()[0].Envelopes.Batch).To(HaveLen(5))
+		Expect(ingressClient.Requests()[0].LocalOnly).To(BeTrue())
 
-		for i, e := range spyIngressClient.Requests()[0].Envelopes.Batch {
+		for i, e := range ingressClient.Requests()[0].Envelopes.Batch {
 			Expect(e).To(Equal(
 				&loggregator_v2.Envelope{
 					Timestamp: int64(i),
@@ -62,12 +65,12 @@ var _ = Describe("BatchedIngressClient", func() {
 			Expect(err).ToNot(HaveOccurred())
 		}
 
-		Eventually(spyIngressClient.Requests).Should(HaveLen(1))
-		Expect(spyIngressClient.Requests()[0].Envelopes.Batch).To(HaveLen(5))
+		Eventually(ingressClient.Requests).Should(HaveLen(1))
+		Expect(ingressClient.Requests()[0].Envelopes.Batch).To(HaveLen(5))
 	})
 
 	It("sends envelopes by batches because of interval", func() {
-		c = routing.NewBatchedIngressClient(5, time.Microsecond, spyIngressClient, log.New(ioutil.Discard, "", 0))
+		c = routing.NewBatchedIngressClient(5, time.Microsecond, ingressClient, spyMetrics, log.New(ioutil.Discard, "", 0))
 		_, err := c.Send(context.Background(), &rpc.SendRequest{
 			Envelopes: &loggregator_v2.EnvelopeBatch{
 				Batch: []*loggregator_v2.Envelope{
@@ -77,7 +80,57 @@ var _ = Describe("BatchedIngressClient", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		Eventually(spyIngressClient.Requests).Should(HaveLen(1))
-		Expect(spyIngressClient.Requests()[0].Envelopes.Batch).To(HaveLen(1))
+		Eventually(ingressClient.Requests).Should(HaveLen(1))
+		Expect(ingressClient.Requests()[0].Envelopes.Batch).To(HaveLen(1))
+	})
+
+	It("increments a dropped counter", func() {
+		go func(ingressClient *spyIngressClient) {
+			for {
+				// Force ingress client to block 100ms
+				ingressClient.mu.Lock()
+				time.Sleep(100 * time.Millisecond)
+				ingressClient.mu.Unlock()
+			}
+		}(ingressClient)
+
+		for i := 0; i < 25000; i++ {
+			c.Send(context.Background(), &rpc.SendRequest{
+				Envelopes: &loggregator_v2.EnvelopeBatch{
+					Batch: []*loggregator_v2.Envelope{
+						{Timestamp: 1},
+					},
+				},
+			})
+		}
+
+		Eventually(spyMetrics.GetDelta("Dropped")).ShouldNot(BeZero())
 	})
 })
+
+type spyMetrics struct {
+	mu      sync.Mutex
+	metrics map[string]uint64
+}
+
+func newSpyMetrics() *spyMetrics {
+	return &spyMetrics{
+		metrics: make(map[string]uint64),
+	}
+}
+
+func (s *spyMetrics) NewCounter(name string) func(uint64) {
+	return func(delta uint64) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.metrics[name] += delta
+	}
+}
+
+func (s *spyMetrics) GetDelta(name string) func() uint64 {
+	return func() uint64 {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.metrics[name]
+	}
+}
