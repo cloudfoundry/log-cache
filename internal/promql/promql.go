@@ -40,7 +40,7 @@ func New(
 	q := &PromQL{
 		r:              r,
 		log:            log,
-		failureCounter: m.NewCounter("promqlTimeout"),
+		failureCounter: m.NewCounter("PromQLTimeout"),
 		result:         1,
 	}
 

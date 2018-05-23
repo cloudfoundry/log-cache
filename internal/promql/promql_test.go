@@ -354,7 +354,7 @@ var _ = Describe("PromQL", func() {
 		)
 		Expect(err).To(HaveOccurred())
 
-		Expect(spyMetrics.names).To(ContainElement("promqlTimeout"))
+		Expect(spyMetrics.names).To(ContainElement("PromQLTimeout"))
 		Expect(spyMetrics.deltas).To(ContainElement(uint64(1)))
 	})
 
