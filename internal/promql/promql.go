@@ -3,6 +3,7 @@ package promql
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"sort"
 	"time"
@@ -51,7 +52,7 @@ func (q *PromQL) Parse(query string) ([]string, error) {
 	sit := &sourceIDTracker{}
 	var closureErr error
 	lcq := &logCacheQueryable{
-		log:        q.log,
+		log:        log.New(ioutil.Discard, "", 0),
 		interval:   time.Second,
 		dataReader: sit,
 

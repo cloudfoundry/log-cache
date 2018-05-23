@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
 	"time"
 
 	"crypto/tls"
@@ -21,6 +22,7 @@ import (
 )
 
 func main() {
+	log := log.New(os.Stderr, "", log.LstdFlags)
 	log.Print("Starting Log Cache CF Auth Reverse Proxy...")
 	defer log.Print("Closing Log Cache CF Auth Reverse Proxy.")
 
@@ -38,6 +40,7 @@ func main() {
 		cfg.UAA.ClientSecret,
 		buildUAAClient(cfg),
 		metrics,
+		log,
 	)
 
 	capiClient := auth.NewCAPIClient(
@@ -45,11 +48,12 @@ func main() {
 		cfg.CAPI.ExternalAddr,
 		buildCAPIClient(cfg),
 		metrics,
+		log,
 	)
 
 	metaFetcher := gologcache.NewClient(cfg.LogCacheGatewayAddr)
 
-	promQLParser := promql.New(nil, metrics, log.New(ioutil.Discard, "", 0))
+	promQLParser := promql.New(nil, metrics, log)
 
 	middlewareProvider := auth.NewCFAuthMiddlewareProvider(
 		uaaClient,

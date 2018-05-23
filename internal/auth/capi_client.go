@@ -19,17 +19,21 @@ type CAPIClient struct {
 	storeServiceInstancesLatency     func(float64)
 }
 
-func NewCAPIClient(capiAddr, externalCapiAddr string, client HTTPClient, m Metrics) *CAPIClient {
+func NewCAPIClient(
+	capiAddr string,
+	externalCapiAddr string,
+	client HTTPClient,
+	m Metrics,
+	log *log.Logger,
+) *CAPIClient {
 	_, err := url.Parse(capiAddr)
 	if err != nil {
-		// TODO: Use log.Fatal so we can have a timestamp
-		panic(err)
+		log.Fatalf("failed to parse internal CAPI addr: %s", err)
 	}
 
 	_, err = url.Parse(externalCapiAddr)
 	if err != nil {
-		// TODO: Use log.Fatal so we can have a timestamp
-		panic(err)
+		log.Fatalf("failed to parse external CAPI addr: %s", err)
 	}
 
 	return &CAPIClient{

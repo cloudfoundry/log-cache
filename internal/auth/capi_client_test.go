@@ -2,6 +2,8 @@ package auth_test
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
 	"sync"
 
 	"code.cloudfoundry.org/log-cache/internal/auth"
@@ -23,7 +25,13 @@ var _ = Describe("CAPIClient", func() {
 	BeforeEach(func() {
 		capiClient = newSpyHTTPClient()
 		metrics = newSpyMetrics()
-		client = auth.NewCAPIClient("https://capi.com", "http://external.capi.com", capiClient, metrics)
+		client = auth.NewCAPIClient(
+			"https://capi.com",
+			"http://external.capi.com",
+			capiClient,
+			metrics,
+			log.New(ioutil.Discard, "", 0),
+		)
 	})
 
 	Describe("IsAuthorized", func() {

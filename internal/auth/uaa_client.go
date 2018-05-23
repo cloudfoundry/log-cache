@@ -28,11 +28,19 @@ type UAAClient struct {
 	storeLatency func(float64)
 }
 
-func NewUAAClient(uaaAddr, client, clientSecret string, httpClient HTTPClient, m Metrics) *UAAClient {
+func NewUAAClient(
+	uaaAddr string,
+	client string,
+	clientSecret string,
+	httpClient HTTPClient,
+	m Metrics,
+	log *log.Logger,
+) *UAAClient {
 	u, err := url.Parse(uaaAddr)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to parse UAA addr: %s", err)
 	}
+
 	u.Path = "check_token"
 
 	return &UAAClient{

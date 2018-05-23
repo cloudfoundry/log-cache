@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"log"
 	"sync"
 
 	"code.cloudfoundry.org/log-cache/internal/auth"
@@ -26,7 +27,14 @@ var _ = Describe("UAAClient", func() {
 	BeforeEach(func() {
 		httpClient = newSpyHTTPClient()
 		metrics = newSpyMetrics()
-		client = auth.NewUAAClient("https://uaa.com", "some-client", "some-client-secret", httpClient, metrics)
+		client = auth.NewUAAClient(
+			"https://uaa.com",
+			"some-client",
+			"some-client-secret",
+			httpClient,
+			metrics,
+			log.New(ioutil.Discard, "", 0),
+		)
 	})
 
 	It("returns IsAdmin when scopes include doppler.firehose with correct clientID and UserID", func() {
