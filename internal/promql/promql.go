@@ -15,9 +15,11 @@ import (
 )
 
 type PromQL struct {
-	r        DataReader
-	log      *log.Logger
-	failures int
+	r   DataReader
+	log *log.Logger
+
+	failureCounter func(uint64)
+	failures       int
 
 	result int64
 }
@@ -26,14 +28,20 @@ type DataReader interface {
 	Read(ctx context.Context, in *logcache_v1.ReadRequest) (*logcache_v1.ReadResponse, error)
 }
 
+type Metrics interface {
+	NewCounter(name string) func(delta uint64)
+}
+
 func New(
 	r DataReader,
+	m Metrics,
 	log *log.Logger,
 ) *PromQL {
 	q := &PromQL{
-		r:      r,
-		log:    log,
-		result: 1,
+		r:              r,
+		log:            log,
+		failureCounter: m.NewCounter("promqlTimeout"),
+		result:         1,
 	}
 
 	return q
@@ -102,6 +110,7 @@ func (q *PromQL) InstantQuery(ctx context.Context, req *logcache_v1.PromQL_Insta
 
 	r := qq.Exec(ctx)
 	if closureErr != nil {
+		q.failureCounter(1)
 		return nil, closureErr
 	}
 

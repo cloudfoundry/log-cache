@@ -248,6 +248,7 @@ func (c *LogCache) setupRouting(s *store.Store) {
 		promql.NewWalkingDataReader(
 			logcache.NewClient(c.Addr(), logcache.WithViaGRPC(c.dialOpts...)).Read,
 		),
+		c.metrics,
 		c.log,
 	)
 	c.server = grpc.NewServer(c.serverOpts...)

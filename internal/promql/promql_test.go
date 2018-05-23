@@ -17,15 +17,18 @@ import (
 
 var _ = Describe("PromQL", func() {
 	var (
+		spyMetrics    *spyMetrics
 		spyDataReader *spyDataReader
 		q             *promql.PromQL
 	)
 
 	BeforeEach(func() {
 		spyDataReader = newSpyDataReader()
+		spyMetrics = newSpyMetrics()
 
 		q = promql.New(
 			spyDataReader,
+			spyMetrics,
 			log.New(ioutil.Discard, "", 0),
 		)
 	})
@@ -350,6 +353,9 @@ var _ = Describe("PromQL", func() {
 			&logcache_v1.PromQL_InstantQueryRequest{Query: `metric{source_id="some-id-1"}[5m]`},
 		)
 		Expect(err).To(HaveOccurred())
+
+		Expect(spyMetrics.names).To(ContainElement("promqlTimeout"))
+		Expect(spyMetrics.deltas).To(ContainElement(uint64(1)))
 	})
 
 	It("returns an error for a cancelled context", func() {
@@ -425,4 +431,20 @@ func (s *spyDataReader) setRead(es [][]*loggregator_v2.Envelope, errs []error) {
 
 	s.readResults = es
 	s.readErrs = errs
+}
+
+type spyMetrics struct {
+	names  []string
+	deltas []uint64
+}
+
+func newSpyMetrics() *spyMetrics {
+	return &spyMetrics{}
+}
+
+func (s *spyMetrics) NewCounter(name string) func(delta uint64) {
+	s.names = append(s.names, name)
+	return func(delta uint64) {
+		s.deltas = append(s.deltas, delta)
+	}
 }

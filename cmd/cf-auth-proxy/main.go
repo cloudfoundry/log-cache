@@ -1,6 +1,7 @@
 package main
 
 import (
+	"expvar"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	gologcache "code.cloudfoundry.org/go-log-cache"
 	"code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/auth"
+	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"code.cloudfoundry.org/log-cache/internal/promql"
 	logtls "code.cloudfoundry.org/log-cache/internal/tls"
 )
@@ -42,7 +44,12 @@ func main() {
 
 	metaFetcher := gologcache.NewClient(cfg.LogCacheGatewayAddr)
 
-	promQLParser := promql.New(nil, log.New(ioutil.Discard, "", 0))
+	// TODO: We don't currently have a health endpoint, however the promql
+	// parser requires an object for metrics. We eventually will want metrics
+	// here, so this is a placeholder.
+	metrics := metrics.New(expvar.NewMap("CFAuthProxy"))
+
+	promQLParser := promql.New(nil, metrics, log.New(ioutil.Discard, "", 0))
 
 	middlewareProvider := auth.NewCFAuthMiddlewareProvider(
 		uaaClient,

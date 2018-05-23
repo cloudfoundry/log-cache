@@ -37,6 +37,10 @@ func (r *WalkingDataReader) Read(
 		logcache.WithWalkBackoff(logcache.NewRetryBackoffOnErr(time.Second, 5)),
 	)
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	return &logcache_v1.ReadResponse{
 		Envelopes: &loggregator_v2.EnvelopeBatch{
 			Batch: result,
