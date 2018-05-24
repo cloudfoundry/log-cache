@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"regexp"
 	"sort"
 	"time"
 
@@ -263,28 +264,36 @@ func (l *LogCacheQuerier) Select(ll ...*labels.Matcher) (storage.SeriesSet, erro
 
 	builder := newSeriesBuilder()
 	for _, e := range envelopeBatch.GetEnvelopes().GetBatch() {
-		if e.GetCounter().GetName() != metric &&
-			e.GetTimer().GetName() != metric &&
-			e.GetGauge().GetMetrics()[metric] == nil {
-			continue
-		}
-
 		if !l.hasLabels(e.GetTags(), ls) {
 			continue
 		}
 
-		e.Timestamp = time.Unix(0, e.GetTimestamp()).Truncate(l.interval).UnixNano()
-
 		var f float64
 		switch e.Message.(type) {
 		case *loggregator_v2.Envelope_Counter:
+			if SanitizeMetricName(e.GetCounter().GetName()) != metric {
+				continue
+			}
+
 			f = float64(e.GetCounter().GetTotal())
 		case *loggregator_v2.Envelope_Gauge:
-			f = e.GetGauge().GetMetrics()[metric].GetValue()
+			value := checkMapForSanitizedMetricName(e.GetGauge(), metric)
+
+			if value == nil {
+				continue
+			}
+
+			f = value.GetValue()
 		case *loggregator_v2.Envelope_Timer:
+			if SanitizeMetricName(e.GetTimer().GetName()) != metric {
+				continue
+			}
+
 			timer := e.GetTimer()
 			f = float64(timer.GetStop() - timer.GetStart())
 		}
+
+		e.Timestamp = time.Unix(0, e.GetTimestamp()).Truncate(l.interval).UnixNano()
 
 		builder.add(e.Tags, sample{
 			t: e.GetTimestamp() / int64(time.Millisecond),
@@ -293,6 +302,25 @@ func (l *LogCacheQuerier) Select(ll ...*labels.Matcher) (storage.SeriesSet, erro
 	}
 
 	return builder.buildSeriesSet(), nil
+}
+
+func checkMapForSanitizedMetricName(gauge *loggregator_v2.Gauge, metric string) *loggregator_v2.GaugeValue {
+	metricsMap := gauge.GetMetrics()
+	for k, v := range metricsMap {
+		if SanitizeMetricName(k) == metric {
+			return v
+		}
+	}
+	return nil
+}
+
+func SanitizeMetricName(name string) string {
+	// Forcefully convert all invalid separators to underscores
+	// First character: Match the if it's NOT A-z or underscore ^[^A-z_]
+	// All others: Match if they're NOT alphanumeric or understore [\W_]+?
+
+	var re = regexp.MustCompile(`^[^A-z_]|[\W_]+?`)
+	return re.ReplaceAllString(name, "_")
 }
 
 func convertToLabels(tags map[string]string) []labels.Label {

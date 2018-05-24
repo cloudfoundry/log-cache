@@ -33,6 +33,42 @@ var _ = Describe("PromQL", func() {
 		)
 	})
 
+	Describe("SanitizeMetricName", func() {
+		It("converts all valid separators to underscores", func() {
+			metrics := []string{
+				"9vitals.vm.cpu.count1",
+				"__vitals.vm..cpu.count2",
+				"&vitals.vm.cpu./count3",
+				"vitals.vm.cpu.count99",
+				"vitals vm/cpu#count100",
+				"vitals:vm+cpu-count101",
+				"1",
+				"_",
+				"a",
+				"&",
+				"&+&+&+9",
+			}
+
+			converted := []string{
+				"_vitals_vm_cpu_count1",
+				"__vitals_vm__cpu_count2",
+				"_vitals_vm_cpu__count3",
+				"vitals_vm_cpu_count99",
+				"vitals_vm_cpu_count100",
+				"vitals_vm_cpu_count101",
+				"_",
+				"_",
+				"a",
+				"_",
+				"______9",
+			}
+
+			for n, metric := range metrics {
+				Expect(promql.SanitizeMetricName(metric)).To(Equal(converted[n]))
+			}
+		})
+	})
+
 	It("returns the given source_ids", func() {
 		sIDs, err := q.Parse(`metric{source_id="a"}+metric{source_id="b"}`)
 		Expect(err).ToNot(HaveOccurred())
@@ -42,6 +78,199 @@ var _ = Describe("PromQL", func() {
 	It("returns an error for an invalid query", func() {
 		_, err := q.Parse(`invalid.query`)
 		Expect(err).To(HaveOccurred())
+	})
+
+	Context("when metric names contain unsupported characters", func() {
+		It("converts counter metric names to proper promql format", func() {
+			now := time.Now()
+			spyDataReader.readResults = [][]*loggregator_v2.Envelope{
+				{
+					{
+						SourceId:  "some-id-1",
+						Timestamp: now.UnixNano(),
+						Message: &loggregator_v2.Envelope_Counter{
+							Counter: &loggregator_v2.Counter{
+								Name:  "some-metric$count",
+								Total: 104,
+							},
+						},
+						Tags: map[string]string{
+							"a": "tag-a",
+							"b": "tag-b",
+						},
+					},
+				},
+				{
+					{
+						SourceId:  "some-id-2",
+						Timestamp: now.UnixNano(),
+						Message: &loggregator_v2.Envelope_Counter{
+							Counter: &loggregator_v2.Counter{
+								Name:  "some|metric#count",
+								Total: 100,
+							},
+						},
+						Tags: map[string]string{
+							"a": "tag-a",
+							"b": "tag-b",
+						},
+					},
+				},
+			}
+
+			for _ = range spyDataReader.readResults {
+				spyDataReader.readErrs = append(spyDataReader.readErrs, nil)
+			}
+
+			r, err := q.InstantQuery(
+				context.Background(),
+				&logcache_v1.PromQL_InstantQueryRequest{
+					Query: `some_metric_count{source_id="some-id-1"} + some_metric_count{source_id="some-id-2"}`,
+				},
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(r.GetVector().GetSamples()).To(HaveLen(1))
+			Expect(r.GetVector().GetSamples()[0].Point.Value).To(Equal(204.0))
+
+			Eventually(spyDataReader.ReadSourceIDs).Should(
+				ConsistOf("some-id-1", "some-id-2"),
+			)
+		})
+
+		It("converts timer metric names to proper promql format", func() {
+			hourAgo := time.Now().Add(-time.Hour)
+			spyDataReader.readResults = [][]*loggregator_v2.Envelope{
+				{
+					{
+						SourceId:  "some-id-1",
+						Timestamp: hourAgo.UnixNano(),
+						Message: &loggregator_v2.Envelope_Timer{
+							Timer: &loggregator_v2.Timer{
+								Name:  "some-metric$time",
+								Start: 199,
+								Stop:  201,
+							},
+						},
+						Tags: map[string]string{
+							"a": "tag-a",
+							"b": "tag-b",
+						},
+					},
+				},
+				{
+					{
+						SourceId:  "some-id-2",
+						Timestamp: hourAgo.UnixNano(),
+						Message: &loggregator_v2.Envelope_Timer{
+							Timer: &loggregator_v2.Timer{
+								Name:  "some|metric#time",
+								Start: 299,
+								Stop:  302,
+							},
+						},
+						Tags: map[string]string{
+							"a": "tag-a",
+							"b": "tag-b",
+						},
+					},
+				},
+			}
+
+			for _ = range spyDataReader.readResults {
+				spyDataReader.readErrs = append(spyDataReader.readErrs, nil)
+			}
+
+			r, err := q.InstantQuery(
+				context.Background(),
+				&logcache_v1.PromQL_InstantQueryRequest{
+					Query: `some_metric_time{source_id="some-id-1"} + some_metric_time{source_id="some-id-2"}`,
+					Time:  hourAgo.UnixNano(),
+				},
+			)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(r.GetVector().GetSamples()).To(HaveLen(1))
+			Expect(r.GetVector().GetSamples()[0].Point.Value).To(Equal(5.0))
+
+			Eventually(spyDataReader.ReadSourceIDs).Should(
+				ConsistOf("some-id-1", "some-id-2"),
+			)
+		})
+
+		It("converts gauge metric names to proper promql format", func() {
+			now := time.Now()
+			// hourAgo := time.Now().Add(-time.Hour)
+			spyDataReader.readResults = [][]*loggregator_v2.Envelope{
+				{
+					{
+						SourceId:  "some-id-1",
+						Timestamp: now.UnixNano(),
+						Message: &loggregator_v2.Envelope_Gauge{
+							Gauge: &loggregator_v2.Gauge{
+								Metrics: map[string]*loggregator_v2.GaugeValue{
+									"some-metric$value": {Unit: "thing", Value: 99},
+								},
+							},
+						},
+						Tags: map[string]string{
+							"a": "tag-a",
+							"b": "tag-b",
+						},
+					},
+				},
+				{
+					{
+						SourceId:  "some-id-2",
+						Timestamp: now.UnixNano(),
+						Message: &loggregator_v2.Envelope_Gauge{
+							Gauge: &loggregator_v2.Gauge{
+								Metrics: map[string]*loggregator_v2.GaugeValue{
+									"some|metric#value": {Unit: "thing", Value: 199},
+								},
+							},
+						},
+						Tags: map[string]string{
+							"a": "tag-a",
+							"b": "tag-b",
+						},
+					},
+				},
+				{
+					{
+						SourceId:  "some-id-3",
+						Timestamp: now.UnixNano(),
+						Message: &loggregator_v2.Envelope_Gauge{
+							Gauge: &loggregator_v2.Gauge{
+								Metrics: map[string]*loggregator_v2.GaugeValue{
+									"some.metric+value": {Unit: "thing", Value: 299},
+								},
+							},
+						},
+						Tags: map[string]string{
+							"a": "tag-a",
+							"b": "tag-b",
+						},
+					},
+				},
+			}
+
+			for _ = range spyDataReader.readResults {
+				spyDataReader.readErrs = append(spyDataReader.readErrs, nil)
+			}
+
+			r, err := q.InstantQuery(
+				context.Background(),
+				&logcache_v1.PromQL_InstantQueryRequest{
+					Query: `some_metric_value{source_id="some-id-1"} + some_metric_value{source_id="some-id-2"} + some_metric_value{source_id="some-id-3"}`,
+					Time:  now.UnixNano(),
+				},
+			)
+
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(r.GetVector().GetSamples()).To(HaveLen(1))
+			Expect(r.GetVector().GetSamples()[0].Point.Value).To(Equal(597.0))
+		})
 	})
 
 	It("returns a scalar", func() {
