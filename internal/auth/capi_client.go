@@ -3,6 +3,8 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -65,6 +67,10 @@ func (c *CAPIClient) IsAuthorized(sourceID, token string) bool {
 		return false
 	}
 
+	defer func(r *http.Response) {
+		cleanup(r)
+	}(resp)
+
 	if resp.StatusCode == http.StatusOK {
 		return true
 	}
@@ -85,6 +91,10 @@ func (c *CAPIClient) IsAuthorized(sourceID, token string) bool {
 		return false
 	}
 
+	defer func(r *http.Response) {
+		cleanup(r)
+	}(resp)
+
 	return resp.StatusCode == http.StatusOK
 }
 
@@ -104,6 +114,11 @@ func (c *CAPIClient) AvailableSourceIDs(token string) []string {
 		log.Printf("CAPI request failed: %s", err)
 		return nil
 	}
+
+	defer func(r *http.Response) {
+		cleanup(r)
+	}(resp)
+
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("CAPI request failed (/v3/apps): %d", resp.StatusCode)
 		return nil
@@ -136,6 +151,10 @@ func (c *CAPIClient) AvailableSourceIDs(token string) []string {
 		return nil
 	}
 
+	defer func(r *http.Response) {
+		cleanup(r)
+	}(resp)
+
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("CAPI request failed (/v2/service_instances): %d", resp.StatusCode)
 		return nil
@@ -150,9 +169,15 @@ func (c *CAPIClient) AvailableSourceIDs(token string) []string {
 	}
 
 	json.NewDecoder(resp.Body).Decode(&serviceSources)
+
 	for _, v := range serviceSources.Resources {
 		sourceIDs = append(sourceIDs, v.Metadata.Guid)
 	}
 
 	return sourceIDs
+}
+
+func cleanup(resp *http.Response) {
+	io.Copy(ioutil.Discard, resp.Body)
+	resp.Body.Close()
 }
