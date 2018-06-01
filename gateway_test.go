@@ -2,6 +2,7 @@ package logcache_test
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strings"
 
@@ -109,7 +110,6 @@ var _ = Describe("Gateway", func() {
 		path := `v1/promql?query=metric{source_id="some-id"}&time=1234`
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 		req, _ := http.NewRequest("GET", URL, nil)
-
 		resp, err := http.DefaultClient.Do(req)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -118,5 +118,19 @@ var _ = Describe("Gateway", func() {
 		Expect(reqs).To(HaveLen(1))
 		Expect(reqs[0].Query).To(Equal(`metric{source_id="some-id"}`))
 		Expect(reqs[0].Time).To(Equal(int64(1234)))
+	})
+
+	It("outputs json with zero-value points", func() {
+		path := `v1/promql?query=metric{source_id="some-id"}&time=1234`
+		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
+		req, _ := http.NewRequest("GET", URL, nil)
+		spyLogCache.SetValue(0)
+
+		resp, err := http.DefaultClient.Do(req)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+		body, _ := ioutil.ReadAll(resp.Body)
+		Expect(string(body)).To(Equal(`{"scalar":{"time":"99","value":0}}`))
 	})
 })

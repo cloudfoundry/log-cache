@@ -109,7 +109,11 @@ func (g *Gateway) Addr() string {
 }
 
 func (g *Gateway) listenAndServe() {
-	mux := runtime.NewServeMux()
+	mux := runtime.NewServeMux(
+		runtime.WithMarshalerOption(
+			runtime.MIMEWildcard, &runtime.JSONPb{OrigName: true, EmitDefaults: true},
+		),
+	)
 
 	conn, err := grpc.Dial(g.logCacheAddr, g.logCacheDialOpts...)
 	if err != nil {

@@ -385,12 +385,20 @@ type spyLogCache struct {
 	readEnvelopes   map[string]func() []*loggregator_v2.Envelope
 	metaResponses   map[string]*rpc.MetaInfo
 	tlsConfig       *tls.Config
+	value           float64
+}
+
+func (s *spyLogCache) SetValue(value float64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.value = value
 }
 
 func newSpyLogCache(tlsConfig *tls.Config) *spyLogCache {
 	return &spyLogCache{
 		readEnvelopes: make(map[string]func() []*loggregator_v2.Envelope),
 		tlsConfig:     tlsConfig,
+		value:         101,
 	}
 }
 
@@ -484,7 +492,7 @@ func (s *spyLogCache) InstantQuery(ctx context.Context, r *rpc.PromQL_InstantQue
 		Result: &rpc.PromQL_QueryResult_Scalar{
 			Scalar: &rpc.PromQL_Scalar{
 				Time:  99,
-				Value: 101,
+				Value: s.value,
 			},
 		},
 	}, nil
