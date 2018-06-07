@@ -58,7 +58,7 @@ func (q *PromQL) Parse(query string) ([]string, error) {
 		dataReader: sit,
 
 		// Prometheus does not hand us back the error the way you might
-		// expect.  Therefore, we have to propogate the error back up
+		// expect.  Therefore, we have to propagate the error back up
 		// manually.
 		errf: func(e error) { closureErr = e },
 	}
@@ -95,7 +95,7 @@ func (q *PromQL) InstantQuery(ctx context.Context, req *logcache_v1.PromQL_Insta
 		dataReader: q.r,
 
 		// Prometheus does not hand us back the error the way you might
-		// expect.  Therefore, we have to propogate the error back up
+		// expect.  Therefore, we have to propagate the error back up
 		// manually.
 		errf: func(e error) { closureErr = e },
 	}
@@ -371,7 +371,7 @@ func (c *concreteSeriesSet) Err() error {
 	return nil
 }
 
-// concreteSeries implementes storage.Series.
+// concreteSeries implements storage.Series.
 type concreteSeries struct {
 	labels  labels.Labels
 	samples []sample

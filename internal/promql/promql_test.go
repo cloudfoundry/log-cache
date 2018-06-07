@@ -118,7 +118,7 @@ var _ = Describe("PromQL", func() {
 				},
 			}
 
-			for _ = range spyDataReader.readResults {
+			for range spyDataReader.readResults {
 				spyDataReader.readErrs = append(spyDataReader.readErrs, nil)
 			}
 
@@ -176,7 +176,7 @@ var _ = Describe("PromQL", func() {
 				},
 			}
 
-			for _ = range spyDataReader.readResults {
+			for range spyDataReader.readResults {
 				spyDataReader.readErrs = append(spyDataReader.readErrs, nil)
 			}
 
@@ -254,7 +254,7 @@ var _ = Describe("PromQL", func() {
 				},
 			}
 
-			for _ = range spyDataReader.readResults {
+			for range spyDataReader.readResults {
 				spyDataReader.readErrs = append(spyDataReader.readErrs, nil)
 			}
 
