@@ -48,8 +48,8 @@ func main() {
 	}
 
 	sched := logcache.NewScheduler(
-		cfg.GroupReaderNodeAddrs,
 		cfg.NodeAddrs,
+		cfg.GroupReaderNodeAddrs,
 		opts...,
 	)
 
