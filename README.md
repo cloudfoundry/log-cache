@@ -185,6 +185,12 @@ curl -G "http://<log-cache-addr>:8080/v1/promql" --data-urlencode 'query=metrics
   }
 }
 ```
+#### Notes on PromQL
+A valid PromQL metric name consists of the character [A-z][0-9] and underscore. Names can begin with [A-z] or underscore. Names cannot begin with [0-9].
+As a measure to work with existing metrics that do not comply with the above format a conversion process takes place when matching on metric names.
+Any character that is not in the set of valid characters is converted to an underscore.
+The metric is not changed in the cache.
+Eg to match on a metric name ``http.latency`` use the name ``http_latency`` as a search term
 
 ## Cloud Foundry CLI Plugin
 
