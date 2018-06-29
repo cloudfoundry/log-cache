@@ -22,6 +22,8 @@ import (
 )
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+
 	log := log.New(os.Stderr, "", log.LstdFlags)
 	log.Print("Starting Log Cache CF Auth Reverse Proxy...")
 	defer log.Print("Closing Log Cache CF Auth Reverse Proxy.")

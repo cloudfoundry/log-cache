@@ -10,6 +10,8 @@ import (
 )
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+
 	log.Print("Starting LogCache ExpvarForwarder...")
 	defer log.Print("Closing LogCache ExpvarForwarder.")
 

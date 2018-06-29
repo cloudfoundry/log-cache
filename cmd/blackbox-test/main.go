@@ -15,6 +15,8 @@ import (
 )
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+
 	cfg, err := LoadConfig()
 	if err != nil {
 		log.Fatalf("failed to load configuration: %s", err)

@@ -13,6 +13,8 @@ import (
 )
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+
 	log.Print("Starting Log Cache Gateway...")
 	defer log.Print("Closing Log Cache Gateway.")
 

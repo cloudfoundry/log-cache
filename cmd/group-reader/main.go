@@ -14,6 +14,8 @@ import (
 )
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+
 	log.Print("Starting Log Cache Group Reader...")
 	defer log.Print("Closing Log Cache Group Reader.")
 

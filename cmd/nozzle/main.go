@@ -16,6 +16,8 @@ import (
 )
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+
 	log.Print("Starting LogCache Nozzle...")
 	defer log.Print("Closing LogCache Nozzle.")
 
