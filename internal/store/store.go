@@ -26,15 +26,21 @@ type Pruner interface {
 	Prune() int
 }
 
+type LockTree struct {
+	tree *avltree.Tree
+	sync.RWMutex
+}
+
 // Store is an in memory data store for envelopes. It will keep a bounded
 // number and drop older data once that threshold is exceeded. All functions
 // are thread safe. The Pruner is used to know when entries should be
 // pruned.
 type Store struct {
-	mu           sync.RWMutex
+	mapMutex     sync.RWMutex
+	metaMapMutex sync.RWMutex
 	maxPerSource int
 
-	indexes map[string]*avltree.Tree
+	indexes map[string]*LockTree
 
 	// oldestValueTree stores each tree's oldest value for pruning. As data is
 	// added and needs to be pruned, it is done so from here.
@@ -62,7 +68,7 @@ func NewStore(maxPerSource, min int, p Pruner, m Metrics) *Store {
 	return &Store{
 		maxPerSource:    maxPerSource,
 		p:               p,
-		indexes:         make(map[string]*avltree.Tree),
+		indexes:         make(map[string]*LockTree),
 		meta:            make(map[string]logcache_v1.MetaInfo),
 		oldestValueTree: newTreeStorage(),
 		min:             min,
@@ -78,32 +84,41 @@ func NewStore(maxPerSource, min int, p Pruner, m Metrics) *Store {
 // Put adds a batch of envelopes into the store.
 func (s *Store) Put(e *loggregator_v2.Envelope, index string) {
 	s.incIngress(1)
-	s.mu.Lock()
-	defer s.mu.Unlock()
+
+	s.mapMutex.RLock()
 	t, ok := s.indexes[index]
+	s.mapMutex.RUnlock()
+
 	if !ok {
-		t = avltree.NewWith(utils.Int64Comparator)
+		s.mapMutex.Lock()
+		t = &LockTree{tree: avltree.NewWith(utils.Int64Comparator)}
 		s.indexes[index] = t
+		s.mapMutex.Unlock()
 
 		// Store the tree for pruning purposes.
-		s.oldestValueTree.Put(e.Timestamp, t)
+		s.oldestValueTree.Put(e.Timestamp, t.tree)
 	}
+
+	t.Lock()
+	defer t.Unlock()
 
 	var (
 		oldest    int64
 		hasOldest bool
 	)
-	if t.Size() > 0 {
-		oldest = t.Left().Key.(int64)
+	if t.tree.Size() > 0 {
+		oldest = t.tree.Left().Key.(int64)
 		hasOldest = true
 	}
 
-	preSize := t.Size()
+	s.metaMapMutex.Lock()
+	defer s.metaMapMutex.Unlock()
+	preSize := t.tree.Size()
 
 	if preSize >= s.maxPerSource {
 		// This index has reached/exceeded its allowed quota. Truncate the
 		// oldest before putting a new envelope in.
-		t.Remove(oldest)
+		t.tree.Remove(oldest)
 		s.incExpired(1)
 
 		// Update the meta
@@ -112,15 +127,15 @@ func (s *Store) Put(e *loggregator_v2.Envelope, index string) {
 		s.meta[index] = m
 	}
 
-	t.Put(e.Timestamp, envelopeWrapper{e: e, index: index})
+	t.tree.Put(e.Timestamp, envelopeWrapper{e: e, index: index})
 
 	// Only increment if we didn't overwrite.
-	s.count += t.Size() - preSize
+	s.count += t.tree.Size() - preSize
 
-	newOldest := t.Left().Key.(int64)
+	newOldest := t.tree.Left().Key.(int64)
 	if oldest != newOldest && hasOldest {
-		s.oldestValueTree.Remove(oldest, t)
-		s.oldestValueTree.Put(newOldest, t)
+		s.oldestValueTree.Remove(oldest, t.tree)
+		s.oldestValueTree.Put(newOldest, t.tree)
 	}
 
 	s.truncate()
@@ -137,8 +152,8 @@ func (s *Store) Put(e *loggregator_v2.Envelope, index string) {
 		m.NewestTimestamp = e.GetTimestamp()
 	}
 
-	if t.Size() > 0 {
-		m.OldestTimestamp = t.Left().Key.(int64)
+	if t.tree.Size() > 0 {
+		m.OldestTimestamp = t.tree.Left().Key.(int64)
 		s.meta[index] = m
 	}
 }
@@ -147,6 +162,7 @@ func (s *Store) Put(e *loggregator_v2.Envelope, index string) {
 // each source-id.
 func (s *Store) truncate() {
 	prune := s.p.Prune()
+
 	for i := 0; i < prune; i++ {
 		// Prevent the whole cache from being pruned
 		if s.count <= s.min {
@@ -198,13 +214,15 @@ func (s *Store) Get(
 	limit int,
 	descending bool,
 ) []*loggregator_v2.Envelope {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+	s.mapMutex.RLock()
 	t, ok := s.indexes[index]
+	s.mapMutex.RUnlock()
 	if !ok {
 		return nil
 	}
+
+	t.RLock()
+	defer t.RUnlock()
 
 	traverser := s.treeAscTraverse
 	if descending {
@@ -212,7 +230,7 @@ func (s *Store) Get(
 	}
 
 	var res []*loggregator_v2.Envelope
-	traverser(t.Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope, idx string) bool {
+	traverser(t.tree.Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope, idx string) bool {
 		if idx == index && s.validEnvelopeType(e, envelopeTypes) {
 			res = append(res, e)
 		}
@@ -222,6 +240,7 @@ func (s *Store) Get(
 	})
 
 	s.incEgress(uint64(len(res)))
+
 	return res
 }
 
@@ -315,14 +334,16 @@ func (s *Store) checkEnvelopeType(e *loggregator_v2.Envelope, t logcache_v1.Enve
 // Meta returns each source ID tracked in the store.
 func (s *Store) Meta() map[string]logcache_v1.MetaInfo {
 	meta := make(map[string]logcache_v1.MetaInfo)
-
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.metaMapMutex.Lock()
+	defer s.metaMapMutex.Unlock()
 
 	// Copy the map so that we don't leak the lock protected map beyond the
 	// locks.
 	for k, v := range s.meta {
-		v.Count = int64(s.indexes[k].Size())
+		t := s.indexes[k]
+		t.RLock()
+		v.Count = int64(t.tree.Size())
+		t.RUnlock()
 		meta[k] = v
 	}
 	return meta
@@ -332,6 +353,7 @@ func (s *Store) Meta() map[string]logcache_v1.MetaInfo {
 // prevents overwrites for the same key.
 type treeStorage struct {
 	t *avltree.Tree
+	sync.RWMutex
 }
 
 func newTreeStorage() *treeStorage {
@@ -341,6 +363,9 @@ func newTreeStorage() *treeStorage {
 }
 
 func (s *treeStorage) Put(key int64, t *avltree.Tree) {
+	s.Lock()
+	defer s.Unlock()
+
 	var values []*avltree.Tree
 	if existing, found := s.t.Get(key); found {
 		values = existing.([]*avltree.Tree)
@@ -350,6 +375,9 @@ func (s *treeStorage) Put(key int64, t *avltree.Tree) {
 }
 
 func (s *treeStorage) Remove(key int64, t *avltree.Tree) {
+	s.Lock()
+	defer s.Unlock()
+
 	var values []*avltree.Tree
 	if existing, found := s.t.Get(key); found {
 		values = existing.([]*avltree.Tree)
@@ -371,6 +399,9 @@ func (s *treeStorage) Remove(key int64, t *avltree.Tree) {
 }
 
 func (s *treeStorage) Left() (int64, *avltree.Tree) {
+	s.RLock()
+	defer s.RUnlock()
+
 	l := s.t.Left()
 	return l.Key.(int64), l.Value.([]*avltree.Tree)[0]
 }
