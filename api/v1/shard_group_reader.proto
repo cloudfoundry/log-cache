@@ -11,20 +11,20 @@ import "egress.proto";
 service ShardGroupReader {
     rpc SetShardGroup(SetShardGroupRequest) returns (SetShardGroupResponse) {
         option (google.api.http) = {
-            put: "/v1/shard_group/{name}"
+            put: "/v1/experimental/shard_group/{name}"
             body: "sub_group"
         };
     }
 
     rpc Read(ShardGroupReadRequest) returns (ShardGroupReadResponse) {
         option (google.api.http) = {
-            get: "/v1/shard_group/{name}"
+            get: "/v1/experimental/shard_group/{name}"
         };
     }
 
     rpc ShardGroup(ShardGroupRequest) returns (ShardGroupResponse) {
         option (google.api.http) = {
-            get: "/v1/shard_group/{name}/meta"
+            get: "/v1/experimental/shard_group/{name}/meta"
         };
     }
 }

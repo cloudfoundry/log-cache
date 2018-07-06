@@ -87,7 +87,9 @@ Lists the available source IDs that Log Cache has persisted.
  - **oldestTimestamp** and **newestTimestamp** are the oldest and newest
    entries for the source, in nanoseconds since the Unix epoch.
 
-### **GET** `/v1/shard_group/<group-name>`
+### **GET** `/v1/experimental/shard_group/<group-name>`
+
+*This endpoint is still experimental. SLOs are not yet met, and breaking changes should be expected.*
 
 Reads from the given shard-group. The shard-group's source-ids are merged and sorted.
 
@@ -108,7 +110,7 @@ Query Parameters:
   is 1000 and defaults to 100.
 
 ```
-curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>?start_time=<start-time>&end_time=<end-time>&requester_id=<requester-id>"
+curl "http://<log-cache-addr>:8080/v1/experimental/shard_group/<group-name>?start_time=<start-time>&end_time=<end-time>&requester_id=<requester-id>"
 ```
 
 ##### Response Body
@@ -119,7 +121,9 @@ curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>?start_time=<start
 }
 ```
 
-### **PUT** `/v1/shard_group/<group-name>/`
+### **PUT** `/v1/experimental/shard_group/<group-name>/`
+
+*This endpoint is still experimental. SLOs are not yet met, and breaking changes should be expected.*
 
 Adds the given source ids to the given shard-group. If the shard-group does
 not exist, then it gets created. Each shard-group may contain many sub-groups.
@@ -144,7 +148,7 @@ read.
 ```
 
 ```
-curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>" -XPUT -d'{"sourceIds":["source-id-1","source-id-2"]}'
+curl "http://<log-cache-addr>:8080/v1/experimental/shard_group/<group-name>" -XPUT -d'{"sourceIds":["source-id-1","source-id-2"]}'
 ```
 
 ##### Response Body
@@ -152,12 +156,14 @@ curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>" -XPUT -d'{"sourc
 {}
 ```
 
-### **GET** `/v1/shard_group/<group-name>/meta`
+### **GET** `/v1/experimental/shard_group/<group-name>/meta`
+
+*This endpoint is still experimental. SLOs are not yet met, and breaking changes should be expected.*
 
 Gets meta information about the shard-group.
 
 ```
-curl "http://<log-cache-addr>:8080/v1/shard_group/<group-name>/meta"
+curl "http://<log-cache-addr>:8080/v1/experimental/shard_group/<group-name>/meta"
 ```
 
 ##### Response Body

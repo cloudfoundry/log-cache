@@ -242,17 +242,17 @@ var _ = Describe("CfAuthMiddleware", func() {
 		})
 	})
 
-	Describe("/v1/shard_group", func() {
+	Describe("/v1/experimental/shard_group", func() {
 		BeforeEach(func() {
 			spyOauth2ClientReader.client = "some-client-id"
 			spyOauth2ClientReader.user = "some-user-id"
 
-			request = httptest.NewRequest(http.MethodGet, "/v1/shard_group/some-name", nil)
+			request = httptest.NewRequest(http.MethodGet, "/v1/experimental/shard_group/some-name", nil)
 		})
 
 		Describe("Add to group", func() {
 			BeforeEach(func() {
-				request.URL.Path = "/v1/shard_group/some-name"
+				request.URL.Path = "/v1/experimental/shard_group/some-name"
 				request.Method = "PUT"
 				request.Body = ioutil.NopCloser(strings.NewReader(`{"sourceIds":["some-id"]}`))
 			})
@@ -270,7 +270,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 				})
 				authHandler := provider.Middleware(baseHandler)
 
-				request.URL.Path = "/v1/shard_group/some-name"
+				request.URL.Path = "/v1/experimental/shard_group/some-name"
 				request.Method = "PUT"
 				request.Body = ioutil.NopCloser(strings.NewReader(fmt.Sprintf(`{"sourceIds":["%s"]}`, sourceID)))
 
@@ -280,7 +280,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 
 				Expect(recorder.Code).To(Equal(http.StatusOK))
 
-				Expect(req.URL.Path).To(Equal("/v1/shard_group/some-client-id-some-user-id-some-name"))
+				Expect(req.URL.Path).To(Equal("/v1/experimental/shard_group/some-client-id-some-user-id-some-name"))
 				Expect(spyOauth2ClientReader.token).To(Equal("valid-token"))
 
 				Expect(reqBody).To(MatchJSON(fmt.Sprintf(`{"sourceIds":["%s"]}`, sourceID)))
@@ -338,7 +338,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 
 		Describe("Read from group", func() {
 			BeforeEach(func() {
-				request.URL.Path = "/v1/shard_group/some-name"
+				request.URL.Path = "/v1/experimental/shard_group/some-name"
 				request.Method = "GET"
 			})
 
@@ -362,7 +362,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 					"group": "some-client-id-some-user-id-some-name"
 				}`))
 
-				Expect(req.URL.Path).To(Equal("/v1/shard_group/some-client-id-some-user-id-some-name"))
+				Expect(req.URL.Path).To(Equal("/v1/experimental/shard_group/some-client-id-some-user-id-some-name"))
 				Expect(spyOauth2ClientReader.token).To(Equal("valid-token"))
 			})
 
@@ -391,7 +391,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 					"code":5
 				}`))
 
-				Expect(req.URL.Path).To(Equal("/v1/shard_group/some-client-id-some-user-id-some-name"))
+				Expect(req.URL.Path).To(Equal("/v1/experimental/shard_group/some-client-id-some-user-id-some-name"))
 				Expect(spyOauth2ClientReader.token).To(Equal("valid-token"))
 			})
 
@@ -422,7 +422,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 
 		Describe("Read meta for group", func() {
 			BeforeEach(func() {
-				request.URL.Path = "/v1/shard_group/some-name/meta"
+				request.URL.Path = "/v1/experimental/shard_group/some-name/meta"
 				request.Method = "GET"
 			})
 
@@ -441,7 +441,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 
 				Expect(recorder.Code).To(Equal(http.StatusOK))
 
-				Expect(req.URL.Path).To(Equal("/v1/shard_group/some-client-id-some-user-id-some-name/meta"))
+				Expect(req.URL.Path).To(Equal("/v1/experimental/shard_group/some-client-id-some-user-id-some-name/meta"))
 				Expect(spyOauth2ClientReader.token).To(Equal("valid-token"))
 			})
 
