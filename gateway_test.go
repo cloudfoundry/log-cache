@@ -74,7 +74,7 @@ var _ = Describe("Gateway", func() {
 	)
 
 	It("upgrades HTTP requests for ShardGroupReader into gRPC requests", func() {
-		path := "v1/shard_group/some-name?start_time=99&end_time=101&limit=103&envelope_types=LOG"
+		path := "v1/experimental/shard_group/some-name?start_time=99&end_time=101&limit=103&envelope_types=LOG"
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 		resp, err := http.Get(URL)
 		Expect(err).ToNot(HaveOccurred())
@@ -90,7 +90,7 @@ var _ = Describe("Gateway", func() {
 	})
 
 	It("upgrades HTTP requests for ShardGroupReader PUTs into gRPC requests", func() {
-		path := "v1/shard_group/some-name"
+		path := "v1/experimental/shard_group/some-name"
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 		req, _ := http.NewRequest("PUT", URL, strings.NewReader(`{
 			"sourceIds": ["some-source/id"]
