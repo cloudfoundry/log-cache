@@ -334,13 +334,20 @@ func (s *Store) checkEnvelopeType(e *loggregator_v2.Envelope, t logcache_v1.Enve
 // Meta returns each source ID tracked in the store.
 func (s *Store) Meta() map[string]logcache_v1.MetaInfo {
 	meta := make(map[string]logcache_v1.MetaInfo)
-	s.metaMapMutex.Lock()
-	defer s.metaMapMutex.Unlock()
 
 	// Copy the map so that we don't leak the lock protected map beyond the
 	// locks.
+	s.metaMapMutex.RLock()
 	for k, v := range s.meta {
+		meta[k] = v
+	}
+	s.metaMapMutex.RUnlock()
+
+	// Range over our local copy of meta
+	for k, v := range meta {
+		s.mapMutex.RLock()
 		t := s.indexes[k]
+		s.mapMutex.RUnlock()
 		t.RLock()
 		v.Count = int64(t.tree.Size())
 		t.RUnlock()
