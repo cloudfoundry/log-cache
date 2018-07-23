@@ -12,6 +12,7 @@ type Config struct {
 
 	LogCacheAddr string `env:"LOG_CACHE_ADDR, required, report"`
 	HealthAddr   string `env:"HEALTH_ADDR, report"`
+	ShardId      string `env:"SHARD_ID, required, report"`
 
 	LogCacheTLS tls.TLS
 }
@@ -28,6 +29,7 @@ func LoadConfig() (*Config, error) {
 	c := Config{
 		LogCacheAddr: ":8080",
 		HealthAddr:   "localhost:6061",
+		ShardId:      "log-cache",
 	}
 
 	if err := envstruct.Load(&c); err != nil {

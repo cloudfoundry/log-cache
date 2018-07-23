@@ -35,7 +35,7 @@ var _ = Describe("Nozzle", func() {
 		logCache = newSpyLogCache(tlsConfig)
 		addr := logCache.start()
 
-		n = logcache.NewNozzle(streamConnector, addr,
+		n = logcache.NewNozzle(streamConnector, addr, "log-cache",
 			logcache.WithNozzleMetrics(metricMap),
 			logcache.WithNozzleDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
 		)

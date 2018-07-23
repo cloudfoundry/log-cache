@@ -17,6 +17,7 @@ type Nozzle struct {
 	log     *log.Logger
 	s       StreamConnector
 	metrics Metrics
+	shardId string
 
 	// LogCache
 	addr string
@@ -30,13 +31,14 @@ type StreamConnector interface {
 }
 
 // NewNozzle creates a new Nozzle.
-func NewNozzle(c StreamConnector, logCacheAddr string, opts ...NozzleOption) *Nozzle {
+func NewNozzle(c StreamConnector, logCacheAddr string, shardId string, opts ...NozzleOption) *Nozzle {
 	n := &Nozzle{
 		s:       c,
 		addr:    logCacheAddr,
 		opts:    []grpc.DialOption{grpc.WithInsecure()},
 		log:     log.New(ioutil.Discard, "", 0),
 		metrics: nopMetrics{},
+		shardId: shardId,
 	}
 
 	for _, o := range opts {
@@ -111,7 +113,7 @@ func (n *Nozzle) Start() {
 
 func (n *Nozzle) buildBatchReq() *loggregator_v2.EgressBatchRequest {
 	return &loggregator_v2.EgressBatchRequest{
-		ShardId:          "log-cache",
+		ShardId:          n.shardId,
 		UsePreferredTags: true,
 		Selectors: []*loggregator_v2.Selector{
 			{

@@ -54,6 +54,7 @@ func main() {
 	nozzle := logcache.NewNozzle(
 		streamConnector,
 		cfg.LogCacheAddr,
+		cfg.ShardId,
 		logcache.WithNozzleLogger(log.New(os.Stderr, "", log.LstdFlags)),
 		logcache.WithNozzleMetrics(m),
 		logcache.WithNozzleDialOpts(
