@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"strconv"
 	"sync"
 	"time"
 
@@ -237,7 +238,7 @@ var _ = Describe("Store", func() {
 		envelopes = s.Get("b", start, end, nil, 10, false)
 		Expect(envelopes).To(HaveLen(1))
 
-		Expect(sm.values["Expired"]).To(Equal(1.0))
+		Expect(sm.GetValue("Expired")).To(Equal(1.0))
 	})
 
 	It("sets (via metrics) the store's period in milliseconds", func() {
@@ -305,6 +306,32 @@ var _ = Describe("Store", func() {
 		s.Put(buildTypedEnvelope(-1, "index-1", &loggregator_v2.Log{}), "index-1")
 		Expect(s.Meta()).ToNot(HaveKey("index-1"))
 	})
+
+	It("demonstrates thread safety under heavy concurrent load", func() {
+		sp := newSpyPruner()
+		sp.result = 10
+		loadStore := store.NewStore(10000, 5000, sp, sm)
+		start := time.Now()
+
+		for i := 0; i < 10; i++ {
+			for j := 0; j < 10; j++ {
+
+				go func(sourceId string) {
+					for i := 0; i < 10000; i++ {
+						e := buildTypedEnvelope(time.Now().UnixNano(), sourceId, &loggregator_v2.Log{})
+						loadStore.Put(e, sourceId)
+						time.Sleep(time.Millisecond)
+					}
+				}(strconv.Itoa(j))
+			}
+		}
+
+		Consistently(func() int64 {
+			envelopes := s.Get("9", start, time.Now(), nil, 100000, false)
+			time.Sleep(500 * time.Millisecond)
+			return int64(len(envelopes))
+		}).Should(BeNumerically("<=", 10000))
+	})
 })
 
 func buildEnvelope(timestamp int64, sourceID string) *loggregator_v2.Envelope {
@@ -350,6 +377,7 @@ func buildTypedEnvelope(timestamp int64, sourceID string, t interface{}) *loggre
 
 type spyMetrics struct {
 	values map[string]float64
+	sync.Mutex
 }
 
 func newSpyMetrics() *spyMetrics {
@@ -360,18 +388,28 @@ func newSpyMetrics() *spyMetrics {
 
 func (s *spyMetrics) NewCounter(name string) func(delta uint64) {
 	return func(d uint64) {
+		s.Lock()
+		defer s.Unlock()
 		s.values[name] += float64(d)
 	}
 }
 
 func (s *spyMetrics) NewGauge(name string) func(value float64) {
 	return func(v float64) {
+		s.Lock()
+		defer s.Unlock()
 		s.values[name] = v
 	}
 }
 
+func (s *spyMetrics) GetValue(name string) float64 {
+	s.Lock()
+	defer s.Unlock()
+
+	return s.values[name]
+}
+
 type spyPruner struct {
-	called int
 	result int
 }
 
@@ -380,6 +418,5 @@ func newSpyPruner() *spyPruner {
 }
 
 func (s *spyPruner) Prune() int {
-	s.called++
 	return s.result
 }
