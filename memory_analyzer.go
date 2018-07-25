@@ -1,11 +1,12 @@
 package logcache
 
 import (
-	"time"
 	"runtime"
+	"time"
+
+	"sync"
 
 	"github.com/cloudfoundry/gosigar"
-	"sync"
 )
 
 // MemoryAnalyzer reports the available and total memory.
@@ -32,7 +33,7 @@ func NewMemoryAnalyzer(m Metrics) *MemoryAnalyzer {
 		setTotal: m.NewGauge("TotalSystemMemory"),
 	}
 }
-s
+
 // Memory returns the heap memory and total system memory.
 func (a *MemoryAnalyzer) Memory() (heapInUse, available, total uint64) {
 	a.Lock()
