@@ -329,6 +329,7 @@ func (s *spyMetrics) NewGauge(name string) func(value float64) {
 
 type spyPruner struct {
 	size int
+	sync.Mutex
 }
 
 func newSpyPruner() *spyPruner {
@@ -336,6 +337,9 @@ func newSpyPruner() *spyPruner {
 }
 
 func (s *spyPruner) Prune() int {
+	s.Lock()
+	defer s.Unlock()
+
 	s.size++
 	if s.size > 5 {
 		return s.size - 5
