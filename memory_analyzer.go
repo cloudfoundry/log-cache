@@ -2,10 +2,10 @@ package logcache
 
 import (
 	"time"
-
 	"runtime"
 
-	sigar "github.com/cloudfoundry/gosigar"
+	"github.com/cloudfoundry/gosigar"
+	"sync"
 )
 
 // MemoryAnalyzer reports the available and total memory.
@@ -20,6 +20,8 @@ type MemoryAnalyzer struct {
 	avail      uint64
 	total      uint64
 	heap       uint64
+
+	sync.Mutex
 }
 
 // NewMemoryAnalyzer creates and returns a new MemoryAnalyzer.
@@ -30,9 +32,11 @@ func NewMemoryAnalyzer(m Metrics) *MemoryAnalyzer {
 		setTotal: m.NewGauge("TotalSystemMemory"),
 	}
 }
-
+s
 // Memory returns the heap memory and total system memory.
 func (a *MemoryAnalyzer) Memory() (heapInUse, available, total uint64) {
+	a.Lock()
+	defer a.Unlock()
 	if time.Since(a.lastResult) > 5*time.Second {
 		a.lastResult = time.Now()
 
