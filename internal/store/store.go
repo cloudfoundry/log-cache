@@ -186,6 +186,10 @@ func (store *Store) removeOldestEnvelope() {
 	treeToPrune.Lock()
 	defer treeToPrune.Unlock()
 
+	if treeToPrune.Size() == 0 {
+		return
+	}
+
 	store.expirationIndex.Remove(oldestTimestamp, treeToPrune)
 
 	oldestEnvelope := treeToPrune.Left()
