@@ -14,7 +14,7 @@ import (
 var _ = Describe("store under high concurrent load", func() {
 	timeoutInSeconds := 300
 
-	FIt("", func(done Done) {
+	It("", func(done Done) {
 		var wg sync.WaitGroup
 
 		sp := newSpyPruner()
