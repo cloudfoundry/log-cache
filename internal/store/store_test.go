@@ -307,6 +307,9 @@ var _ = Describe("Store", func() {
 		Expect(s.Meta()).ToNot(HaveKey("index-1"))
 	})
 
+	// TODO: This is probably duplicated in the store_load_test, but it was
+	// really useful in driving out races. We'd like to leave this in place
+	// until we have a high level of confidence that we're catching races
 	It("demonstrates thread safety under heavy concurrent load", func() {
 		sp := newSpyPruner()
 		sp.result = 10
@@ -315,7 +318,6 @@ var _ = Describe("Store", func() {
 
 		for i := 0; i < 10; i++ {
 			for j := 0; j < 10; j++ {
-
 				go func(sourceId string) {
 					for i := 0; i < 10000; i++ {
 						e := buildTypedEnvelope(time.Now().UnixNano(), sourceId, &loggregator_v2.Log{})
@@ -327,7 +329,7 @@ var _ = Describe("Store", func() {
 		}
 
 		Consistently(func() int64 {
-			envelopes := s.Get("9", start, time.Now(), nil, 100000, false)
+			envelopes := loadStore.Get("9", start, time.Now(), nil, 100000, false)
 			time.Sleep(500 * time.Millisecond)
 			return int64(len(envelopes))
 		}).Should(BeNumerically("<=", 10000))
