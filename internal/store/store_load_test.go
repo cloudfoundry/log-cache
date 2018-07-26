@@ -12,7 +12,7 @@ import (
 )
 
 var _ = Describe("store under high concurrent load", func() {
-	timeoutInSeconds := 60
+	timeoutInSeconds := 300
 
 	FIt("", func(done Done) {
 		var wg sync.WaitGroup
