@@ -163,7 +163,6 @@ var _ = Describe("LogCache", func() {
 		defer conn.Close()
 		client := rpc.NewPromQLQuerierClient(conn)
 
-		var samples []*rpc.PromQL_Sample
 		f := func() error {
 			resp, err := client.InstantQuery(context.Background(), &rpc.PromQL_InstantQueryRequest{
 				Query: `metric{source_id="source-0"}`,
@@ -177,7 +176,6 @@ var _ = Describe("LogCache", func() {
 				return errors.New("expected 1 samples")
 			}
 
-			samples = resp.GetVector().GetSamples()
 			return nil
 		}
 		Eventually(f).Should(BeNil())
