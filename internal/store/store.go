@@ -11,163 +11,146 @@ import (
 	"github.com/emirpasic/gods/utils"
 )
 
-// Metrics is the client used for initializing counter and gauge metrics.
-type Metrics interface {
-	//NewCounter initializes a new counter metric.
+type MetricsInitializer interface {
 	NewCounter(name string) func(delta uint64)
-
-	//NewGauge initializes a new gauge metric.
 	NewGauge(name string) func(value float64)
 }
 
 // Pruner is used to determine if the store should prune.
 type Pruner interface {
-	// Prune returns true if the store should prune entries. The returned
-	// value is the length of entries to prune.
+	// Prune returns the number of envelopes to prune.
 	Prune() int
 }
 
-type LockableTree struct {
-	*avltree.Tree
-	meta logcache_v1.MetaInfo
-	sync.RWMutex
-}
-
-// Store is an in memory data store for envelopes. It will keep a bounded
-// number and drop older data once that threshold is exceeded. All functions
-// are thread safe. The Pruner is used to know when entries should be
-// pruned.
+// Store is an in-memory data store for envelopes. It will store envelopes up
+// to a per-source threshold and evict oldest data first, as instructed by the
+// Pruner. All functions are thread safe.
 type Store struct {
-	indexes map[string]*LockableTree
+	storageIndex sync.Map
 
-	// expirationIndex stores each tree's oldest value for pruning. As data is
-	// added and needs to be pruned, it is done so from here.
-	expirationIndex *treeIndex
+	// expirationIndex stores a reference to each tree index by its oldest
+	// timestamp to facilitate pruning.
+	expirationIndex *index
 
-	// count is incremented atomically each Put. It is used to determine when to prune. When
-	// an envelope is pruned, it is decremented atomically.
+	// count is incremented/decremented atomically during Put. Pruning occurs
+	// only when count surpasses minimumStoreSizeToPrune
 	count                   int64
-	maxPerSource            int
 	minimumStoreSizeToPrune int
 
-	// metrics
+	maxPerSource int
+
+	metrics Metrics
+	p       Pruner
+}
+
+type Metrics struct {
 	incExpired     func(delta uint64)
 	setCachePeriod func(value float64)
 	incIngress     func(delta uint64)
 	incEgress      func(delta uint64)
 	setStoreSize   func(value float64)
-
-	p Pruner
-	sync.RWMutex
 }
 
-func NewStore(maxPerSource, minimumStoreSizeToPrune int, p Pruner, m Metrics) *Store {
+func NewStore(maxPerSource, minimumStoreSizeToPrune int, p Pruner, m MetricsInitializer) *Store {
 	return &Store{
-		maxPerSource:            maxPerSource,
-		p:                       p,
-		indexes:                 make(map[string]*LockableTree),
-		expirationIndex:         newTreeIndex(),
-		minimumStoreSizeToPrune: minimumStoreSizeToPrune,
+		expirationIndex: newIndexTree(),
 
-		incExpired:     m.NewCounter("Expired"),
-		setCachePeriod: m.NewGauge("CachePeriod"),
-		incIngress:     m.NewCounter("Ingress"),
-		incEgress:      m.NewCounter("Egress"),
-		setStoreSize:   m.NewGauge("StoreSize"),
+		minimumStoreSizeToPrune: minimumStoreSizeToPrune,
+		maxPerSource:            maxPerSource,
+
+		metrics: Metrics{
+			incExpired:     m.NewCounter("Expired"),
+			setCachePeriod: m.NewGauge("CachePeriod"),
+			incIngress:     m.NewCounter("Ingress"),
+			incEgress:      m.NewCounter("Egress"),
+			setStoreSize:   m.NewGauge("StoreSize"),
+		},
+
+		p: p,
 	}
 }
 
-func (store *Store) Put(envelope *loggregator_v2.Envelope, index string) {
-	store.incIngress(1)
+func (store *Store) Put(envelope *loggregator_v2.Envelope, sourceId string) {
+	store.metrics.incIngress(1)
 
-	tree, ok := store.retrieveTree(index)
-	if !ok {
-		tree = store.insertTree(index)
-		store.expirationIndex.Put(envelope.Timestamp, tree)
+	// Hold a lock on the expirationIndex while we check to see if this
+	// will require creation of a new tree
+	store.expirationIndex.Lock()
+	envelopeStorage, existingSourceId := store.storageIndex.Load(sourceId)
+
+	if !existingSourceId {
+		envelopeStorage = &storage{Tree: avltree.NewWith(utils.Int64Comparator)}
+		store.storageIndex.Store(sourceId, envelopeStorage.(*storage))
+		store.expirationIndex.PutTree(envelope.Timestamp, envelopeStorage.(*storage))
 	}
+	store.expirationIndex.Unlock()
 
-	tree.Lock()
+	envelopeStorage.(*storage).Lock()
 
 	var oldestBeforeInsertion int64
-	preexistingTree := tree.Size() > 0
-	if preexistingTree {
-		oldestBeforeInsertion = tree.Left().Key.(int64)
+	if existingSourceId {
+		oldestBeforeInsertion = envelopeStorage.(*storage).Left().Key.(int64)
 	}
 
-	treeSizeBeforeInsertion := tree.Size()
+	treeSizeBeforeInsertion := envelopeStorage.(*storage).Size()
 	if treeSizeBeforeInsertion >= store.maxPerSource {
-		tree.Remove(oldestBeforeInsertion)
+		envelopeStorage.(*storage).Remove(oldestBeforeInsertion)
 
-		store.incExpired(1)
-		tree.meta.Expired++
+		store.metrics.incExpired(1)
+		envelopeStorage.(*storage).meta.Expired++
 	}
 
-	tree.Put(envelope.Timestamp, envelopeWrapper{e: envelope, index: index})
+	envelopeStorage.(*storage).Put(envelope.Timestamp, envelopeWrapper{e: envelope, index: sourceId})
 
 	// Only increment if we didn't overwrite.
-	atomic.AddInt64(&store.count, int64(tree.Size()-treeSizeBeforeInsertion))
+	sizeDiff := int64(envelopeStorage.(*storage).Size() - treeSizeBeforeInsertion)
+	atomic.AddInt64(&store.count, sizeDiff)
 
-	oldestAfterInsertion := tree.Left().Key.(int64)
-	if oldestBeforeInsertion != oldestAfterInsertion && preexistingTree {
-		store.expirationIndex.Remove(oldestBeforeInsertion, tree)
-		store.expirationIndex.Put(oldestAfterInsertion, tree)
+	oldestAfterInsertion := envelopeStorage.(*storage).Left().Key.(int64)
+	envelopeStorage.(*storage).Unlock()
+
+	if oldestBeforeInsertion != oldestAfterInsertion && existingSourceId {
+		// TODO - this seems like it could be extracted to a method
+		store.expirationIndex.Lock()
+		store.expirationIndex.RemoveTree(oldestBeforeInsertion, envelopeStorage.(*storage))
+		store.expirationIndex.PutTree(oldestAfterInsertion, envelopeStorage.(*storage))
+		store.expirationIndex.Unlock()
 	}
 
-	tree.Unlock()
-
 	store.truncate()
-	store.setStoreSize(float64(atomic.LoadInt64(&store.count)))
+	store.metrics.setStoreSize(float64(atomic.LoadInt64(&store.count)))
 
-	tree.Lock()
-	if envelope.GetTimestamp() > tree.meta.NewestTimestamp {
-		tree.meta.NewestTimestamp = envelope.GetTimestamp()
+	envelopeStorage.(*storage).Lock()
+	if envelope.GetTimestamp() > envelopeStorage.(*storage).meta.NewestTimestamp {
+		envelopeStorage.(*storage).meta.NewestTimestamp = envelope.GetTimestamp()
 	}
 
 	// TODO - this logic maybe belongs in truncate() - Put() seems like an odd place
 	// 		to consider that the tree has been deleted during truncate()
-	if tree.Size() > 0 {
-		tree.meta.OldestTimestamp = tree.Left().Key.(int64)
+	if envelopeStorage.(*storage).Size() > 0 {
+		envelopeStorage.(*storage).meta.OldestTimestamp = envelopeStorage.(*storage).Left().Key.(int64)
 	}
-	tree.Unlock()
+	envelopeStorage.(*storage).Unlock()
 
 	// TODO - probably a helper
-	// Set Cache Period
-	oldestValue, _ := store.expirationIndex.Left()
-	cachePeriod := (time.Now().UnixNano() - oldestValue) / int64(time.Millisecond)
-	store.setCachePeriod(float64(cachePeriod))
-}
-
-func (store *Store) insertTree(key string) *LockableTree {
-	store.Lock()
-	defer store.Unlock()
-
-	tree := &LockableTree{Tree: avltree.NewWith(utils.Int64Comparator)}
-	store.indexes[key] = tree
-	return tree
-}
-
-func (store *Store) retrieveTree(key string) (*LockableTree, bool) {
-	store.RLock()
-	defer store.RUnlock()
-
-	tree, ok := store.indexes[key]
-	return tree, ok
-}
-
-func (store *Store) removeTree(key string) {
-	store.Lock()
-	defer store.Unlock()
-
-	delete(store.indexes, key)
+	oldestValue, oldestTree := store.expirationIndex.LeftTree()
+	if oldestTree != nil {
+		cachePeriod := (time.Now().UnixNano() - oldestValue) / int64(time.Millisecond)
+		store.metrics.setCachePeriod(float64(cachePeriod))
+	}
 }
 
 // truncate removes the n oldest envelopes across all trees
 func (store *Store) truncate() {
 	numberToPrune := int64(store.p.Prune())
+	storeCount := atomic.LoadInt64(&store.count)
+	minimumStoreSizeToPrune := int64(store.minimumStoreSizeToPrune)
 
-	// Prevent the whole cache from being pruned
-	if atomic.LoadInt64(&store.count)-numberToPrune < int64(store.minimumStoreSizeToPrune) {
-		numberToPrune = atomic.LoadInt64(&store.count) - int64(store.minimumStoreSizeToPrune)
+	// Make sure we don't prune below the minimum size
+	if storeCount-numberToPrune < minimumStoreSizeToPrune {
+		numberToPrune = storeCount - minimumStoreSizeToPrune
+		// TODO - may want to eject here instead of starting the loop with a
+		//   negative numberToPrune
 	}
 
 	for i := int64(0); i < numberToPrune; i++ {
@@ -176,39 +159,35 @@ func (store *Store) truncate() {
 }
 
 func (store *Store) removeOldestEnvelope() {
-	atomic.AddInt64(&store.count, -1)
-	store.incExpired(1)
+	store.expirationIndex.Lock()
 
-	// dereference the node so that after we remove it, the pointer does not
-	// get updated underneath us.
-	oldestTimestamp, treeToPrune := store.expirationIndex.Left()
+	oldestTimestamp, treeToPrune := store.expirationIndex.RemoveLeftTree()
 
 	treeToPrune.Lock()
 	defer treeToPrune.Unlock()
 
-	if treeToPrune.Size() == 0 {
-		return
-	}
-
-	store.expirationIndex.Remove(oldestTimestamp, treeToPrune)
+	atomic.AddInt64(&store.count, -1)
+	store.metrics.incExpired(1)
 
 	oldestEnvelope := treeToPrune.Left()
+	// TODO: maybe move this index to the storage
 	treeIndex := oldestEnvelope.Value.(envelopeWrapper).index
 
 	treeToPrune.Remove(oldestTimestamp)
 
 	if treeToPrune.Size() == 0 {
-		store.removeTree(treeIndex)
+		store.storageIndex.Delete(treeIndex)
+		store.expirationIndex.Unlock()
 		return
 	}
 
 	// TODO - can we extract a function for 'update meta and expirationIndex?'
 	oldestAfterRemoval := treeToPrune.Left().Key.(int64)
+	store.expirationIndex.PutTree(oldestAfterRemoval, treeToPrune)
+	store.expirationIndex.Unlock()
 
 	treeToPrune.meta.Expired++
 	treeToPrune.meta.OldestTimestamp = oldestAfterRemoval
-
-	store.expirationIndex.Put(oldestAfterRemoval, treeToPrune)
 }
 
 // Get fetches envelopes from the store based on the source ID, start and end
@@ -221,13 +200,13 @@ func (store *Store) Get(
 	limit int,
 	descending bool,
 ) []*loggregator_v2.Envelope {
-	tree, ok := store.retrieveTree(index)
+	tree, ok := store.storageIndex.Load(index)
 	if !ok {
 		return nil
 	}
 
-	tree.RLock()
-	defer tree.RUnlock()
+	tree.(*storage).RLock()
+	defer tree.(*storage).RUnlock()
 
 	traverser := store.treeAscTraverse
 	if descending {
@@ -235,7 +214,7 @@ func (store *Store) Get(
 	}
 
 	var res []*loggregator_v2.Envelope
-	traverser(tree.Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope, idx string) bool {
+	traverser(tree.(*storage).Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope, idx string) bool {
 		if idx == index && store.validEnvelopeType(e, envelopeTypes) {
 			res = append(res, e)
 		}
@@ -244,7 +223,7 @@ func (store *Store) Get(
 		return len(res) >= limit
 	})
 
-	store.incEgress(uint64(len(res)))
+	store.metrics.incEgress(uint64(len(res)))
 	return res
 }
 
@@ -339,63 +318,58 @@ func (s *Store) checkEnvelopeType(e *loggregator_v2.Envelope, t logcache_v1.Enve
 func (store *Store) Meta() map[string]logcache_v1.MetaInfo {
 	metaReport := make(map[string]logcache_v1.MetaInfo)
 
-	// Copy the maps so that we don't leak the lock protected maps beyond the
-	// locks.
-	store.RLock()
-	for index, tree := range store.indexes {
-		tree.RLock()
-		metaReport[index] = tree.meta
-		tree.RUnlock()
-	}
-	store.RUnlock()
+	store.storageIndex.Range(func(index interface{}, tree interface{}) bool {
+		tree.(*storage).RLock()
+		metaReport[index.(string)] = tree.(*storage).meta
+		tree.(*storage).RUnlock()
+
+		return true
+	})
 
 	// Range over our local copy of metaReport
 	// TODO - shouldn't we just maintain Count on metaReport..?!
 	for index, meta := range metaReport {
-		tree, _ := store.retrieveTree(index)
+		tree, _ := store.storageIndex.Load(index)
 
-		tree.RLock()
-		meta.Count = int64(tree.Size())
-		tree.RUnlock()
+		tree.(*storage).RLock()
+		meta.Count = int64(tree.(*storage).Size())
+		tree.(*storage).RUnlock()
 		metaReport[index] = meta
 	}
 	return metaReport
 }
 
-// treeIndex stores the trees and sorts them with respect to time. It
-// prevents overwrites for the same key.
-type treeIndex struct {
-	t *avltree.Tree
+type storage struct {
+	meta logcache_v1.MetaInfo
+
+	*avltree.Tree
 	sync.RWMutex
 }
 
-func newTreeIndex() *treeIndex {
-	return &treeIndex{
-		t: avltree.NewWith(utils.Int64Comparator),
+type index struct {
+	*avltree.Tree
+	sync.RWMutex
+}
+
+func newIndexTree() *index {
+	return &index{
+		Tree: avltree.NewWith(utils.Int64Comparator),
 	}
 }
 
-func (s *treeIndex) Put(key int64, treeToIndex *LockableTree) {
-	s.Lock()
-	defer s.Unlock()
-	indexTree := s.t
-
-	var values []*LockableTree
-	if existing, found := indexTree.Get(key); found {
-		values = existing.([]*LockableTree)
+func (index *index) PutTree(key int64, treeToIndex *storage) {
+	var values []*storage
+	if existing, found := index.Get(key); found {
+		values = existing.([]*storage)
 	}
 
-	indexTree.Put(key, append(values, treeToIndex))
+	index.Put(key, append(values, treeToIndex))
 }
 
-func (s *treeIndex) Remove(key int64, treeToIndex *LockableTree) {
-	s.Lock()
-	defer s.Unlock()
-	indexTree := s.t
-
-	var values []*LockableTree
-	if existing, found := indexTree.Get(key); found {
-		values = existing.([]*LockableTree)
+func (index *index) RemoveTree(key int64, treeToIndex *storage) {
+	var values []*storage
+	if existing, found := index.Get(key); found {
+		values = existing.([]*storage)
 	}
 
 	for i, v := range values {
@@ -406,20 +380,40 @@ func (s *treeIndex) Remove(key int64, treeToIndex *LockableTree) {
 	}
 
 	if len(values) == 0 {
-		indexTree.Remove(key)
+		index.Remove(key)
 		return
 	}
 
-	indexTree.Put(key, values)
+	index.Put(key, values)
 }
 
-func (s *treeIndex) Left() (int64, *LockableTree) {
-	s.RLock()
-	defer s.RUnlock()
-	indexTree := s.t
+// TODO: maybe perhaps consider wrtiting a test for this at some point. maybe.
+func (index *index) RemoveLeftTree() (int64, *storage) {
+	l := index.Left()
+	timestamp, values := l.Key.(int64), l.Value.([]*storage)
 
-	l := indexTree.Left()
-	return l.Key.(int64), l.Value.([]*LockableTree)[0]
+	lt := values[0]
+	values = values[1:]
+
+	if len(values) == 0 {
+		index.Remove(timestamp)
+		return timestamp, lt
+	}
+
+	index.Put(timestamp, values)
+	return timestamp, lt
+}
+
+func (index *index) LeftTree() (int64, *storage) {
+	index.RLock()
+	defer index.RUnlock()
+
+	if index.Size() == 0 {
+		return 0, nil
+	}
+
+	l := index.Left()
+	return l.Key.(int64), l.Value.([]*storage)[0]
 }
 
 type envelopeWrapper struct {
