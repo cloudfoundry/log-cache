@@ -88,11 +88,12 @@ func (store *Store) Put(envelope *loggregator_v2.Envelope, sourceId string) {
 	envelopeStorage.(*storage).Lock()
 
 	var oldestBeforeInsertion int64
-	if existingSourceId {
+
+	treeSizeBeforeInsertion := envelopeStorage.(*storage).Size()
+	if treeSizeBeforeInsertion > 0 {
 		oldestBeforeInsertion = envelopeStorage.(*storage).Left().Key.(int64)
 	}
 
-	treeSizeBeforeInsertion := envelopeStorage.(*storage).Size()
 	if treeSizeBeforeInsertion >= store.maxPerSource {
 		envelopeStorage.(*storage).Remove(oldestBeforeInsertion)
 
@@ -109,7 +110,7 @@ func (store *Store) Put(envelope *loggregator_v2.Envelope, sourceId string) {
 	oldestAfterInsertion := envelopeStorage.(*storage).Left().Key.(int64)
 	envelopeStorage.(*storage).Unlock()
 
-	if oldestBeforeInsertion != oldestAfterInsertion && existingSourceId {
+	if oldestBeforeInsertion != oldestAfterInsertion && treeSizeBeforeInsertion > 0 {
 		// TODO - this seems like it could be extracted to a method
 		store.expirationIndex.Lock()
 		store.expirationIndex.RemoveTree(oldestBeforeInsertion, envelopeStorage.(*storage))
