@@ -9,21 +9,23 @@ import (
 
 var _ = Describe("PruneConsultant", func() {
 	var (
-		sm *spyMemory
-		c  *store.PruneConsultant
+		sm         *spyMemory
+		c          *store.PruneConsultant
+		storeCount int64
 	)
 
 	BeforeEach(func() {
 		sm = newSpyMemory()
 		c = store.NewPruneConsultant(5, 70, sm)
+		storeCount = 1000
 	})
 
 	It("does not prune any entries if memory utilization is under allotment", func() {
-		sm.avail = 100
+		sm.avail = 30
 		sm.heap = 70
 		sm.total = 100
 
-		Expect(c.Prune()).To(BeZero())
+		Expect(c.GetQuantityToPrune(storeCount)).To(Equal(0))
 	})
 
 	It("prunes entries if memory utilization is over allotment", func() {
@@ -31,14 +33,15 @@ var _ = Describe("PruneConsultant", func() {
 		sm.heap = 71
 		sm.total = 100
 
-		Expect(c.Prune()).To(Equal(5))
+		Expect(c.GetQuantityToPrune(storeCount)).To(Equal(14))
 	})
 
 	It("prunes entries if available system memory is under 20", func() {
-		sm.avail = 19
+		sm.avail = 15
+		sm.heap = 50
 		sm.total = 100
 
-		Expect(c.Prune()).To(Equal(5))
+		Expect(c.GetQuantityToPrune(storeCount)).To(Equal(100))
 	})
 })
 

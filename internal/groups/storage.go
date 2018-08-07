@@ -50,8 +50,7 @@ func NewStorage(
 	maxPerSource int,
 	r Reader,
 	backoff time.Duration,
-	p store.Pruner,
-	m Metrics,
+	p store.MemoryConsultant, m Metrics,
 	log *log.Logger,
 ) *Storage {
 	s := &Storage{

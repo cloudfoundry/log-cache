@@ -198,7 +198,7 @@ type staticPruner struct {
 	size int
 }
 
-func (s *staticPruner) Prune() int {
+func (s *staticPruner) GetQuantityToPrune(int64) int {
 	s.size++
 	if s.size > StoreSize {
 		return s.size - StoreSize

@@ -336,7 +336,7 @@ func newSpyPruner() *spyPruner {
 	return &spyPruner{}
 }
 
-func (s *spyPruner) Prune() int {
+func (s *spyPruner) GetQuantityToPrune(int64) int {
 	s.Lock()
 	defer s.Unlock()
 

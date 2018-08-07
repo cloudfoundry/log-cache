@@ -25,14 +25,19 @@ func NewPruneConsultant(stepBy int, percentToFill float64, m Memory) *PruneConsu
 }
 
 // Prune reports how many entries should be removed.
-func (a *PruneConsultant) Prune() int {
-	heap, avail, total := a.m.Memory()
-	if float64(heap*100)/float64(total) > a.percentToFill {
-		return a.stepBy
+func (pc *PruneConsultant) GetQuantityToPrune(storeCount int64) int {
+	heap, avail, total := pc.m.Memory()
+
+	heapPercentage := float64(heap*100) / float64(total)
+	if heapPercentage > pc.percentToFill {
+		percentageToPrune := (heapPercentage - pc.percentToFill) / heapPercentage
+		return int(float64(storeCount) * percentageToPrune)
 	}
 
-	if float64(avail*100)/float64(total) <= 20 {
-		return a.stepBy
+	availablePercentage := float64(avail*100) / float64(total)
+	if availablePercentage < 20 {
+		percentageToPrune := (20 - availablePercentage) / heapPercentage
+		return int(float64(storeCount) * percentageToPrune)
 	}
 
 	return 0
