@@ -3,8 +3,11 @@ package logcache
 import (
 	"io/ioutil"
 	"log"
+	"strconv"
 	"sync"
 	"time"
+
+	"expvar"
 
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	orchestrator "code.cloudfoundry.org/go-orchestrator"
@@ -16,6 +19,7 @@ import (
 type Scheduler struct {
 	log               *log.Logger
 	metrics           Metrics
+	workersReporter   *expvar.Map
 	interval          time.Duration
 	count             int
 	replicationFactor int
@@ -31,9 +35,16 @@ type Scheduler struct {
 // NewScheduler returns a new Scheduler. Addrs are the addresses of the Cache
 // nodes.
 func NewScheduler(logCacheAddrs, groupAddrs []string, opts ...SchedulerOption) *Scheduler {
+	// TODO: This is a hack to avoid test collisions. Please fix this.
+	workersReporter := expvar.Get("WorkerAssignments")
+	if workersReporter == nil {
+		workersReporter = expvar.NewMap("WorkerAssignments")
+	}
+
 	s := &Scheduler{
 		log:               log.New(ioutil.Discard, "", 0),
 		metrics:           nopMetrics{},
+		workersReporter:   workersReporter.(*expvar.Map),
 		interval:          time.Minute,
 		count:             100,
 		replicationFactor: 1,
@@ -196,9 +207,21 @@ func (s *Scheduler) Start() {
 			if s.isLeader() {
 				s.setRemoteTables(s.logCacheClients, s.convertWorkerState(s.logCacheOrch.LastActual()))
 				s.setRemoteTables(s.groupClients, s.convertWorkerState(s.groupOrch.LastActual()))
+
+				for _, node := range s.logCacheOrch.LastActual() {
+					s.workersReporter.Set(node.Name.(clientInfo).addr, stateWrapper{state: node})
+				}
 			}
 		}
 	}()
+}
+
+type stateWrapper struct {
+	state orchestrator.WorkerState
+}
+
+func (wrapper stateWrapper) String() string {
+	return strconv.Itoa(len(wrapper.state.Tasks))
 }
 
 func (s *Scheduler) setRemoteTables(clients []clientInfo, m map[string]*rpc.Ranges) {

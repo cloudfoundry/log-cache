@@ -50,6 +50,16 @@ func main() {
 		))
 	}
 
+	for _, m := range cfg.Maps.Descriptions {
+		opts = append(opts, logcache.AddExpvarMapTemplate(
+			m.Addr,
+			m.Name,
+			m.SourceID,
+			m.Template,
+			m.Tags,
+		))
+	}
+
 	forwarder := logcache.NewExpvarForwarder(
 		cfg.LogCacheAddr,
 		opts...,

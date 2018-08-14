@@ -3,6 +3,7 @@ package logcache
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -106,11 +107,11 @@ func AddExpvarCounterTemplate(addr, metricName, sourceID, txtTemplate string, ta
 
 	return func(f *ExpvarForwarder) {
 		f.metrics[addr] = append(f.metrics[addr], metricInfo{
-			name:     metricName,
-			sourceID: sourceID,
-			template: t,
-			counter:  true,
-			tags:     tags,
+			name:       metricName,
+			sourceID:   sourceID,
+			template:   t,
+			metricType: "counter",
+			tags:       tags,
 		})
 	}
 }
@@ -127,11 +128,43 @@ func AddExpvarGaugeTemplate(addr, metricName, metricUnit, sourceID, txtTemplate 
 
 	return func(f *ExpvarForwarder) {
 		f.metrics[addr] = append(f.metrics[addr], metricInfo{
-			name:     metricName,
-			unit:     metricUnit,
-			sourceID: sourceID,
-			template: t,
-			tags:     tags,
+			name:       metricName,
+			unit:       metricUnit,
+			sourceID:   sourceID,
+			template:   t,
+			metricType: "gauge",
+			tags:       tags,
+		})
+	}
+}
+
+// TODO: Put a comment here
+func AddExpvarMapTemplate(addr, metricName, sourceID, txtTemplate string, tags map[string]string) ExpvarForwarderOption {
+	funcMap := template.FuncMap{
+		"jsonMap": func(inputs map[string]interface{}) string {
+			s, err := json.Marshal(inputs)
+			if err != nil {
+				fmt.Println("Error parsing map template:", err)
+				return "{}"
+			}
+
+			return string(s)
+		},
+	}
+
+	t, err := template.New("Map").Funcs(funcMap).Parse(txtTemplate)
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+
+	return func(f *ExpvarForwarder) {
+		f.metrics[addr] = append(f.metrics[addr], metricInfo{
+			name:       metricName,
+			sourceID:   sourceID,
+			template:   t,
+			metricType: "map",
+			tags:       tags,
 		})
 	}
 }
@@ -179,7 +212,7 @@ func (f *ExpvarForwarder) Start() {
 
 				now := time.Now().UnixNano()
 
-				if metric.counter {
+				if metric.metricType == "counter" {
 					value, err := strconv.ParseUint(b.String(), 10, 64)
 					if err != nil {
 						f.log.Printf("counter result was not a uint64: %s", err)
@@ -203,29 +236,66 @@ func (f *ExpvarForwarder) Start() {
 					continue
 				}
 
-				value, err := strconv.ParseFloat(b.String(), 64)
-				if err != nil {
-					f.log.Printf("gauge result was not a float64: %s", err)
-					continue
-				}
+				if metric.metricType == "gauge" {
+					value, err := strconv.ParseFloat(b.String(), 64)
+					if err != nil {
+						f.log.Printf("gauge result was not a float64: %s", err)
+						continue
+					}
 
-				e = append(e, &loggregator_v2.Envelope{
-					SourceId:  metric.sourceID,
-					Timestamp: time.Now().UnixNano(),
-					Tags:      metric.tags,
-					Message: &loggregator_v2.Envelope_Gauge{
-						Gauge: &loggregator_v2.Gauge{
-							Metrics: map[string]*loggregator_v2.GaugeValue{
-								metric.name: {
-									Value: value,
-									Unit:  metric.unit,
+					e = append(e, &loggregator_v2.Envelope{
+						SourceId:  metric.sourceID,
+						Timestamp: time.Now().UnixNano(),
+						Tags:      metric.tags,
+						Message: &loggregator_v2.Envelope_Gauge{
+							Gauge: &loggregator_v2.Gauge{
+								Metrics: map[string]*loggregator_v2.GaugeValue{
+									metric.name: {
+										Value: value,
+										Unit:  metric.unit,
+									},
 								},
 							},
 						},
-					},
-				})
+					})
 
-				f.slog.Printf(`{"timestamp":%d,"name":%q,"value":%f,"source_id":%q,"type":"gauge"}`, now, metric.name, value, metric.sourceID)
+					f.slog.Printf(`{"timestamp":%d,"name":%q,"value":%f,"source_id":%q,"type":"gauge"}`, now, metric.name, value, metric.sourceID)
+
+					continue
+				}
+
+				if metric.metricType == "map" {
+					var workerStates map[string]interface{}
+					json.Unmarshal(b.Bytes(), &workerStates)
+
+					for addr, value := range workerStates {
+						tags := make(map[string]string)
+
+						for key, value := range metric.tags {
+							tags[key] = value
+						}
+						tags["addr"] = addr
+
+						e = append(e, &loggregator_v2.Envelope{
+							SourceId:  metric.sourceID,
+							Timestamp: time.Now().UnixNano(),
+							Tags:      tags,
+							Message: &loggregator_v2.Envelope_Gauge{
+								Gauge: &loggregator_v2.Gauge{
+									Metrics: map[string]*loggregator_v2.GaugeValue{
+										metric.name: {
+											Value: value.(float64),
+										},
+									},
+								},
+							},
+						})
+
+						f.slog.Printf(`{"timestamp":%d,"name":%q,"value":%f,"source_id":%q,"type":"gauge"}`, now, metric.name, value, metric.sourceID)
+					}
+
+					continue
+				}
 			}
 		}
 
@@ -243,10 +313,10 @@ func (f *ExpvarForwarder) Start() {
 }
 
 type metricInfo struct {
-	name     string
-	unit     string
-	sourceID string
-	template *template.Template
-	counter  bool
-	tags     map[string]string
+	name       string
+	unit       string
+	sourceID   string
+	template   *template.Template
+	metricType string
+	tags       map[string]string
 }

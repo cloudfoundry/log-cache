@@ -14,6 +14,7 @@ type Config struct {
 	Interval          time.Duration       `env:"INTERVAL, report"`
 	Counters          CounterDescriptions `env:"COUNTERS_JSON, report"`
 	Gauges            GaugeDescriptions   `env:"GAUGES_JSON, report"`
+	Maps              MapDescriptions     `env:"MAPS_JSON, report"`
 	StructuredLogging bool                `env:"STRUCTURED_LOGGING, report"`
 
 	LogCacheTLS tls.TLS
@@ -31,6 +32,14 @@ type GaugeDescription struct {
 	Addr     string            `json:"addr"`
 	Name     string            `json:"name"`
 	Unit     string            `json:"unit"`
+	SourceID string            `json:"source_id"`
+	Template string            `json:"template"`
+	Tags     map[string]string `json:"tags"`
+}
+
+type MapDescription struct {
+	Addr     string            `json:"addr"`
+	Name     string            `json:"name"`
 	SourceID string            `json:"source_id"`
 	Template string            `json:"template"`
 	Tags     map[string]string `json:"tags"`
@@ -62,5 +71,13 @@ type GaugeDescriptions struct {
 }
 
 func (d *GaugeDescriptions) UnmarshalEnv(v string) error {
+	return json.Unmarshal([]byte(v), &d.Descriptions)
+}
+
+type MapDescriptions struct {
+	Descriptions []MapDescription
+}
+
+func (d *MapDescriptions) UnmarshalEnv(v string) error {
 	return json.Unmarshal([]byte(v), &d.Descriptions)
 }
