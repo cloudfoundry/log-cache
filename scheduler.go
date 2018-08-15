@@ -17,16 +17,17 @@ import (
 
 // Scheduler manages the routes of the Log Cache nodes.
 type Scheduler struct {
-	log               *log.Logger
-	metrics           Metrics
-	workersReporter   *expvar.Map
-	interval          time.Duration
-	count             int
-	replicationFactor int
-	logCacheOrch      *orchestrator.Orchestrator
-	groupOrch         *orchestrator.Orchestrator
-	dialOpts          []grpc.DialOption
-	isLeader          func() bool
+	log                      *log.Logger
+	metrics                  Metrics
+	workerAssignmentReporter *expvar.Map
+	workerHealthReporter     *expvar.Map
+	interval                 time.Duration
+	count                    int
+	replicationFactor        int
+	logCacheOrch             *orchestrator.Orchestrator
+	groupOrch                *orchestrator.Orchestrator
+	dialOpts                 []grpc.DialOption
+	isLeader                 func() bool
 
 	logCacheClients []clientInfo
 	groupClients    []clientInfo
@@ -36,20 +37,26 @@ type Scheduler struct {
 // nodes.
 func NewScheduler(logCacheAddrs, groupAddrs []string, opts ...SchedulerOption) *Scheduler {
 	// TODO: This is a hack to avoid test collisions. Please fix this.
-	workersReporter := expvar.Get("WorkerAssignments")
-	if workersReporter == nil {
-		workersReporter = expvar.NewMap("WorkerAssignments")
+	workerAssignmentReporter := expvar.Get("WorkerAssignments")
+	workerHealthReporter := expvar.Get("WorkerHealth")
+
+	if workerAssignmentReporter == nil {
+		workerAssignmentReporter = expvar.NewMap("WorkerAssignments")
+	}
+	if workerHealthReporter == nil {
+		workerHealthReporter = expvar.NewMap("WorkerHealth")
 	}
 
 	s := &Scheduler{
-		log:               log.New(ioutil.Discard, "", 0),
-		metrics:           nopMetrics{},
-		workersReporter:   workersReporter.(*expvar.Map),
-		interval:          time.Minute,
-		count:             100,
-		replicationFactor: 1,
-		dialOpts:          []grpc.DialOption{grpc.WithInsecure()},
-		isLeader:          func() bool { return true },
+		log:                      log.New(ioutil.Discard, "", 0),
+		metrics:                  nopMetrics{},
+		workerAssignmentReporter: workerAssignmentReporter.(*expvar.Map),
+		workerHealthReporter:     workerHealthReporter.(*expvar.Map),
+		interval:                 time.Minute,
+		count:                    100,
+		replicationFactor:        1,
+		dialOpts:                 []grpc.DialOption{grpc.WithInsecure()},
+		isLeader:                 func() bool { return true },
 	}
 
 	for _, o := range opts {
@@ -208,8 +215,20 @@ func (s *Scheduler) Start() {
 				s.setRemoteTables(s.logCacheClients, s.convertWorkerState(s.logCacheOrch.LastActual()))
 				s.setRemoteTables(s.groupClients, s.convertWorkerState(s.groupOrch.LastActual()))
 
-				for _, node := range s.logCacheOrch.LastActual() {
-					s.workersReporter.Set(node.Name.(clientInfo).addr, stateWrapper{state: node})
+				lastActual := s.logCacheOrch.LastActual()
+
+				workerHealth := make(map[string]bool)
+				for _, clientInfo := range s.logCacheClients {
+					addr := clientInfo.addr
+					workerHealth[addr] = false
+				}
+				for _, worker := range lastActual {
+					addr := worker.Name.(clientInfo).addr
+					s.workerAssignmentReporter.Set(addr, stateWrapper{state: worker})
+					workerHealth[addr] = true
+				}
+				for addr, health := range workerHealth {
+					s.workerHealthReporter.Set(addr, healthWrapper{health: health})
 				}
 			}
 		}
@@ -222,6 +241,14 @@ type stateWrapper struct {
 
 func (wrapper stateWrapper) String() string {
 	return strconv.Itoa(len(wrapper.state.Tasks))
+}
+
+type healthWrapper struct {
+	health bool
+}
+
+func (wrapper healthWrapper) String() string {
+	return strconv.FormatBool(wrapper.health)
 }
 
 func (s *Scheduler) setRemoteTables(clients []clientInfo, m map[string]*rpc.Ranges) {

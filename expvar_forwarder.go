@@ -274,7 +274,7 @@ func (f *ExpvarForwarder) Start() {
 						for key, value := range metric.tags {
 							tags[key] = value
 						}
-						tags["addr"] = addr
+						tags["host"] = addr
 
 						e = append(e, &loggregator_v2.Envelope{
 							SourceId:  metric.sourceID,
