@@ -248,7 +248,11 @@ type healthWrapper struct {
 }
 
 func (wrapper healthWrapper) String() string {
-	return strconv.FormatBool(wrapper.health)
+	if wrapper.health {
+		return "1"
+	}
+
+	return "0"
 }
 
 func (s *Scheduler) setRemoteTables(clients []clientInfo, m map[string]*rpc.Ranges) {
