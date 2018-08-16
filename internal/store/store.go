@@ -21,6 +21,8 @@ type MetricsInitializer interface {
 type MemoryConsultant interface {
 	// Prune returns the number of envelopes to prune.
 	GetQuantityToPrune(int64) int
+	// setMemoryReporter accepts a reporting function for Memory Utilization
+	SetMemoryReporter(func(float64))
 }
 
 // Store is an in-memory data store for envelopes. It will store envelopes up
@@ -46,11 +48,13 @@ type Store struct {
 }
 
 type Metrics struct {
-	incExpired     func(delta uint64)
-	setCachePeriod func(value float64)
-	incIngress     func(delta uint64)
-	incEgress      func(delta uint64)
-	setStoreSize   func(value float64)
+	incExpired            func(delta uint64)
+	setCachePeriod        func(value float64)
+	incIngress            func(delta uint64)
+	incEgress             func(delta uint64)
+	setStoreSize          func(value float64)
+	setTruncationDuration func(value float64)
+	setMemoryUtilization  func(value float64)
 }
 
 func NewStore(maxPerSource, minimumStoreSizeToPrune int, mc MemoryConsultant, m MetricsInitializer) *Store {
@@ -60,16 +64,20 @@ func NewStore(maxPerSource, minimumStoreSizeToPrune int, mc MemoryConsultant, m 
 		oldestTimestamp:         int64(^uint64(0) >> 1),
 
 		metrics: Metrics{
-			incExpired:     m.NewCounter("Expired"),
-			setCachePeriod: m.NewGauge("CachePeriod"),
-			incIngress:     m.NewCounter("Ingress"),
-			incEgress:      m.NewCounter("Egress"),
-			setStoreSize:   m.NewGauge("StoreSize"),
+			incExpired:            m.NewCounter("Expired"),
+			setCachePeriod:        m.NewGauge("CachePeriod"),
+			incIngress:            m.NewCounter("Ingress"),
+			incEgress:             m.NewCounter("Egress"),
+			setStoreSize:          m.NewGauge("StoreSize"),
+			setTruncationDuration: m.NewGauge("TruncationDuration"),
+			setMemoryUtilization:  m.NewGauge("MemoryUtilization"),
 		},
 
 		mc:                  mc,
 		truncationCompleted: make(chan bool),
 	}
+
+	store.mc.SetMemoryReporter(store.metrics.setMemoryUtilization)
 
 	go store.truncationLoop(500 * time.Millisecond)
 
@@ -149,9 +157,10 @@ func (store *Store) truncationLoop(runInterval time.Duration) {
 		// Wait for our timer to go off
 		<-t.C
 
-		// startTime := time.Now()
+		startTime := time.Now()
 		store.truncate()
 		t.Reset(runInterval)
+		store.metrics.setTruncationDuration(float64(time.Since(startTime) / time.Millisecond))
 	}
 }
 

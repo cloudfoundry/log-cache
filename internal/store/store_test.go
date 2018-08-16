@@ -438,3 +438,5 @@ func newSpyPruner() *spyPruner {
 func (sp *spyPruner) GetQuantityToPrune(int64) int {
 	return sp.numberToPrune
 }
+
+func (sp *spyPruner) SetMemoryReporter(_ func(float64)) {}

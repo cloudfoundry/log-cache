@@ -206,3 +206,5 @@ func (s *staticPruner) GetQuantityToPrune(int64) int {
 
 	return 0
 }
+
+func (s *staticPruner) SetMemoryReporter(_ func(float64)) {}
