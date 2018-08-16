@@ -190,28 +190,37 @@ func (store *Store) truncate() {
 		return
 	}
 
-	expirationsIndex := newIndexTree()
+	prunePasses := 1
+	sourceCount := 0
 
-	// TODO - removing the single oldest envelope from each tree is vulnerable
-	// to noisy neighbor - may need to tweak this algorithm if we see crowding
 	store.storageIndex.Range(func(sourceId interface{}, tree interface{}) bool {
-		tree.(*storage).RLock()
-		oldestTimestamp := tree.(*storage).Left().Key.(int64)
-		expirationsIndex.PutTree(oldestTimestamp, tree.(*storage))
-		tree.(*storage).RUnlock()
-
+		sourceCount += 1
 		return true
 	})
 
-	// TODO - this is the limitation most likely to keep us from pruning fast
-	// enough - may need to tweak
-	if numberToPrune > expirationsIndex.TotalSize() {
-		numberToPrune = expirationsIndex.TotalSize()
+	if numberToPrune > sourceCount {
+		prunePasses = numberToPrune / sourceCount
+		numberToPrune = sourceCount
 	}
 
-	for i := 0; i < numberToPrune; i++ {
-		_, oldestTree := expirationsIndex.RemoveLeftTree()
-		store.removeOldestEnvelope(oldestTree)
+	for i := 0; i < prunePasses; i++ {
+		expirationsIndex := newIndexTree()
+
+		// TODO - removing the single oldest envelope from each tree is vulnerable
+		// to noisy neighbor - may need to tweak this algorithm if we see crowding
+		store.storageIndex.Range(func(sourceId interface{}, tree interface{}) bool {
+			tree.(*storage).RLock()
+			oldestTimestamp := tree.(*storage).Left().Key.(int64)
+			expirationsIndex.PutTree(oldestTimestamp, tree.(*storage))
+			tree.(*storage).RUnlock()
+
+			return true
+		})
+
+		for i := 0; i < numberToPrune; i++ {
+			_, oldestTree := expirationsIndex.RemoveLeftTree()
+			store.removeOldestEnvelope(oldestTree)
+		}
 	}
 
 	store.metrics.setStoreSize(float64(atomic.LoadInt64(&store.count)))
@@ -428,20 +437,6 @@ func (index *index) TotalSize() int {
 	}
 
 	return totalSize
-}
-
-func (index *index) EnsureOldestTimestamp(existingTimestamp, candidateTimestamp int64, envelopeStorage *storage) int64 {
-	index.Lock()
-	defer index.Unlock()
-
-	if existingTimestamp > candidateTimestamp {
-		index.RemoveTree(existingTimestamp, envelopeStorage)
-		index.PutTree(candidateTimestamp, envelopeStorage)
-
-		return calculateCachePeriod(candidateTimestamp)
-	}
-
-	return calculateCachePeriod(existingTimestamp)
 }
 
 // NOTE: PutTree should always have a Lock()
