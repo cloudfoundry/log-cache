@@ -28,6 +28,7 @@ type ExpvarForwarder struct {
 	// LogCache
 	logCacheAddr string
 	opts         []grpc.DialOption
+	globalTags   map[string]string
 
 	metrics map[string][]metricInfo
 }
@@ -41,6 +42,7 @@ func NewExpvarForwarder(logCacheAddr string, opts ...ExpvarForwarderOption) *Exp
 
 		logCacheAddr: logCacheAddr,
 		opts:         []grpc.DialOption{grpc.WithInsecure()},
+		globalTags:   make(map[string]string),
 
 		metrics: make(map[string][]metricInfo),
 	}
@@ -92,6 +94,12 @@ func WithExpvarDialOpts(opts ...grpc.DialOption) ExpvarForwarderOption {
 func WithExpvarInterval(i time.Duration) ExpvarForwarderOption {
 	return func(f *ExpvarForwarder) {
 		f.interval = i
+	}
+}
+
+func WithGlobalTag(key, value string) ExpvarForwarderOption {
+	return func(f *ExpvarForwarder) {
+		f.globalTags[key] = value
 	}
 }
 
@@ -211,6 +219,10 @@ func (f *ExpvarForwarder) Start() {
 				}
 
 				now := time.Now().UnixNano()
+
+				for k, v := range f.globalTags {
+					metric.tags[k] = v
+				}
 
 				if metric.metricType == "counter" {
 					value, err := strconv.ParseUint(b.String(), 10, 64)

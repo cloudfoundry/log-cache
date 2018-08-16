@@ -23,6 +23,7 @@ func main() {
 	opts := []logcache.ExpvarForwarderOption{
 		logcache.WithExpvarLogger(log.New(os.Stderr, "", log.LstdFlags)),
 		logcache.WithExpvarDialOpts(grpc.WithTransportCredentials(cfg.LogCacheTLS.Credentials("log-cache"))),
+		logcache.WithGlobalTag("host", cfg.InstanceAddr),
 	}
 
 	if cfg.StructuredLogging {

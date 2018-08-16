@@ -11,6 +11,7 @@ import (
 // Config is the configuration for a LogCache.
 type Config struct {
 	LogCacheAddr      string              `env:"LOG_CACHE_ADDR, required, report"`
+	InstanceAddr      string              `env:"INSTANCE_ADDR, required, report"`
 	Interval          time.Duration       `env:"INTERVAL, report"`
 	Counters          CounterDescriptions `env:"COUNTERS_JSON, report"`
 	Gauges            GaugeDescriptions   `env:"GAUGES_JSON, report"`
