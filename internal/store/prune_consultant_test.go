@@ -35,14 +35,6 @@ var _ = Describe("PruneConsultant", func() {
 
 		Expect(c.GetQuantityToPrune(storeCount)).To(Equal(14))
 	})
-
-	It("prunes entries if available system memory is under 20", func() {
-		sm.avail = 15
-		sm.heap = 50
-		sm.total = 100
-
-		Expect(c.GetQuantityToPrune(storeCount)).To(Equal(100))
-	})
 })
 
 type spyMemory struct {

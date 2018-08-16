@@ -182,7 +182,6 @@ var _ = Describe("Store", func() {
 
 		// e8 should be truncated even though it is late
 		e8 := buildTypedEnvelope(1, "a", &loggregator_v2.Event{})
-		e9 := buildTypedEnvelope(5, "c", &loggregator_v2.Gauge{})
 
 		s.Put(e1, e1.GetSourceId())
 		s.Put(e2, e2.GetSourceId())
@@ -192,7 +191,6 @@ var _ = Describe("Store", func() {
 		s.Put(e6, e6.GetSourceId())
 		s.Put(e7, e7.GetSourceId())
 		s.Put(e8, e8.GetSourceId())
-		s.Put(e9, e9.GetSourceId())
 
 		s.WaitForTruncationToComplete()
 		// Tell the spyPruner to remove 3 envelopes
@@ -204,14 +202,14 @@ var _ = Describe("Store", func() {
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
 		envelopes := s.Get("a", start, end, nil, 10, false)
-		Expect(envelopes).To(HaveLen(6))
+		Expect(envelopes).To(HaveLen(5))
 
 		for i, e := range envelopes {
-			Expect(e.Timestamp).To(Equal(int64(i + 2)))
+			Expect(e.Timestamp).To(Equal(int64(i + 3)))
 		}
 
 		Expect(sm.values["Expired"]).To(Equal(3.0))
-		Expect(sm.values["StoreSize"]).To(Equal(6.0))
+		Expect(sm.values["StoreSize"]).To(Equal(5.0))
 
 		// Ensure b was removed fully
 		for s := range s.Meta() {

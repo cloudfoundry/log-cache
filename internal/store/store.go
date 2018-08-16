@@ -127,13 +127,15 @@ func (storage *storage) insertOrSwap(store *Store, ew envelopeWrapper) {
 
 	oldestTimestamp := storage.Left().Key.(int64)
 	storage.meta.OldestTimestamp = oldestTimestamp
-
 	storeOldestTimestamp := atomic.LoadInt64(&store.oldestTimestamp)
+
 	if oldestTimestamp < storeOldestTimestamp {
 		atomic.StoreInt64(&store.oldestTimestamp, oldestTimestamp)
-		cachePeriod := calculateCachePeriod(oldestTimestamp)
-		store.metrics.setCachePeriod(float64(cachePeriod))
+		storeOldestTimestamp = oldestTimestamp
 	}
+
+	cachePeriod := calculateCachePeriod(storeOldestTimestamp)
+	store.metrics.setCachePeriod(float64(cachePeriod))
 }
 
 func (store *Store) WaitForTruncationToComplete() bool {
@@ -190,37 +192,33 @@ func (store *Store) truncate() {
 		return
 	}
 
-	prunePasses := 1
-	sourceCount := 0
+	expirationsIndex := newIndexTree()
 
+	// TODO - removing the single oldest envelope from each tree is vulnerable
+	// to noisy neighbor - may need to tweak this algorithm if we see crowding
 	store.storageIndex.Range(func(sourceId interface{}, tree interface{}) bool {
-		sourceCount += 1
+		tree.(*storage).RLock()
+		oldestTimestamp := tree.(*storage).Left().Key.(int64)
+		expirationsIndex.PutTree(oldestTimestamp, tree.(*storage))
+		tree.(*storage).RUnlock()
+
 		return true
 	})
 
-	if numberToPrune > sourceCount {
-		prunePasses = numberToPrune / sourceCount
-		numberToPrune = sourceCount
+	for i := 0; i < numberToPrune; i++ {
+		_, oldestTree := expirationsIndex.RemoveLeftTree()
+		store.removeOldestEnvelope(oldestTree)
+		if oldestTree.Size() > 0 {
+			newOldestEnvelope := oldestTree.Left()
+			expirationsIndex.PutTree(newOldestEnvelope.Key.(int64), oldestTree)
+		}
 	}
 
-	for i := 0; i < prunePasses; i++ {
-		expirationsIndex := newIndexTree()
-
-		// TODO - removing the single oldest envelope from each tree is vulnerable
-		// to noisy neighbor - may need to tweak this algorithm if we see crowding
-		store.storageIndex.Range(func(sourceId interface{}, tree interface{}) bool {
-			tree.(*storage).RLock()
-			oldestTimestamp := tree.(*storage).Left().Key.(int64)
-			expirationsIndex.PutTree(oldestTimestamp, tree.(*storage))
-			tree.(*storage).RUnlock()
-
-			return true
-		})
-
-		for i := 0; i < numberToPrune; i++ {
-			_, oldestTree := expirationsIndex.RemoveLeftTree()
-			store.removeOldestEnvelope(oldestTree)
-		}
+	oldestTimestamp, oldestTree := expirationsIndex.LeftTree()
+	if oldestTree != nil {
+		atomic.StoreInt64(&store.oldestTimestamp, oldestTimestamp)
+		cachePeriod := calculateCachePeriod(oldestTimestamp)
+		store.metrics.setCachePeriod(float64(cachePeriod))
 	}
 
 	store.metrics.setStoreSize(float64(atomic.LoadInt64(&store.count)))

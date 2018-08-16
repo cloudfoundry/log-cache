@@ -2,7 +2,6 @@ package logcache
 
 import (
 	"runtime"
-	"time"
 
 	"sync"
 
@@ -17,10 +16,9 @@ type MemoryAnalyzer struct {
 	setHeap  func(value float64)
 
 	// cache
-	lastResult time.Time
-	avail      uint64
-	total      uint64
-	heap       uint64
+	avail uint64
+	total uint64
+	heap  uint64
 
 	sync.Mutex
 }
@@ -38,24 +36,21 @@ func NewMemoryAnalyzer(m Metrics) *MemoryAnalyzer {
 func (a *MemoryAnalyzer) Memory() (heapInUse, available, total uint64) {
 	a.Lock()
 	defer a.Unlock()
-	if time.Since(a.lastResult) > 5*time.Second {
-		a.lastResult = time.Now()
 
-		var m sigar.Mem
-		m.Get()
+	var m sigar.Mem
+	m.Get()
 
-		a.avail = m.ActualFree
-		a.total = m.Total
+	a.avail = m.ActualFree
+	a.total = m.Total
 
-		a.setAvail(float64(m.ActualFree))
-		a.setTotal(float64(m.Total))
+	a.setAvail(float64(m.ActualFree))
+	a.setTotal(float64(m.Total))
 
-		var rm runtime.MemStats
-		runtime.ReadMemStats(&rm)
+	var rm runtime.MemStats
+	runtime.ReadMemStats(&rm)
 
-		a.heap = rm.HeapInuse
-		a.setHeap(float64(a.heap))
-	}
+	a.heap = rm.HeapInuse
+	a.setHeap(float64(a.heap))
 
 	return a.heap, a.avail, a.total
 }

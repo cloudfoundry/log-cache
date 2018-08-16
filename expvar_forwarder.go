@@ -220,6 +220,10 @@ func (f *ExpvarForwarder) Start() {
 
 				now := time.Now().UnixNano()
 
+				if metric.tags == nil {
+					metric.tags = make(map[string]string)
+				}
+
 				for k, v := range f.globalTags {
 					metric.tags[k] = v
 				}
