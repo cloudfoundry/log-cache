@@ -207,10 +207,9 @@ func (store *Store) truncate() {
 
 	for i := 0; i < numberToPrune; i++ {
 		_, oldestTree := expirationsIndex.RemoveLeftTree()
-		store.removeOldestEnvelope(oldestTree)
-		if oldestTree.Size() > 0 {
-			newOldestEnvelope := oldestTree.Left()
-			expirationsIndex.PutTree(newOldestEnvelope.Key.(int64), oldestTree)
+		newOldestTimestamp, valid := store.removeOldestEnvelope(oldestTree)
+		if valid {
+			expirationsIndex.PutTree(newOldestTimestamp, oldestTree)
 		}
 	}
 
@@ -225,12 +224,12 @@ func (store *Store) truncate() {
 	store.sendTruncationCompleted(true)
 }
 
-func (store *Store) removeOldestEnvelope(treeToPrune *storage) {
+func (store *Store) removeOldestEnvelope(treeToPrune *storage) (int64, bool) {
 	treeToPrune.Lock()
 	defer treeToPrune.Unlock()
 
 	if treeToPrune.Size() == 0 {
-		return
+		return 0, false
 	}
 
 	atomic.AddInt64(&store.count, -1)
@@ -243,14 +242,16 @@ func (store *Store) removeOldestEnvelope(treeToPrune *storage) {
 
 	if treeToPrune.Size() == 0 {
 		store.storageIndex.Delete(treeIndex)
-		return
+		return 0, false
 	}
 
 	newOldestEnvelope := treeToPrune.Left()
-	oldestAfterRemoval := newOldestEnvelope.Key.(int64)
+	oldestTimestampAfterRemoval := newOldestEnvelope.Key.(int64)
 
 	treeToPrune.meta.Expired++
-	treeToPrune.meta.OldestTimestamp = oldestAfterRemoval
+	treeToPrune.meta.OldestTimestamp = oldestTimestampAfterRemoval
+
+	return oldestTimestampAfterRemoval, true
 }
 
 // Get fetches envelopes from the store based on the source ID, start and end

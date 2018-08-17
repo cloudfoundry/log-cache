@@ -47,7 +47,7 @@ var _ = Describe("Store", func() {
 			Expect(e.SourceId).To(Equal("a"))
 		}
 
-		Expect(sm.values["Expired"]).To(Equal(0.0))
+		Expect(sm.GetValue("Expired")).To(Equal(0.0))
 	})
 
 	It("returns a maximum number of envelopes in ascending order", func() {
@@ -161,7 +161,7 @@ var _ = Describe("Store", func() {
 
 	It("survives being over pruned", func() {
 		s = store.NewStore(10, 10, sp, sm)
-		sp.numberToPrune = 1000
+		sp.SetNumberToPrune(1000)
 		e1 := buildTypedEnvelope(0, "b", &loggregator_v2.Log{})
 		Expect(func() { s.Put(e1, e1.GetSourceId()) }).ToNot(Panic())
 	})
@@ -194,7 +194,7 @@ var _ = Describe("Store", func() {
 
 		s.WaitForTruncationToComplete()
 		// Tell the spyPruner to remove 3 envelopes
-		sp.numberToPrune = 3
+		sp.SetNumberToPrune(3)
 
 		// Wait until the next truncation cycle is complete
 		s.WaitForTruncationToComplete()
@@ -208,8 +208,8 @@ var _ = Describe("Store", func() {
 			Expect(e.Timestamp).To(Equal(int64(i + 3)))
 		}
 
-		Expect(sm.values["Expired"]).To(Equal(3.0))
-		Expect(sm.values["StoreSize"]).To(Equal(5.0))
+		Expect(sm.GetValue("Expired")).To(Equal(3.0))
+		Expect(sm.GetValue("StoreSize")).To(Equal(5.0))
 
 		// Ensure b was removed fully
 		for s := range s.Meta() {
@@ -248,7 +248,7 @@ var _ = Describe("Store", func() {
 		e := buildTypedEnvelope(time.Now().Add(-time.Minute).UnixNano(), "b", &loggregator_v2.Log{})
 		s.Put(e, e.GetSourceId())
 
-		Expect(sm.values["CachePeriod"]).To(BeNumerically("~", float64(time.Minute/time.Millisecond), 1000))
+		Expect(sm.GetValue("CachePeriod")).To(BeNumerically("~", float64(time.Minute/time.Millisecond), 1000))
 	})
 
 	It("uses the given index", func() {
@@ -280,7 +280,7 @@ var _ = Describe("Store", func() {
 		// This truncation cycle will not remove any entries
 		s.WaitForTruncationToComplete()
 
-		sp.numberToPrune = 2
+		sp.SetNumberToPrune(2)
 
 		// This truncation cycle will prune first 2 entries (timestamp 1 and 2)
 		s.WaitForTruncationToComplete()
@@ -313,7 +313,7 @@ var _ = Describe("Store", func() {
 		s.Put(buildTypedEnvelope(1, "index-1", &loggregator_v2.Log{}), "index-1")
 
 		s.WaitForTruncationToComplete()
-		sp.numberToPrune = 1
+		sp.SetNumberToPrune(1)
 		s.WaitForTruncationToComplete()
 
 		Expect(s.Meta()).ToNot(HaveKey("index-1"))
@@ -324,7 +324,7 @@ var _ = Describe("Store", func() {
 	// until we have a high level of confidence that we're catching races
 	It("demonstrates thread safety under heavy concurrent load", func() {
 		sp := newSpyPruner()
-		sp.numberToPrune = 10
+		sp.SetNumberToPrune(10)
 		loadStore := store.NewStore(10000, 5000, sp, sm)
 		start := time.Now()
 
@@ -405,7 +405,6 @@ func (s *spyMetrics) NewCounter(name string) func(delta uint64) {
 		s.Lock()
 		defer s.Unlock()
 		s.values[name] += float64(d)
-		// fmt.Println("Incrementing", name, "by", d)
 	}
 }
 
@@ -413,8 +412,8 @@ func (s *spyMetrics) NewGauge(name string) func(value float64) {
 	return func(v float64) {
 		s.Lock()
 		defer s.Unlock()
+
 		s.values[name] = v
-		// fmt.Println("Setting", name, "to", v)
 	}
 }
 
@@ -427,13 +426,24 @@ func (s *spyMetrics) GetValue(name string) float64 {
 
 type spyPruner struct {
 	numberToPrune int
+	sync.Mutex
 }
 
 func newSpyPruner() *spyPruner {
 	return &spyPruner{}
 }
 
+func (sp *spyPruner) SetNumberToPrune(numberToPrune int) {
+	sp.Lock()
+	defer sp.Unlock()
+
+	sp.numberToPrune = numberToPrune
+}
+
 func (sp *spyPruner) GetQuantityToPrune(int64) int {
+	sp.Lock()
+	defer sp.Unlock()
+
 	return sp.numberToPrune
 }
 

@@ -28,7 +28,7 @@ var _ = Describe("store under high concurrent load", func() {
 
 		// 10 writers per sourceId, 10k envelopes per writer
 		for sourceId := 0; sourceId < 10; sourceId++ {
-			for writers := 0; writers < 100; writers++ {
+			for writers := 0; writers < 10; writers++ {
 				wg.Add(1)
 				go func(sourceId string) {
 					defer wg.Done()
@@ -47,7 +47,7 @@ var _ = Describe("store under high concurrent load", func() {
 			go func() {
 				for i := 0; i < 100; i++ {
 					loadStore.Meta()
-					time.Sleep(200 * time.Millisecond)
+					time.Sleep(10 * time.Millisecond)
 				}
 			}()
 		}
