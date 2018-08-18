@@ -1,7 +1,7 @@
 package store
 
 import (
-	"fmt"
+	"container/heap"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -175,6 +175,22 @@ func (store *Store) Put(envelope *loggregator_v2.Envelope, sourceId string) {
 	envelopeStorage.insertOrSwap(store, ew)
 }
 
+func (store *Store) BuildExpirationHeap() *ExpirationHeap {
+	expirationHeap := &ExpirationHeap{}
+	heap.Init(expirationHeap)
+
+	store.storageIndex.Range(func(sourceId interface{}, tree interface{}) bool {
+		tree.(*storage).RLock()
+		oldestTimestamp := tree.(*storage).Left().Key.(int64)
+		heap.Push(expirationHeap, storageExpiration{timestamp: oldestTimestamp, tree: tree.(*storage)})
+		tree.(*storage).RUnlock()
+
+		return true
+	})
+
+	return expirationHeap
+}
+
 // truncate removes the n oldest envelopes across all trees
 func (store *Store) truncate() {
 	storeCount := atomic.LoadInt64(&store.count)
@@ -192,31 +208,22 @@ func (store *Store) truncate() {
 		return
 	}
 
-	expirationsIndex := newIndexTree()
+	expirationHeap := store.BuildExpirationHeap()
 
-	// TODO - removing the single oldest envelope from each tree is vulnerable
-	// to noisy neighbor - may need to tweak this algorithm if we see crowding
-	store.storageIndex.Range(func(sourceId interface{}, tree interface{}) bool {
-		tree.(*storage).RLock()
-		oldestTimestamp := tree.(*storage).Left().Key.(int64)
-		expirationsIndex.PutTree(oldestTimestamp, tree.(*storage))
-		tree.(*storage).RUnlock()
-
-		return true
-	})
-
+	// Remove envelopes one at a time, popping state from the expirationHeap
 	for i := 0; i < numberToPrune; i++ {
-		_, oldestTree := expirationsIndex.RemoveLeftTree()
-		newOldestTimestamp, valid := store.removeOldestEnvelope(oldestTree)
+		oldest := heap.Pop(expirationHeap)
+		newOldestTimestamp, valid := store.removeOldestEnvelope(oldest.(storageExpiration).tree)
 		if valid {
-			expirationsIndex.PutTree(newOldestTimestamp, oldestTree)
+			heap.Push(expirationHeap, storageExpiration{timestamp: newOldestTimestamp, tree: oldest.(storageExpiration).tree})
 		}
 	}
 
-	oldestTimestamp, oldestTree := expirationsIndex.LeftTree()
-	if oldestTree != nil {
-		atomic.StoreInt64(&store.oldestTimestamp, oldestTimestamp)
-		cachePeriod := calculateCachePeriod(oldestTimestamp)
+	// Grab the next oldest timestamp and use it to update the cache period
+	oldest := expirationHeap.Pop()
+	if oldest.(storageExpiration).tree != nil {
+		atomic.StoreInt64(&store.oldestTimestamp, oldest.(storageExpiration).timestamp)
+		cachePeriod := calculateCachePeriod(oldest.(storageExpiration).timestamp)
 		store.metrics.setCachePeriod(float64(cachePeriod))
 	}
 
@@ -411,101 +418,32 @@ type storage struct {
 	sync.RWMutex
 }
 
-type index struct {
-	*avltree.Tree
-	sync.RWMutex
+type ExpirationHeap []storageExpiration
+
+type storageExpiration struct {
+	timestamp int64
+	tree      *storage
 }
 
-func newIndexTree() *index {
-	return &index{
-		Tree: avltree.NewWith(utils.Int64Comparator),
-	}
+func (h ExpirationHeap) Len() int           { return len(h) }
+func (h ExpirationHeap) Less(i, j int) bool { return h[i].timestamp < h[j].timestamp }
+func (h ExpirationHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+
+func (h *ExpirationHeap) Push(x interface{}) {
+	*h = append(*h, x.(storageExpiration))
+}
+
+func (h *ExpirationHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+
+	return x
 }
 
 func calculateCachePeriod(oldestTimestamp int64) int64 {
 	return (time.Now().UnixNano() - oldestTimestamp) / int64(time.Millisecond)
-}
-
-func (index *index) TotalSize() int {
-	index.RLock()
-	defer index.RUnlock()
-
-	totalSize := 0
-	for _, value := range index.Values() {
-		totalSize += len(value.([]*storage))
-	}
-
-	return totalSize
-}
-
-// NOTE: PutTree should always have a Lock()
-func (index *index) PutTree(key int64, treeToIndex *storage) {
-	var values []*storage
-	if existing, found := index.Get(key); found {
-		values = existing.([]*storage)
-	}
-
-	index.Put(key, append(values, treeToIndex))
-}
-
-// NOTE: RemoveTree should always have a Lock()
-func (index *index) RemoveTree(timestamp int64, treeToIndex *storage) bool {
-	var found bool
-	var values []*storage
-
-	if existing, found := index.Get(timestamp); found {
-		values = existing.([]*storage)
-	}
-
-	if !found {
-		fmt.Println("Failed to find timestamp", timestamp)
-	}
-
-	for i, v := range values {
-		if v == treeToIndex {
-			values = append(values[:i], values[i+1:]...)
-			break
-		}
-	}
-
-	if len(values) == 0 {
-		index.Remove(timestamp)
-		return found
-	}
-
-	index.Put(timestamp, values)
-
-	return found
-}
-
-// TODO: maybe perhaps consider wrtiting a test for this at some point. maybe.
-// NOTE: RemoveLeftTree should always have a Lock()
-func (index *index) RemoveLeftTree() (int64, *storage) {
-	l := index.Left()
-	timestamp, values := l.Key.(int64), l.Value.([]*storage)
-
-	lt := values[0]
-	values = values[1:]
-
-	if len(values) == 0 {
-		index.Remove(timestamp)
-		return timestamp, lt
-	}
-
-	index.Put(timestamp, values)
-	return timestamp, lt
-}
-
-func (index *index) LeftTree() (int64, *storage) {
-	index.RLock()
-	defer index.RUnlock()
-
-	if index.Size() == 0 {
-		return 0, nil
-	}
-
-	l := index.Left()
-	return l.Key.(int64), l.Value.([]*storage)[0]
 }
 
 type envelopeWrapper struct {
