@@ -33,10 +33,10 @@ var _ = Describe("Store", func() {
 		e3 := buildEnvelope(3, "a")
 		e4 := buildEnvelope(4, "a")
 
-		s.Put(e1, e1.GetSourceId())
-		s.Put(e2, e2.GetSourceId())
-		s.Put(e3, e3.GetSourceId())
-		s.Put(e4, e4.GetSourceId())
+		s.Put(e1)
+		s.Put(e2)
+		s.Put(e3)
+		s.Put(e4)
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 4)
@@ -56,10 +56,10 @@ var _ = Describe("Store", func() {
 		e3 := buildEnvelope(3, "a")
 		e4 := buildEnvelope(4, "a")
 
-		s.Put(e1, e1.GetSourceId())
-		s.Put(e2, e2.GetSourceId())
-		s.Put(e3, e3.GetSourceId())
-		s.Put(e4, e4.GetSourceId())
+		s.Put(e1)
+		s.Put(e2)
+		s.Put(e3)
+		s.Put(e4)
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
@@ -76,10 +76,10 @@ var _ = Describe("Store", func() {
 		e3 := buildEnvelope(3, "a")
 		e4 := buildEnvelope(4, "a")
 
-		s.Put(e1, e1.GetSourceId())
-		s.Put(e2, e2.GetSourceId())
-		s.Put(e3, e3.GetSourceId())
-		s.Put(e4, e4.GetSourceId())
+		s.Put(e1)
+		s.Put(e2)
+		s.Put(e3)
+		s.Put(e4)
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
@@ -96,10 +96,10 @@ var _ = Describe("Store", func() {
 		e3 := buildEnvelope(3, "a")
 		e4 := buildEnvelope(4, "a")
 
-		s.Put(e1, e1.GetSourceId())
-		s.Put(e2, e2.GetSourceId())
-		s.Put(e3, e3.GetSourceId())
-		s.Put(e4, e4.GetSourceId())
+		s.Put(e1)
+		s.Put(e2)
+		s.Put(e3)
+		s.Put(e4)
 
 		m := s.Meta()["a"]
 		Expect(m.Count).To(Equal(int64(3)))
@@ -113,11 +113,11 @@ var _ = Describe("Store", func() {
 			e4 := buildTypedEnvelope(4, "a", &loggregator_v2.Timer{})
 			e5 := buildTypedEnvelope(5, "a", &loggregator_v2.Event{})
 
-			s.Put(e1, e1.GetSourceId())
-			s.Put(e2, e2.GetSourceId())
-			s.Put(e3, e3.GetSourceId())
-			s.Put(e4, e4.GetSourceId())
-			s.Put(e5, e5.GetSourceId())
+			s.Put(e1)
+			s.Put(e2)
+			s.Put(e3)
+			s.Put(e4)
+			s.Put(e5)
 
 			start := time.Unix(0, 0)
 			end := time.Unix(0, 9999)
@@ -145,7 +145,7 @@ var _ = Describe("Store", func() {
 		e1 := buildEnvelope(0, "a")
 		go func() {
 			defer wg.Done()
-			s.Put(e1, e1.GetSourceId())
+			s.Put(e1)
 		}()
 
 		go func() {
@@ -163,7 +163,7 @@ var _ = Describe("Store", func() {
 		s = store.NewStore(10, 10, sp, sm)
 		sp.SetNumberToPrune(1000)
 		e1 := buildTypedEnvelope(0, "b", &loggregator_v2.Log{})
-		Expect(func() { s.Put(e1, e1.GetSourceId()) }).ToNot(Panic())
+		Expect(func() { s.Put(e1) }).ToNot(Panic())
 	})
 
 	It("truncates older envelopes when max size is reached", func() {
@@ -183,14 +183,14 @@ var _ = Describe("Store", func() {
 		// e8 should be truncated even though it is late
 		e8 := buildTypedEnvelope(1, "a", &loggregator_v2.Event{})
 
-		s.Put(e1, e1.GetSourceId())
-		s.Put(e2, e2.GetSourceId())
-		s.Put(e3, e3.GetSourceId())
-		s.Put(e4, e4.GetSourceId())
-		s.Put(e5, e5.GetSourceId())
-		s.Put(e6, e6.GetSourceId())
-		s.Put(e7, e7.GetSourceId())
-		s.Put(e8, e8.GetSourceId())
+		s.Put(e1)
+		s.Put(e2)
+		s.Put(e3)
+		s.Put(e4)
+		s.Put(e5)
+		s.Put(e6)
+		s.Put(e7)
+		s.Put(e8)
 
 		s.WaitForTruncationToComplete()
 		// Tell the spyPruner to remove 3 envelopes
@@ -226,10 +226,10 @@ var _ = Describe("Store", func() {
 		e3 := buildTypedEnvelope(3, "a", &loggregator_v2.Log{})
 		e4 := buildTypedEnvelope(4, "a", &loggregator_v2.Log{})
 
-		s.Put(e1, e1.GetSourceId())
-		s.Put(e2, e2.GetSourceId())
-		s.Put(e3, e3.GetSourceId())
-		s.Put(e4, e4.GetSourceId())
+		s.Put(e1)
+		s.Put(e2)
+		s.Put(e3)
+		s.Put(e4)
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
@@ -246,15 +246,15 @@ var _ = Describe("Store", func() {
 
 	It("sets (via metrics) the store's period in milliseconds", func() {
 		e := buildTypedEnvelope(time.Now().Add(-time.Minute).UnixNano(), "b", &loggregator_v2.Log{})
-		s.Put(e, e.GetSourceId())
+		s.Put(e)
 
 		Expect(sm.GetValue("CachePeriod")).To(BeNumerically("~", float64(time.Minute/time.Millisecond), 1000))
 	})
 
-	It("uses the given index", func() {
+	XIt("uses the given index", func() {
 		s = store.NewStore(2, 2, sp, sm)
 		e := buildTypedEnvelope(0, "a", &loggregator_v2.Log{})
-		s.Put(e, "some-id")
+		s.Put(e)
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
@@ -267,15 +267,15 @@ var _ = Describe("Store", func() {
 		s = store.NewStore(2, 2, sp, sm)
 
 		// Will be pruned by pruner
-		s.Put(buildTypedEnvelope(1, "index-0", &loggregator_v2.Log{}), "index-0")
-		s.Put(buildTypedEnvelope(2, "index-1", &loggregator_v2.Log{}), "index-1")
+		s.Put(buildTypedEnvelope(1, "index-0", &loggregator_v2.Log{}))
+		s.Put(buildTypedEnvelope(2, "index-1", &loggregator_v2.Log{}))
 
 		// Timestamp 2 should be pruned as we exceed the max per source of 2.
-		s.Put(buildTypedEnvelope(3, "index-2", &loggregator_v2.Log{}), "index-2")
-		s.Put(buildTypedEnvelope(4, "index-2", &loggregator_v2.Log{}), "index-2")
-		s.Put(buildTypedEnvelope(5, "index-2", &loggregator_v2.Log{}), "index-2")
+		s.Put(buildTypedEnvelope(3, "index-2", &loggregator_v2.Log{}))
+		s.Put(buildTypedEnvelope(4, "index-2", &loggregator_v2.Log{}))
+		s.Put(buildTypedEnvelope(5, "index-2", &loggregator_v2.Log{}))
 
-		s.Put(buildTypedEnvelope(6, "index-1", &loggregator_v2.Log{}), "index-1")
+		s.Put(buildTypedEnvelope(6, "index-1", &loggregator_v2.Log{}))
 
 		// This truncation cycle will not remove any entries
 		s.WaitForTruncationToComplete()
@@ -308,9 +308,9 @@ var _ = Describe("Store", func() {
 	It("survives the just added entry from being pruned", func() {
 		s = store.NewStore(2, 2, sp, sm)
 
-		s.Put(buildTypedEnvelope(2, "index-0", &loggregator_v2.Log{}), "index-0")
-		s.Put(buildTypedEnvelope(3, "index-0", &loggregator_v2.Log{}), "index-0")
-		s.Put(buildTypedEnvelope(1, "index-1", &loggregator_v2.Log{}), "index-1")
+		s.Put(buildTypedEnvelope(2, "index-0", &loggregator_v2.Log{}))
+		s.Put(buildTypedEnvelope(3, "index-0", &loggregator_v2.Log{}))
+		s.Put(buildTypedEnvelope(1, "index-1", &loggregator_v2.Log{}))
 
 		s.WaitForTruncationToComplete()
 		sp.SetNumberToPrune(1)
@@ -333,7 +333,7 @@ var _ = Describe("Store", func() {
 				go func(sourceId string) {
 					for i := 0; i < 10000; i++ {
 						e := buildTypedEnvelope(time.Now().UnixNano(), sourceId, &loggregator_v2.Log{})
-						loadStore.Put(e, sourceId)
+						loadStore.Put(e)
 						time.Sleep(time.Millisecond)
 					}
 				}(strconv.Itoa(j))

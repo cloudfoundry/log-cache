@@ -31,7 +31,7 @@ func BenchmarkStoreWrite(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		e := gen()
-		s.Put(e, e.GetSourceId())
+		s.Put(e)
 	}
 }
 
@@ -41,7 +41,7 @@ func BenchmarkStoreTruncationOnWrite(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		e := gen()
-		s.Put(e, e.GetSourceId())
+		s.Put(e)
 	}
 }
 
@@ -53,7 +53,7 @@ func BenchmarkStoreWriteParallel(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			e := gen()
-			s.Put(e, e.GetSourceId())
+			s.Put(e)
 		}
 	})
 }
@@ -63,7 +63,7 @@ func BenchmarkStoreGetTime5MinRange(b *testing.B) {
 
 	for i := 0; i < StoreSize/10; i++ {
 		e := gen()
-		s.Put(e, e.GetSourceId())
+		s.Put(e)
 	}
 	now := time.Now()
 	fiveMinAgo := now.Add(-5 * time.Minute)
@@ -79,7 +79,7 @@ func BenchmarkStoreGetLogType(b *testing.B) {
 
 	for i := 0; i < StoreSize/10; i++ {
 		e := gen()
-		s.Put(e, e.GetSourceId())
+		s.Put(e)
 	}
 
 	logType := []logcache_v1.EnvelopeType{logcache_v1.EnvelopeType_LOG}
@@ -95,7 +95,7 @@ func BenchmarkMeta(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		e := gen()
-		s.Put(e, e.GetSourceId())
+		s.Put(e)
 	}
 
 	b.ResetTimer()
@@ -112,7 +112,7 @@ func BenchmarkMetaWhileWriting(b *testing.B) {
 		close(ready)
 		for i := 0; i < b.N; i++ {
 			e := gen()
-			s.Put(e, e.GetSourceId())
+			s.Put(e)
 		}
 	}()
 	<-ready
@@ -128,7 +128,7 @@ func BenchmarkMetaWhileReading(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		e := gen()
-		s.Put(e, e.GetSourceId())
+		s.Put(e)
 	}
 	now := time.Now()
 	fiveMinAgo := now.Add(-5 * time.Minute)

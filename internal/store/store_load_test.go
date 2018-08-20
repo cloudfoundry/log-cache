@@ -35,7 +35,7 @@ var _ = Describe("store under high concurrent load", func() {
 
 					for envelopes := 0; envelopes < 500; envelopes++ {
 						e := buildTypedEnvelope(time.Now().UnixNano(), sourceId, &loggregator_v2.Log{})
-						loadStore.Put(e, sourceId)
+						loadStore.Put(e)
 						atomic.AddUint64(&envelopesWritten, 1)
 						time.Sleep(50 * time.Microsecond)
 					}

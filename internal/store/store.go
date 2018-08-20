@@ -104,7 +104,7 @@ func (store *Store) getOrInitializeStorage(sourceId string) (*storage, bool) {
 	return envelopeStorage.(*storage), newStorage
 }
 
-func (storage *storage) insertOrSwap(store *Store, ew envelopeWrapper) {
+func (storage *storage) insertOrSwap(store *Store, e *loggregator_v2.Envelope) {
 	storage.Lock()
 	defer storage.Unlock()
 
@@ -119,10 +119,10 @@ func (storage *storage) insertOrSwap(store *Store, ew envelopeWrapper) {
 		store.metrics.setStoreSize(float64(atomic.LoadInt64(&store.count)))
 	}
 
-	storage.Put(ew.e.Timestamp, ew)
+	storage.Put(e.Timestamp, e)
 
-	if ew.e.Timestamp > storage.meta.NewestTimestamp {
-		storage.meta.NewestTimestamp = ew.e.Timestamp
+	if e.Timestamp > storage.meta.NewestTimestamp {
+		storage.meta.NewestTimestamp = e.Timestamp
 	}
 
 	oldestTimestamp := storage.Left().Key.(int64)
@@ -166,13 +166,11 @@ func (store *Store) truncationLoop(runInterval time.Duration) {
 	}
 }
 
-func (store *Store) Put(envelope *loggregator_v2.Envelope, sourceId string) {
+func (store *Store) Put(envelope *loggregator_v2.Envelope) {
 	store.metrics.incIngress(1)
 
-	envelopeStorage, _ := store.getOrInitializeStorage(sourceId)
-
-	ew := envelopeWrapper{e: envelope, index: sourceId}
-	envelopeStorage.insertOrSwap(store, ew)
+	envelopeStorage, _ := store.getOrInitializeStorage(envelope.SourceId)
+	envelopeStorage.insertOrSwap(store, envelope)
 }
 
 func (store *Store) BuildExpirationHeap() *ExpirationHeap {
@@ -243,7 +241,7 @@ func (store *Store) removeOldestEnvelope(treeToPrune *storage) (int64, bool) {
 	store.metrics.incExpired(1)
 
 	oldestEnvelope := treeToPrune.Left()
-	treeIndex := oldestEnvelope.Value.(envelopeWrapper).index
+	treeIndex := oldestEnvelope.Value.(*loggregator_v2.Envelope).SourceId
 
 	treeToPrune.Remove(oldestEnvelope.Key.(int64))
 
@@ -285,8 +283,8 @@ func (store *Store) Get(
 	}
 
 	var res []*loggregator_v2.Envelope
-	traverser(tree.(*storage).Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope, idx string) bool {
-		if idx == index && store.validEnvelopeType(e, envelopeTypes) {
+	traverser(tree.(*storage).Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope) bool {
+		if store.validEnvelopeType(e, envelopeTypes) {
 			res = append(res, e)
 		}
 
@@ -314,7 +312,7 @@ func (s *Store) treeAscTraverse(
 	n *avltree.Node,
 	start int64,
 	end int64,
-	f func(e *loggregator_v2.Envelope, index string) bool,
+	f func(e *loggregator_v2.Envelope) bool,
 ) bool {
 	if n == nil {
 		return false
@@ -326,9 +324,9 @@ func (s *Store) treeAscTraverse(
 			return true
 		}
 
-		w := n.Value.(envelopeWrapper)
+		e := n.Value.(*loggregator_v2.Envelope)
 
-		if t >= end || f(w.e, w.index) {
+		if t >= end || f(e) {
 			return true
 		}
 	}
@@ -340,7 +338,7 @@ func (s *Store) treeDescTraverse(
 	n *avltree.Node,
 	start int64,
 	end int64,
-	f func(e *loggregator_v2.Envelope, index string) bool,
+	f func(e *loggregator_v2.Envelope) bool,
 ) bool {
 	if n == nil {
 		return false
@@ -352,9 +350,9 @@ func (s *Store) treeDescTraverse(
 			return true
 		}
 
-		w := n.Value.(envelopeWrapper)
+		e := n.Value.(*loggregator_v2.Envelope)
 
-		if t < start || f(w.e, w.index) {
+		if t < start || f(e) {
 			return true
 		}
 	}
@@ -418,6 +416,10 @@ type storage struct {
 	sync.RWMutex
 }
 
+func calculateCachePeriod(oldestTimestamp int64) int64 {
+	return (time.Now().UnixNano() - oldestTimestamp) / int64(time.Millisecond)
+}
+
 type ExpirationHeap []storageExpiration
 
 type storageExpiration struct {
@@ -440,13 +442,4 @@ func (h *ExpirationHeap) Pop() interface{} {
 	*h = old[0 : n-1]
 
 	return x
-}
-
-func calculateCachePeriod(oldestTimestamp int64) int64 {
-	return (time.Now().UnixNano() - oldestTimestamp) / int64(time.Millisecond)
-}
-
-type envelopeWrapper struct {
-	e     *loggregator_v2.Envelope
-	index string
 }
