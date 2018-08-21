@@ -1,6 +1,6 @@
 Log Cache
 =========
-[![GoDoc][go-doc-badge]][go-doc] [![travis][travis-badge]][travis] [![slack.cloudfoundry.org][slack-badge]][loggregator-slack]
+[![GoDoc][go-doc-badge]][go-doc] [![travis][travis-badge]][travis] [![slack.cloudfoundry.org][slack-badge]][log-cache-slack]
 
 
 Log Cache persists data in memory from the [Loggregator System][loggregator].
@@ -204,7 +204,7 @@ Log Cache provides a [plugin][log-cache-cli] for the Cloud Foundry command
 line tool, which makes interacting with the API simpler.
 
 [slack-badge]:              https://slack.cloudfoundry.org/badge.svg
-[loggregator-slack]:        https://cloudfoundry.slack.com/archives/loggregator
+[log-cache-slack]:          https://cloudfoundry.slack.com/archives/log-cache
 [log-cache]:                https://code.cloudfoundry.org/log-cache
 [go-doc-badge]:             https://godoc.org/code.cloudfoundry.org/log-cache?status.svg
 [go-doc]:                   https://godoc.org/code.cloudfoundry.org/log-cache
