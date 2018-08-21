@@ -74,6 +74,18 @@ var _ = Describe("LocalStoreReader", func() {
 		Expect(spyStoreReader.limit).To(Equal(100))
 	})
 
+	It("sets the limit to the default of 100 if a limit of zero is provided", func() {
+		_, err := r.Read(context.Background(), &logcache_v1.ReadRequest{
+			SourceId:      "some-source",
+			StartTime:     99,
+			EndTime:       100,
+			Limit:         0,
+			EnvelopeTypes: []logcache_v1.EnvelopeType{logcache_v1.EnvelopeType_ANY},
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(spyStoreReader.limit).To(Equal(100))
+	})
+
 	It("returns an error if the end time is before the start time", func() {
 		_, err := r.Read(context.Background(), &logcache_v1.ReadRequest{
 			SourceId:      "some-source",
@@ -100,6 +112,17 @@ var _ = Describe("LocalStoreReader", func() {
 			StartTime:     99,
 			EndTime:       100,
 			Limit:         1001,
+			EnvelopeTypes: []logcache_v1.EnvelopeType{logcache_v1.EnvelopeType_ANY},
+		})
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("returns an error if the limit is less than 0", func() {
+		_, err := r.Read(context.Background(), &logcache_v1.ReadRequest{
+			SourceId:      "some-source",
+			StartTime:     99,
+			EndTime:       100,
+			Limit:         -1,
 			EnvelopeTypes: []logcache_v1.EnvelopeType{logcache_v1.EnvelopeType_ANY},
 		})
 		Expect(err).To(HaveOccurred())

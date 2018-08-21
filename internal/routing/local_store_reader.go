@@ -50,6 +50,10 @@ func (r *LocalStoreReader) Read(ctx context.Context, req *logcache_v1.ReadReques
 		return nil, fmt.Errorf("Limit (%d) must be 1000 or less", req.Limit)
 	}
 
+	if req.Limit < 0 {
+		return nil, fmt.Errorf("Limit (%d) must be greater than zero", req.Limit)
+	}
+
 	if req.EndTime == 0 {
 		req.EndTime = time.Now().UnixNano()
 	}
