@@ -62,6 +62,7 @@ func main() {
 				cfg.LogCacheTLS.Credentials("log-cache"),
 			),
 		),
+		logcache.WithSelectors(cfg.Selectors...),
 	)
 
 	go nozzle.Start()

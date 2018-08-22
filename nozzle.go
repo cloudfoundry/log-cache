@@ -14,10 +14,11 @@ import (
 
 // Nozzle reads envelopes and writes them to LogCache.
 type Nozzle struct {
-	log     *log.Logger
-	s       StreamConnector
-	metrics Metrics
-	shardId string
+	log       *log.Logger
+	s         StreamConnector
+	metrics   Metrics
+	shardId   string
+	selectors []string
 
 	// LogCache
 	addr string
@@ -33,12 +34,13 @@ type StreamConnector interface {
 // NewNozzle creates a new Nozzle.
 func NewNozzle(c StreamConnector, logCacheAddr string, shardId string, opts ...NozzleOption) *Nozzle {
 	n := &Nozzle{
-		s:       c,
-		addr:    logCacheAddr,
-		opts:    []grpc.DialOption{grpc.WithInsecure()},
-		log:     log.New(ioutil.Discard, "", 0),
-		metrics: nopMetrics{},
-		shardId: shardId,
+		s:         c,
+		addr:      logCacheAddr,
+		opts:      []grpc.DialOption{grpc.WithInsecure()},
+		log:       log.New(ioutil.Discard, "", 0),
+		metrics:   nopMetrics{},
+		shardId:   shardId,
+		selectors: []string{},
 	}
 
 	for _, o := range opts {
@@ -72,6 +74,12 @@ func WithNozzleMetrics(m Metrics) NozzleOption {
 func WithNozzleDialOpts(opts ...grpc.DialOption) NozzleOption {
 	return func(n *Nozzle) {
 		n.opts = opts
+	}
+}
+
+func WithNozzleSelectors(selectors ...string) NozzleOption {
+	return func(n *Nozzle) {
+		n.selectors = selectors
 	}
 }
 
@@ -111,36 +119,44 @@ func (n *Nozzle) Start() {
 	}
 }
 
+var selectorTypes = map[string]*loggregator_v2.Selector{
+	"log": {
+		Message: &loggregator_v2.Selector_Log{
+			Log: &loggregator_v2.LogSelector{},
+		},
+	},
+	"gauge": {
+		Message: &loggregator_v2.Selector_Gauge{
+			Gauge: &loggregator_v2.GaugeSelector{},
+		},
+	},
+	"counter": {
+		Message: &loggregator_v2.Selector_Counter{
+			Counter: &loggregator_v2.CounterSelector{},
+		},
+	},
+	"timer": {
+		Message: &loggregator_v2.Selector_Timer{
+			Timer: &loggregator_v2.TimerSelector{},
+		},
+	},
+	"event": {
+		Message: &loggregator_v2.Selector_Event{
+			Event: &loggregator_v2.EventSelector{},
+		},
+	},
+}
+
 func (n *Nozzle) buildBatchReq() *loggregator_v2.EgressBatchRequest {
+	var selectors []*loggregator_v2.Selector
+
+	for _, selectorType := range n.selectors {
+		selectors = append(selectors, selectorTypes[selectorType])
+	}
+
 	return &loggregator_v2.EgressBatchRequest{
 		ShardId:          n.shardId,
 		UsePreferredTags: true,
-		Selectors: []*loggregator_v2.Selector{
-			{
-				Message: &loggregator_v2.Selector_Log{
-					Log: &loggregator_v2.LogSelector{},
-				},
-			},
-			{
-				Message: &loggregator_v2.Selector_Gauge{
-					Gauge: &loggregator_v2.GaugeSelector{},
-				},
-			},
-			{
-				Message: &loggregator_v2.Selector_Counter{
-					Counter: &loggregator_v2.CounterSelector{},
-				},
-			},
-			{
-				Message: &loggregator_v2.Selector_Timer{
-					Timer: &loggregator_v2.TimerSelector{},
-				},
-			},
-			{
-				Message: &loggregator_v2.Selector_Event{
-					Event: &loggregator_v2.EventSelector{},
-				},
-			},
-		},
+		Selectors:        selectors,
 	}
 }
