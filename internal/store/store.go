@@ -104,7 +104,7 @@ func (store *Store) getOrInitializeStorage(sourceId string) (*storage, bool) {
 	return envelopeStorage.(*storage), newStorage
 }
 
-func (storage *storage) insertOrSwap(store *Store, ew envelopeWrapper) {
+func (storage *storage) insertOrSwap(store *Store, e *loggregator_v2.Envelope) {
 	storage.Lock()
 	defer storage.Unlock()
 
@@ -119,10 +119,10 @@ func (storage *storage) insertOrSwap(store *Store, ew envelopeWrapper) {
 		store.metrics.setStoreSize(float64(atomic.LoadInt64(&store.count)))
 	}
 
-	storage.Put(ew.e.Timestamp, ew)
+	storage.Put(e.Timestamp, e)
 
-	if ew.e.Timestamp > storage.meta.NewestTimestamp {
-		storage.meta.NewestTimestamp = ew.e.Timestamp
+	if e.Timestamp > storage.meta.NewestTimestamp {
+		storage.meta.NewestTimestamp = e.Timestamp
 	}
 
 	oldestTimestamp := storage.Left().Key.(int64)
@@ -170,9 +170,7 @@ func (store *Store) Put(envelope *loggregator_v2.Envelope, sourceId string) {
 	store.metrics.incIngress(1)
 
 	envelopeStorage, _ := store.getOrInitializeStorage(sourceId)
-
-	ew := envelopeWrapper{e: envelope, index: sourceId}
-	envelopeStorage.insertOrSwap(store, ew)
+	envelopeStorage.insertOrSwap(store, envelope)
 }
 
 func (store *Store) BuildExpirationHeap() *ExpirationHeap {
@@ -182,7 +180,7 @@ func (store *Store) BuildExpirationHeap() *ExpirationHeap {
 	store.storageIndex.Range(func(sourceId interface{}, tree interface{}) bool {
 		tree.(*storage).RLock()
 		oldestTimestamp := tree.(*storage).Left().Key.(int64)
-		heap.Push(expirationHeap, storageExpiration{timestamp: oldestTimestamp, tree: tree.(*storage)})
+		heap.Push(expirationHeap, storageExpiration{timestamp: oldestTimestamp, sourceId: sourceId.(string), tree: tree.(*storage)})
 		tree.(*storage).RUnlock()
 
 		return true
@@ -213,9 +211,9 @@ func (store *Store) truncate() {
 	// Remove envelopes one at a time, popping state from the expirationHeap
 	for i := 0; i < numberToPrune; i++ {
 		oldest := heap.Pop(expirationHeap)
-		newOldestTimestamp, valid := store.removeOldestEnvelope(oldest.(storageExpiration).tree)
+		newOldestTimestamp, valid := store.removeOldestEnvelope(oldest.(storageExpiration).tree, oldest.(storageExpiration).sourceId)
 		if valid {
-			heap.Push(expirationHeap, storageExpiration{timestamp: newOldestTimestamp, tree: oldest.(storageExpiration).tree})
+			heap.Push(expirationHeap, storageExpiration{timestamp: newOldestTimestamp, sourceId: oldest.(storageExpiration).sourceId, tree: oldest.(storageExpiration).tree})
 		}
 	}
 
@@ -231,7 +229,7 @@ func (store *Store) truncate() {
 	store.sendTruncationCompleted(true)
 }
 
-func (store *Store) removeOldestEnvelope(treeToPrune *storage) (int64, bool) {
+func (store *Store) removeOldestEnvelope(treeToPrune *storage, sourceId string) (int64, bool) {
 	treeToPrune.Lock()
 	defer treeToPrune.Unlock()
 
@@ -243,12 +241,11 @@ func (store *Store) removeOldestEnvelope(treeToPrune *storage) (int64, bool) {
 	store.metrics.incExpired(1)
 
 	oldestEnvelope := treeToPrune.Left()
-	treeIndex := oldestEnvelope.Value.(envelopeWrapper).index
 
 	treeToPrune.Remove(oldestEnvelope.Key.(int64))
 
 	if treeToPrune.Size() == 0 {
-		store.storageIndex.Delete(treeIndex)
+		store.storageIndex.Delete(sourceId)
 		return 0, false
 	}
 
@@ -285,8 +282,8 @@ func (store *Store) Get(
 	}
 
 	var res []*loggregator_v2.Envelope
-	traverser(tree.(*storage).Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope, idx string) bool {
-		if idx == index && store.validEnvelopeType(e, envelopeTypes) {
+	traverser(tree.(*storage).Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope) bool {
+		if store.validEnvelopeType(e, envelopeTypes) {
 			res = append(res, e)
 		}
 
@@ -314,7 +311,7 @@ func (s *Store) treeAscTraverse(
 	n *avltree.Node,
 	start int64,
 	end int64,
-	f func(e *loggregator_v2.Envelope, index string) bool,
+	f func(e *loggregator_v2.Envelope) bool,
 ) bool {
 	if n == nil {
 		return false
@@ -326,9 +323,9 @@ func (s *Store) treeAscTraverse(
 			return true
 		}
 
-		w := n.Value.(envelopeWrapper)
+		e := n.Value.(*loggregator_v2.Envelope)
 
-		if t >= end || f(w.e, w.index) {
+		if t >= end || f(e) {
 			return true
 		}
 	}
@@ -340,7 +337,7 @@ func (s *Store) treeDescTraverse(
 	n *avltree.Node,
 	start int64,
 	end int64,
-	f func(e *loggregator_v2.Envelope, index string) bool,
+	f func(e *loggregator_v2.Envelope) bool,
 ) bool {
 	if n == nil {
 		return false
@@ -352,9 +349,9 @@ func (s *Store) treeDescTraverse(
 			return true
 		}
 
-		w := n.Value.(envelopeWrapper)
+		e := n.Value.(*loggregator_v2.Envelope)
 
-		if t < start || f(w.e, w.index) {
+		if t < start || f(e) {
 			return true
 		}
 	}
@@ -422,6 +419,7 @@ type ExpirationHeap []storageExpiration
 
 type storageExpiration struct {
 	timestamp int64
+	sourceId  string
 	tree      *storage
 }
 
@@ -444,9 +442,4 @@ func (h *ExpirationHeap) Pop() interface{} {
 
 func calculateCachePeriod(oldestTimestamp int64) int64 {
 	return (time.Now().UnixNano() - oldestTimestamp) / int64(time.Millisecond)
-}
-
-type envelopeWrapper struct {
-	e     *loggregator_v2.Envelope
-	index string
 }
