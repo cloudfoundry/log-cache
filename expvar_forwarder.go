@@ -16,6 +16,7 @@ import (
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 
+	"github.com/blang/semver"
 	"google.golang.org/grpc"
 )
 
@@ -29,6 +30,7 @@ type ExpvarForwarder struct {
 	logCacheAddr string
 	opts         []grpc.DialOption
 	globalTags   map[string]string
+	version      string
 
 	metrics map[string][]metricInfo
 }
@@ -49,10 +51,6 @@ func NewExpvarForwarder(logCacheAddr string, opts ...ExpvarForwarderOption) *Exp
 
 	for _, o := range opts {
 		o(f)
-	}
-
-	if len(f.metrics) == 0 {
-		f.log.Panic("No gauge or counter templates have been configured")
 	}
 
 	return f
@@ -100,6 +98,12 @@ func WithExpvarInterval(i time.Duration) ExpvarForwarderOption {
 func WithGlobalTag(key, value string) ExpvarForwarderOption {
 	return func(f *ExpvarForwarder) {
 		f.globalTags[key] = value
+	}
+}
+
+func WithVersion(version string) ExpvarForwarderOption {
+	return func(f *ExpvarForwarder) {
+		f.version = version
 	}
 }
 
@@ -185,6 +189,7 @@ func (f *ExpvarForwarder) Start() {
 		f.log.Panicf("failed to dial LogCache (%s): %s", f.logCacheAddr, err)
 	}
 	ingressClient := logcache_v1.NewIngressClient(client)
+	now := time.Now().UnixNano()
 
 	for range time.Tick(f.interval) {
 		var e []*loggregator_v2.Envelope
@@ -217,8 +222,6 @@ func (f *ExpvarForwarder) Start() {
 					f.log.Printf("failed to execute template: %s", err)
 					continue
 				}
-
-				now := time.Now().UnixNano()
 
 				if metric.tags == nil {
 					metric.tags = make(map[string]string)
@@ -261,7 +264,7 @@ func (f *ExpvarForwarder) Start() {
 
 					e = append(e, &loggregator_v2.Envelope{
 						SourceId:  metric.sourceID,
-						Timestamp: time.Now().UnixNano(),
+						Timestamp: now,
 						Tags:      metric.tags,
 						Message: &loggregator_v2.Envelope_Gauge{
 							Gauge: &loggregator_v2.Gauge{
@@ -294,7 +297,7 @@ func (f *ExpvarForwarder) Start() {
 
 						e = append(e, &loggregator_v2.Envelope{
 							SourceId:  metric.sourceID,
-							Timestamp: time.Now().UnixNano(),
+							Timestamp: now,
 							Tags:      tags,
 							Message: &loggregator_v2.Envelope_Gauge{
 								Gauge: &loggregator_v2.Gauge{
@@ -313,6 +316,47 @@ func (f *ExpvarForwarder) Start() {
 					continue
 				}
 			}
+		}
+
+		if f.version != "" {
+			version, err := semver.Make(f.version)
+			if err != nil {
+				f.log.Printf("failed to parse version: %s", err)
+			}
+
+			preVersion := 0.0
+			for _, pre := range version.Pre {
+				if pre.IsNum {
+					preVersion = float64(pre.VersionNum)
+					break
+				}
+			}
+
+			versionSourceId := "log-cache"
+			e = append(e, &loggregator_v2.Envelope{
+				SourceId:  versionSourceId,
+				Timestamp: now,
+				Message: &loggregator_v2.Envelope_Gauge{
+					Gauge: &loggregator_v2.Gauge{
+						Metrics: map[string]*loggregator_v2.GaugeValue{
+							"version-major": {
+								Value: float64(version.Major),
+							},
+							"version-minor": {
+								Value: float64(version.Minor),
+							},
+							"version-patch": {
+								Value: float64(version.Patch),
+							},
+							"version-pre": {
+								Value: preVersion,
+							},
+						},
+					},
+				},
+			})
+
+			f.slog.Printf(`{"timestamp":%d,"name":"Version","value":%q,"source_id":%q,"type":"gauge"}`, now, version.String(), versionSourceId)
 		}
 
 		ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)

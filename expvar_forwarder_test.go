@@ -144,12 +144,6 @@ var _ = Describe("ExpvarForwarder", func() {
 			Eventually(sbuffer).Should(gbytes.Say(`{"timestamp":[0-9]+,"name":"CachePeriod","value":68644.000000,"source_id":"log-cache","type":"gauge"}`))
 		})
 
-		It("panics if there is not a counter or gauge configured", func() {
-			Expect(func() {
-				logcache.NewExpvarForwarder(addr)
-			}).To(Panic())
-		})
-
 		It("panics if a counter or gauge template is invalid", func() {
 			Expect(func() {
 				logcache.NewExpvarForwarder(addr,
@@ -240,4 +234,77 @@ var _ = Describe("ExpvarForwarder", func() {
 		})
 
 	})
+
+	Context("Version metrics", func() {
+		It("writes the injected version to LogCache as separate gauges", func() {
+			tc := setup("1.2.3-dev.4")
+
+			Eventually(func() int {
+				return len(tc.logCache.getEnvelopes())
+			}).Should(BeNumerically(">", 0))
+
+			firstEnvelope := tc.logCache.getEnvelopes()[0]
+			Expect(firstEnvelope.SourceId).To(Equal("log-cache"))
+			Expect(firstEnvelope.GetGauge().Metrics["version-major"].Value).To(Equal(1.0))
+			Expect(firstEnvelope.GetGauge().Metrics["version-minor"].Value).To(Equal(2.0))
+			Expect(firstEnvelope.GetGauge().Metrics["version-patch"].Value).To(Equal(3.0))
+			Expect(firstEnvelope.GetGauge().Metrics["version-pre"].Value).To(Equal(4.0))
+		})
+
+		Context("when the version does not have a pre portion", func() {
+			It("writes the injected version to LogCache as separate gauges", func() {
+				tc := setup("1.2.3")
+
+				Eventually(func() int {
+					return len(tc.logCache.getEnvelopes())
+				}).Should(BeNumerically(">", 0))
+
+				firstEnvelope := tc.logCache.getEnvelopes()[0]
+				Expect(firstEnvelope.SourceId).To(Equal("log-cache"))
+				Expect(firstEnvelope.GetGauge().Metrics["version-major"].Value).To(Equal(1.0))
+				Expect(firstEnvelope.GetGauge().Metrics["version-minor"].Value).To(Equal(2.0))
+				Expect(firstEnvelope.GetGauge().Metrics["version-patch"].Value).To(Equal(3.0))
+				Expect(firstEnvelope.GetGauge().Metrics["version-pre"].Value).To(Equal(0.0))
+			})
+		})
+
+		It("writes the version gauges to the Structured Logger", func() {
+			tc := setup("1.2.3-dev.4")
+			Eventually(tc.sbuffer).Should(gbytes.Say(`{"timestamp":[0-9]+,"name":"Version","value":"1.2.3-dev.4","source_id":"log-cache","type":"gauge"}`))
+		})
+	})
 })
+
+type testContext struct {
+	logCache *spyLogCache
+	sbuffer  *gbytes.Buffer
+}
+
+func setup(version string) testContext {
+	var err error
+	tlsConfig, err := newTLSConfig(
+		Cert("log-cache-ca.crt"),
+		Cert("log-cache.crt"),
+		Cert("log-cache.key"),
+		"log-cache",
+	)
+	Expect(err).ToNot(HaveOccurred())
+
+	logCache := newSpyLogCache(tlsConfig)
+	addr := logCache.start()
+	sbuffer := gbytes.NewBuffer()
+
+	expvarForwarder := logcache.NewExpvarForwarder(addr,
+		logcache.WithExpvarInterval(time.Millisecond),
+		logcache.WithExpvarStructuredLogger(log.New(sbuffer, "", 0)),
+		logcache.WithVersion(version),
+		logcache.WithExpvarDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
+	)
+
+	go expvarForwarder.Start()
+
+	return testContext{
+		logCache: logCache,
+		sbuffer:  sbuffer,
+	}
+}

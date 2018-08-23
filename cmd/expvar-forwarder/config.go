@@ -8,6 +8,10 @@ import (
 	"code.cloudfoundry.org/log-cache/internal/tls"
 )
 
+var (
+	buildVersion string
+)
+
 // Config is the configuration for a LogCache.
 type Config struct {
 	LogCacheAddr      string              `env:"LOG_CACHE_ADDR, required, report"`
@@ -17,6 +21,7 @@ type Config struct {
 	Gauges            GaugeDescriptions   `env:"GAUGES_JSON, report"`
 	Maps              MapDescriptions     `env:"MAPS_JSON, report"`
 	StructuredLogging bool                `env:"STRUCTURED_LOGGING, report"`
+	Version           string
 
 	LogCacheTLS tls.TLS
 }
@@ -50,10 +55,15 @@ type MapDescription struct {
 func LoadConfig() (*Config, error) {
 	c := Config{
 		Interval: time.Minute,
+		Version:  "0.0.0",
 	}
 
 	if err := envstruct.Load(&c); err != nil {
 		return nil, err
+	}
+
+	if buildVersion != "" {
+		c.Version = buildVersion
 	}
 
 	return &c, nil

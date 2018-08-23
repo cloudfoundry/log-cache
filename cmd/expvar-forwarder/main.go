@@ -24,6 +24,7 @@ func main() {
 		logcache.WithExpvarLogger(log.New(os.Stderr, "", log.LstdFlags)),
 		logcache.WithExpvarDialOpts(grpc.WithTransportCredentials(cfg.LogCacheTLS.Credentials("log-cache"))),
 		logcache.WithGlobalTag("host", cfg.InstanceAddr),
+		logcache.WithVersion(cfg.Version),
 	}
 
 	if cfg.StructuredLogging {
