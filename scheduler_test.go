@@ -126,8 +126,8 @@ var _ = Describe("Scheduler", func() {
 		It("sets the range table after listing all the nodes", func() {
 			s.Start()
 
-			Eventually(logCacheSpy1.setCount).ShouldNot(BeZero())
-			Eventually(logCacheSpy2.setCount).ShouldNot(BeZero())
+			Eventually(logCacheSpy1.setCount, 2).ShouldNot(BeZero())
+			Eventually(logCacheSpy2.setCount, 2).ShouldNot(BeZero())
 
 			Expect(logCacheSpy1.setReqs()[0].Ranges).To(HaveLen(2))
 			Expect(logCacheSpy2.setReqs()[0].Ranges).To(HaveLen(2))
