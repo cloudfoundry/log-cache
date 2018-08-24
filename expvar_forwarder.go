@@ -192,7 +192,6 @@ func (f *ExpvarForwarder) Start() {
 
 	for range time.Tick(f.interval) {
 		var e []*loggregator_v2.Envelope
-		now := time.Now().UnixNano()
 
 		for addr, metrics := range f.metrics {
 			resp, err := http.Get(addr)
@@ -238,6 +237,7 @@ func (f *ExpvarForwarder) Start() {
 						continue
 					}
 
+					now := time.Now().UnixNano()
 					e = append(e, &loggregator_v2.Envelope{
 						SourceId:  metric.sourceID,
 						Timestamp: now,
@@ -262,6 +262,7 @@ func (f *ExpvarForwarder) Start() {
 						continue
 					}
 
+					now := time.Now().UnixNano()
 					e = append(e, &loggregator_v2.Envelope{
 						SourceId:  metric.sourceID,
 						Timestamp: now,
@@ -295,6 +296,7 @@ func (f *ExpvarForwarder) Start() {
 						}
 						tags["host"] = addr
 
+						now := time.Now().UnixNano()
 						e = append(e, &loggregator_v2.Envelope{
 							SourceId:  metric.sourceID,
 							Timestamp: now,
@@ -332,6 +334,7 @@ func (f *ExpvarForwarder) Start() {
 				}
 			}
 
+			now := time.Now().UnixNano()
 			versionSourceId := "log-cache"
 			e = append(e, &loggregator_v2.Envelope{
 				SourceId:  versionSourceId,
