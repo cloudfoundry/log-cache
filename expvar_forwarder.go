@@ -189,10 +189,10 @@ func (f *ExpvarForwarder) Start() {
 		f.log.Panicf("failed to dial LogCache (%s): %s", f.logCacheAddr, err)
 	}
 	ingressClient := logcache_v1.NewIngressClient(client)
-	now := time.Now().UnixNano()
 
 	for range time.Tick(f.interval) {
 		var e []*loggregator_v2.Envelope
+		now := time.Now().UnixNano()
 
 		for addr, metrics := range f.metrics {
 			resp, err := http.Get(addr)

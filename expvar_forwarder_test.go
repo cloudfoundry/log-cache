@@ -136,6 +136,25 @@ var _ = Describe("ExpvarForwarder", func() {
 			Expect(e.Tags).To(Equal(map[string]string{"a": "some-value"}))
 		})
 
+		It("writes correct timestamps to LogCache", func() {
+			Eventually(func() int {
+				return len(logCache.getEnvelopes())
+			}).Should(BeNumerically(">=", 4))
+
+			var counterEnvelopes []*loggregator_v2.Envelope
+
+			// Find counters
+			for _, ee := range logCache.getEnvelopes() {
+				if ee.GetCounter() == nil {
+					continue
+				}
+
+				counterEnvelopes = append(counterEnvelopes, ee)
+			}
+
+			Expect(counterEnvelopes[0].Timestamp).ToNot(Equal(counterEnvelopes[1].Timestamp))
+		})
+
 		It("writes the expvar counters to the Structured Logger", func() {
 			Eventually(sbuffer).Should(gbytes.Say(`{"timestamp":[0-9]+,"name":"Egress","value":999,"source_id":"log-cache-nozzle","type":"counter"}`))
 		})
