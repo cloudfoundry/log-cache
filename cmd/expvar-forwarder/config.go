@@ -16,6 +16,8 @@ var (
 type Config struct {
 	LogCacheAddr      string              `env:"LOG_CACHE_ADDR, required, report"`
 	InstanceAddr      string              `env:"INSTANCE_ADDR, required, report"`
+	InstanceId        string              `env:"INSTANCE_ID, required, report"`
+	InstanceCid       string              `env:"INSTANCE_CID, report"`
 	Interval          time.Duration       `env:"INTERVAL, report"`
 	Counters          CounterDescriptions `env:"COUNTERS_JSON, report"`
 	Gauges            GaugeDescriptions   `env:"GAUGES_JSON, report"`

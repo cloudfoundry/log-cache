@@ -23,7 +23,9 @@ func main() {
 	opts := []logcache.ExpvarForwarderOption{
 		logcache.WithExpvarLogger(log.New(os.Stderr, "", log.LstdFlags)),
 		logcache.WithExpvarDialOpts(grpc.WithTransportCredentials(cfg.LogCacheTLS.Credentials("log-cache"))),
-		logcache.WithGlobalTag("host", cfg.InstanceAddr),
+		logcache.WithGlobalTag("addr", cfg.InstanceAddr),
+		logcache.WithGlobalTag("id", cfg.InstanceId),
+		logcache.WithGlobalTag("instance-id", cfg.InstanceCid),
 		logcache.WithVersion(cfg.Version),
 	}
 
