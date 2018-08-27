@@ -5,9 +5,15 @@ package logcache.v1;
 import "google/api/annotations.proto";
 
 service PromQLQuerier {
-    rpc InstantQuery(PromQL.InstantQueryRequest) returns (PromQL.QueryResult){
+    rpc InstantQuery(PromQL.InstantQueryRequest) returns (PromQL.InstantQueryResult){
         option (google.api.http) = {
             get: "/v1/promql"
+        };
+    }
+
+    rpc RangeQuery(PromQL.RangeQueryRequest) returns (PromQL.RangeQueryResult){
+        option (google.api.http) = {
+            get: "/v1/promql_range"
         };
     }
 }
@@ -18,11 +24,24 @@ message PromQL {
         int64 time = 2;
     }
 
-    message QueryResult {
+    message RangeQueryRequest {
+        string query = 1;
+        int64 start = 2;
+        int64 end = 3;
+        string step = 4;
+    }
+
+    message InstantQueryResult {
         oneof Result {
             Scalar scalar = 1;
             Vector vector = 2;
             Matrix matrix = 3;
+        }
+    }
+
+    message RangeQueryResult {
+        oneof Result {
+            Matrix matrix = 1;
         }
     }
 

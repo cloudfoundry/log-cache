@@ -70,6 +70,23 @@ var _ = Describe("Store", func() {
 		Expect(envelopes[2].GetTimestamp()).To(Equal(int64(3)))
 	})
 
+	It("returns envelopes inclusive of the start time, up to and exclusive of the end time", func() {
+		e0 := buildEnvelope(0, "a")
+		e1 := buildEnvelope(1, "a")
+		e2 := buildEnvelope(2, "a")
+
+		s.Put(e0, e0.GetSourceId())
+		s.Put(e1, e1.GetSourceId())
+		s.Put(e2, e2.GetSourceId())
+
+		start := time.Unix(0, 0)
+		end := time.Unix(0, 2)
+		envelopes := s.Get("a", start, end, nil, 3, false)
+		Expect(envelopes).To(HaveLen(2))
+		Expect(envelopes[0].GetTimestamp()).To(Equal(int64(0)))
+		Expect(envelopes[1].GetTimestamp()).To(Equal(int64(1)))
+	})
+
 	It("returns a maximum number of envelopes in descending order", func() {
 		e1 := buildEnvelope(1, "a")
 		e2 := buildEnvelope(2, "a")

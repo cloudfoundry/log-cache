@@ -140,7 +140,7 @@ var _ = Describe("LogCache", func() {
 		Eventually(spyMetrics.getter("Egress")).Should(Equal(uint64(2)))
 	})
 
-	It("queries data via PromQL", func() {
+	It("queries data via PromQL Instant Queries", func() {
 		now := time.Now()
 		writeEnvelopes(cache.Addr(), []*loggregator_v2.Envelope{
 			// source-0 hashes to 7700738999732113484 (route to node 0)
@@ -175,6 +175,48 @@ var _ = Describe("LogCache", func() {
 			if len(resp.GetVector().GetSamples()) != 1 {
 				return errors.New("expected 1 samples")
 			}
+
+			return nil
+		}
+		Eventually(f).Should(BeNil())
+	})
+
+	It("queries data via PromQL Range Queries", func() {
+		now := time.Now()
+		writeEnvelopes(cache.Addr(), []*loggregator_v2.Envelope{
+			// source-0 hashes to 7700738999732113484 (route to node 0)
+			{
+				Timestamp: now.Add(-2 * time.Second).UnixNano(),
+				SourceId:  "source-0",
+				Message: &loggregator_v2.Envelope_Counter{
+					Counter: &loggregator_v2.Counter{
+						Name:  "metric",
+						Total: 99,
+					},
+				},
+			},
+		})
+
+		conn, err := grpc.Dial(cache.Addr(),
+			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer conn.Close()
+		client := rpc.NewPromQLQuerierClient(conn)
+
+		f := func() error {
+			resp, err := client.RangeQuery(context.Background(), &rpc.PromQL_RangeQueryRequest{
+				Query: `metric{source_id="source-0"}`,
+				Start: now.Add(-time.Minute).UnixNano(),
+				End:   now.UnixNano(),
+				Step:  "1m",
+			})
+			if err != nil {
+				return err
+			}
+
+			Expect(len(resp.GetMatrix().GetSeries())).To(Equal(1))
+			Expect(len(resp.GetMatrix().GetSeries()[0].GetPoints())).To(Equal(1))
 
 			return nil
 		}
@@ -375,15 +417,16 @@ func writeEnvelopes(addr string, es []*loggregator_v2.Envelope) {
 }
 
 type spyLogCache struct {
-	mu              sync.Mutex
-	localOnlyValues []bool
-	envelopes       []*loggregator_v2.Envelope
-	readRequests    []*rpc.ReadRequest
-	queryRequests   []*rpc.PromQL_InstantQueryRequest
-	readEnvelopes   map[string]func() []*loggregator_v2.Envelope
-	metaResponses   map[string]*rpc.MetaInfo
-	tlsConfig       *tls.Config
-	value           float64
+	mu                 sync.Mutex
+	localOnlyValues    []bool
+	envelopes          []*loggregator_v2.Envelope
+	readRequests       []*rpc.ReadRequest
+	queryRequests      []*rpc.PromQL_InstantQueryRequest
+	rangeQueryRequests []*rpc.PromQL_RangeQueryRequest
+	readEnvelopes      map[string]func() []*loggregator_v2.Envelope
+	metaResponses      map[string]*rpc.MetaInfo
+	tlsConfig          *tls.Config
+	value              float64
 }
 
 func (s *spyLogCache) SetValue(value float64) {
@@ -480,14 +523,14 @@ func (s *spyLogCache) Meta(ctx context.Context, r *rpc.MetaRequest) (*rpc.MetaRe
 	}, nil
 }
 
-func (s *spyLogCache) InstantQuery(ctx context.Context, r *rpc.PromQL_InstantQueryRequest) (*rpc.PromQL_QueryResult, error) {
+func (s *spyLogCache) InstantQuery(ctx context.Context, r *rpc.PromQL_InstantQueryRequest) (*rpc.PromQL_InstantQueryResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.queryRequests = append(s.queryRequests, r)
 
-	return &rpc.PromQL_QueryResult{
-		Result: &rpc.PromQL_QueryResult_Scalar{
+	return &rpc.PromQL_InstantQueryResult{
+		Result: &rpc.PromQL_InstantQueryResult_Scalar{
 			Scalar: &rpc.PromQL_Scalar{
 				Time:  99,
 				Value: s.value,
@@ -502,6 +545,43 @@ func (s *spyLogCache) getQueryRequests() []*rpc.PromQL_InstantQueryRequest {
 
 	r := make([]*rpc.PromQL_InstantQueryRequest, len(s.queryRequests))
 	copy(r, s.queryRequests)
+
+	return r
+}
+
+func (s *spyLogCache) RangeQuery(ctx context.Context, r *rpc.PromQL_RangeQueryRequest) (*rpc.PromQL_RangeQueryResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.rangeQueryRequests = append(s.rangeQueryRequests, r)
+
+	return &rpc.PromQL_RangeQueryResult{
+		Result: &rpc.PromQL_RangeQueryResult_Matrix{
+			Matrix: &rpc.PromQL_Matrix{
+				Series: []*rpc.PromQL_Series{
+					&rpc.PromQL_Series{
+						Metric: map[string]string{
+							"__name__": "test",
+						},
+						Points: []*rpc.PromQL_Point{
+							&rpc.PromQL_Point{
+								Time:  99,
+								Value: s.value,
+							},
+						},
+					},
+				},
+			},
+		},
+	}, nil
+}
+
+func (s *spyLogCache) getRangeQueryRequests() []*rpc.PromQL_RangeQueryRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	r := make([]*rpc.PromQL_RangeQueryRequest, len(s.rangeQueryRequests))
+	copy(r, s.rangeQueryRequests)
 
 	return r
 }

@@ -11,9 +11,9 @@ import (
 
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"github.com/loggregator/prometheus/pkg/labels"
-	"github.com/loggregator/prometheus/promql"
-	"github.com/loggregator/prometheus/storage"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/storage"
 )
 
 type PromQL struct {
@@ -62,9 +62,9 @@ func (q *PromQL) Parse(query string) ([]string, error) {
 		// manually.
 		errf: func(e error) { closureErr = e },
 	}
-	queryable := promql.NewEngine(lcq, nil)
+	queryable := promql.NewEngine(nil, nil, 10, 10*time.Second)
 
-	qq, err := queryable.NewInstantQuery(query, time.Time{})
+	qq, err := queryable.NewInstantQuery(lcq, query, time.Time{})
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (t *sourceIDTracker) Read(ctx context.Context, in *logcache_v1.ReadRequest)
 	return &logcache_v1.ReadResponse{}, nil
 }
 
-func (q *PromQL) InstantQuery(ctx context.Context, req *logcache_v1.PromQL_InstantQueryRequest) (*logcache_v1.PromQL_QueryResult, error) {
+func (q *PromQL) InstantQuery(ctx context.Context, req *logcache_v1.PromQL_InstantQueryRequest) (*logcache_v1.PromQL_InstantQueryResult, error) {
 	var closureErr error
 	interval := time.Second
 	lcq := &logCacheQueryable{
@@ -99,13 +99,13 @@ func (q *PromQL) InstantQuery(ctx context.Context, req *logcache_v1.PromQL_Insta
 		// manually.
 		errf: func(e error) { closureErr = e },
 	}
-	queryable := promql.NewEngine(lcq, nil)
+	queryable := promql.NewEngine(nil, nil, 10, 10*time.Second)
 
 	if req.Time == 0 {
 		req.Time = time.Now().Truncate(time.Second).UnixNano()
 	}
 
-	qq, err := queryable.NewInstantQuery(req.Query, time.Unix(0, req.Time))
+	qq, err := queryable.NewInstantQuery(lcq, req.Query, time.Unix(0, req.Time))
 	if err != nil {
 		return nil, err
 	}
@@ -116,10 +116,10 @@ func (q *PromQL) InstantQuery(ctx context.Context, req *logcache_v1.PromQL_Insta
 		return nil, closureErr
 	}
 
-	return q.toQueryResult(r)
+	return q.toInstantQueryResult(r)
 }
 
-func (q *PromQL) toQueryResult(r *promql.Result) (*logcache_v1.PromQL_QueryResult, error) {
+func (q *PromQL) toInstantQueryResult(r *promql.Result) (*logcache_v1.PromQL_InstantQueryResult, error) {
 	if r.Err != nil {
 		return nil, r.Err
 	}
@@ -127,8 +127,8 @@ func (q *PromQL) toQueryResult(r *promql.Result) (*logcache_v1.PromQL_QueryResul
 	switch r.Value.Type() {
 	case promql.ValueTypeScalar:
 		s := r.Value.(promql.Scalar)
-		return &logcache_v1.PromQL_QueryResult{
-			Result: &logcache_v1.PromQL_QueryResult_Scalar{
+		return &logcache_v1.PromQL_InstantQueryResult{
+			Result: &logcache_v1.PromQL_InstantQueryResult_Scalar{
 				Scalar: &logcache_v1.PromQL_Scalar{
 					Time:  s.T * int64(time.Millisecond),
 					Value: s.V,
@@ -152,8 +152,8 @@ func (q *PromQL) toQueryResult(r *promql.Result) (*logcache_v1.PromQL_QueryResul
 			})
 		}
 
-		return &logcache_v1.PromQL_QueryResult{
-			Result: &logcache_v1.PromQL_QueryResult_Vector{
+		return &logcache_v1.PromQL_InstantQueryResult{
+			Result: &logcache_v1.PromQL_InstantQueryResult_Vector{
 				Vector: &logcache_v1.PromQL_Vector{
 					Samples: samples,
 				},
@@ -181,8 +181,85 @@ func (q *PromQL) toQueryResult(r *promql.Result) (*logcache_v1.PromQL_QueryResul
 			})
 		}
 
-		return &logcache_v1.PromQL_QueryResult{
-			Result: &logcache_v1.PromQL_QueryResult_Matrix{
+		return &logcache_v1.PromQL_InstantQueryResult{
+			Result: &logcache_v1.PromQL_InstantQueryResult_Matrix{
+				Matrix: &logcache_v1.PromQL_Matrix{
+					Series: series,
+				},
+			},
+		}, nil
+
+	default:
+		q.log.Panicf("PromQL: unknown type: %s", r.Value.Type())
+		return nil, nil
+	}
+}
+
+func (q *PromQL) RangeQuery(ctx context.Context, req *logcache_v1.PromQL_RangeQueryRequest) (*logcache_v1.PromQL_RangeQueryResult, error) {
+	var closureErr error
+	interval := time.Second
+	lcq := &logCacheQueryable{
+		log:        q.log,
+		interval:   interval,
+		dataReader: q.r,
+
+		// Prometheus does not hand us back the error the way you might
+		// expect.  Therefore, we have to propagate the error back up
+		// manually.
+		errf: func(e error) { closureErr = e },
+	}
+	queryable := promql.NewEngine(nil, nil, 10, 10*time.Second)
+
+	step, err := time.ParseDuration(req.Step)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't parse step: %s", err)
+	}
+
+	// TODO: Should there be some boundary checking on Start and End?
+
+	qq, err := queryable.NewRangeQuery(lcq, req.Query, time.Unix(0, req.Start), time.Unix(0, req.End), step)
+	if err != nil {
+		return nil, err
+	}
+
+	r := qq.Exec(ctx)
+	if closureErr != nil {
+		q.failureCounter(1)
+		return nil, closureErr
+	}
+
+	return q.toRangeQueryResult(r)
+}
+
+func (q *PromQL) toRangeQueryResult(r *promql.Result) (*logcache_v1.PromQL_RangeQueryResult, error) {
+	if r.Err != nil {
+		return nil, r.Err
+	}
+
+	switch r.Value.Type() {
+	case promql.ValueTypeMatrix:
+		var series []*logcache_v1.PromQL_Series
+		for _, s := range r.Value.(promql.Matrix) {
+			metric := make(map[string]string)
+			for _, m := range s.Metric {
+				metric[m.Name] = m.Value
+			}
+			var points []*logcache_v1.PromQL_Point
+			for _, p := range s.Points {
+				points = append(points, &logcache_v1.PromQL_Point{
+					Time:  p.T * int64(time.Millisecond),
+					Value: p.V,
+				})
+			}
+
+			series = append(series, &logcache_v1.PromQL_Series{
+				Metric: metric,
+				Points: points,
+			})
+		}
+
+		return &logcache_v1.PromQL_RangeQueryResult{
+			Result: &logcache_v1.PromQL_RangeQueryResult_Matrix{
 				Matrix: &logcache_v1.PromQL_Matrix{
 					Series: series,
 				},
@@ -224,7 +301,7 @@ type LogCacheQuerier struct {
 	errf       func(error)
 }
 
-func (l *LogCacheQuerier) Select(ll ...*labels.Matcher) (storage.SeriesSet, error) {
+func (l *LogCacheQuerier) Select(params *storage.SelectParams, ll ...*labels.Matcher) (storage.SeriesSet, error) {
 	var (
 		sourceID string
 		metric   string

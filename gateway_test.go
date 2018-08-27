@@ -106,7 +106,7 @@ var _ = Describe("Gateway", func() {
 		Expect(reqs[0].GetSubGroup().GetSourceIds()).To(ConsistOf("some-source/id"))
 	})
 
-	It("upgrades HTTP requests for PromQLQuerier GETs into gRPC requests", func() {
+	It("upgrades HTTP requests for instant queries via PromQLQuerier GETs into gRPC requests", func() {
 		path := `v1/promql?query=metric{source_id="some-id"}&time=1234`
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 		req, _ := http.NewRequest("GET", URL, nil)
@@ -118,6 +118,22 @@ var _ = Describe("Gateway", func() {
 		Expect(reqs).To(HaveLen(1))
 		Expect(reqs[0].Query).To(Equal(`metric{source_id="some-id"}`))
 		Expect(reqs[0].Time).To(Equal(int64(1234)))
+	})
+
+	It("upgrades HTTP requests for range queries via PromQLQuerier GETs into gRPC requests", func() {
+		path := `v1/promql_range?query=metric{source_id="some-id"}&start=1234&end=5678&step=30s`
+		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
+		req, _ := http.NewRequest("GET", URL, nil)
+		resp, err := http.DefaultClient.Do(req)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+		reqs := spyLogCache.getRangeQueryRequests()
+		Expect(reqs).To(HaveLen(1))
+		Expect(reqs[0].Query).To(Equal(`metric{source_id="some-id"}`))
+		Expect(reqs[0].Start).To(Equal(int64(1234)))
+		Expect(reqs[0].End).To(Equal(int64(5678)))
+		Expect(reqs[0].Step).To(Equal("30s"))
 	})
 
 	It("outputs json with zero-value points", func() {
