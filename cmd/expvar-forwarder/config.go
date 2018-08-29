@@ -19,6 +19,7 @@ type Config struct {
 	InstanceId        string              `env:"INSTANCE_ID, required, report"`
 	InstanceCid       string              `env:"INSTANCE_CID, report"`
 	MetricHost        string              `env:"METRIC_HOST, report"`
+	DefaultSourceId   string              `env:"DEFAULT_SOURCE_ID, report"`
 	Interval          time.Duration       `env:"INTERVAL, report"`
 	Counters          CounterDescriptions `env:"COUNTERS_JSON, report"`
 	Gauges            GaugeDescriptions   `env:"GAUGES_JSON, report"`
@@ -32,7 +33,7 @@ type Config struct {
 type CounterDescription struct {
 	Addr     string            `json:"addr"`
 	Name     string            `json:"name"`
-	SourceID string            `json:"source_id"`
+	SourceId string            `json:"source_id, optional"`
 	Template string            `json:"template"`
 	Tags     map[string]string `json:"tags"`
 }
@@ -41,7 +42,7 @@ type GaugeDescription struct {
 	Addr     string            `json:"addr"`
 	Name     string            `json:"name"`
 	Unit     string            `json:"unit"`
-	SourceID string            `json:"source_id"`
+	SourceId string            `json:"source_id, optional"`
 	Template string            `json:"template"`
 	Tags     map[string]string `json:"tags"`
 }
@@ -49,7 +50,7 @@ type GaugeDescription struct {
 type MapDescription struct {
 	Addr     string            `json:"addr"`
 	Name     string            `json:"name"`
-	SourceID string            `json:"source_id"`
+	SourceId string            `json:"source_id, optional"`
 	Template string            `json:"template"`
 	Tags     map[string]string `json:"tags"`
 }
@@ -59,6 +60,7 @@ func LoadConfig() (*Config, error) {
 	c := Config{
 		Interval: time.Minute,
 		Version:  "0.0.0",
+		DefaultSourceId: "log-cache",
 	}
 
 	if err := envstruct.Load(&c); err != nil {

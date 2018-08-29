@@ -72,11 +72,12 @@ var _ = Describe("ExpvarForwarder", func() {
 			r = logcache.NewExpvarForwarder(addr,
 				logcache.WithExpvarInterval(time.Millisecond),
 				logcache.WithExpvarStructuredLogger(log.New(sbuffer, "", 0)),
+				logcache.WithExpvarDefaultSourceId("log-cache"),
 				logcache.AddExpvarGaugeTemplate(
 					server1.URL,
 					"CachePeriod",
 					"mS",
-					"log-cache",
+					"",
 					"{{.LogCache.CachePeriod}}",
 					map[string]string{"a": "some-value"},
 				),
@@ -316,7 +317,8 @@ func setup(version string) testContext {
 	expvarForwarder := logcache.NewExpvarForwarder(addr,
 		logcache.WithExpvarInterval(time.Millisecond),
 		logcache.WithExpvarStructuredLogger(log.New(sbuffer, "", 0)),
-		logcache.WithVersion(version),
+		logcache.WithExpvarVersion(version),
+		logcache.WithExpvarDefaultSourceId("log-cache"),
 		logcache.WithExpvarDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
 	)
 

@@ -23,11 +23,12 @@ func main() {
 	opts := []logcache.ExpvarForwarderOption{
 		logcache.WithExpvarLogger(log.New(os.Stderr, "", log.LstdFlags)),
 		logcache.WithExpvarDialOpts(grpc.WithTransportCredentials(cfg.LogCacheTLS.Credentials("log-cache"))),
-		logcache.WithGlobalTag("host", cfg.MetricHost),
-		logcache.WithGlobalTag("addr", cfg.InstanceAddr),
-		logcache.WithGlobalTag("id", cfg.InstanceId),
-		logcache.WithGlobalTag("instance-id", cfg.InstanceCid),
-		logcache.WithVersion(cfg.Version),
+		logcache.WithExpvarGlobalTag("host", cfg.MetricHost),
+		logcache.WithExpvarGlobalTag("addr", cfg.InstanceAddr),
+		logcache.WithExpvarGlobalTag("id", cfg.InstanceId),
+		logcache.WithExpvarGlobalTag("instance-id", cfg.InstanceCid),
+		logcache.WithExpvarDefaultSourceId(cfg.DefaultSourceId),
+		logcache.WithExpvarVersion(cfg.Version),
 	}
 
 	if cfg.StructuredLogging {
@@ -38,7 +39,7 @@ func main() {
 		opts = append(opts, logcache.AddExpvarCounterTemplate(
 			c.Addr,
 			c.Name,
-			c.SourceID,
+			c.SourceId,
 			c.Template,
 			c.Tags,
 		))
@@ -49,7 +50,7 @@ func main() {
 			g.Addr,
 			g.Name,
 			g.Unit,
-			g.SourceID,
+			g.SourceId,
 			g.Template,
 			g.Tags,
 		))
@@ -59,7 +60,7 @@ func main() {
 		opts = append(opts, logcache.AddExpvarMapTemplate(
 			m.Addr,
 			m.Name,
-			m.SourceID,
+			m.SourceId,
 			m.Template,
 			m.Tags,
 		))

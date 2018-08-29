@@ -22,9 +22,10 @@ import (
 
 // ExpvarForwarder reads from an expvar and write them to LogCache.
 type ExpvarForwarder struct {
-	log      *log.Logger
-	slog     *log.Logger
-	interval time.Duration
+	log             *log.Logger
+	slog            *log.Logger
+	interval        time.Duration
+	defaultSourceId string
 
 	// LogCache
 	logCacheAddr string
@@ -95,15 +96,21 @@ func WithExpvarInterval(i time.Duration) ExpvarForwarderOption {
 	}
 }
 
-func WithGlobalTag(key, value string) ExpvarForwarderOption {
+func WithExpvarGlobalTag(key, value string) ExpvarForwarderOption {
 	return func(f *ExpvarForwarder) {
 		f.globalTags[key] = value
 	}
 }
 
-func WithVersion(version string) ExpvarForwarderOption {
+func WithExpvarVersion(version string) ExpvarForwarderOption {
 	return func(f *ExpvarForwarder) {
 		f.version = version
+	}
+}
+
+func WithExpvarDefaultSourceId(sourceId string) ExpvarForwarderOption {
+	return func(f *ExpvarForwarder) {
+		f.defaultSourceId = sourceId
 	}
 }
 
@@ -111,16 +118,20 @@ func WithVersion(version string) ExpvarForwarderOption {
 // ExpvarForwarder to look for counter metrics. Each template is a text/template.
 // This can be called several times to add more counter metrics. There has to
 // be atleast one counter or gauge template.
-func AddExpvarCounterTemplate(addr, metricName, sourceID, txtTemplate string, tags map[string]string) ExpvarForwarderOption {
+func AddExpvarCounterTemplate(addr, metricName, sourceId, txtTemplate string, tags map[string]string) ExpvarForwarderOption {
 	t, err := template.New("Counter").Parse(txtTemplate)
 	if err != nil {
 		panic(err)
 	}
 
 	return func(f *ExpvarForwarder) {
+		if sourceId == "" {
+			sourceId = f.defaultSourceId
+		}
+
 		f.metrics[addr] = append(f.metrics[addr], metricInfo{
 			name:       metricName,
-			sourceID:   sourceID,
+			sourceId:   sourceId,
 			template:   t,
 			metricType: "counter",
 			tags:       tags,
@@ -132,17 +143,21 @@ func AddExpvarCounterTemplate(addr, metricName, sourceID, txtTemplate string, ta
 // ExpvarForwarder to look for gauge metrics. Each template is a text/template.
 // This can be called several times to add more counter metrics. There has to
 // be atleast one counter or gauge template.
-func AddExpvarGaugeTemplate(addr, metricName, metricUnit, sourceID, txtTemplate string, tags map[string]string) ExpvarForwarderOption {
+func AddExpvarGaugeTemplate(addr, metricName, metricUnit, sourceId, txtTemplate string, tags map[string]string) ExpvarForwarderOption {
 	t, err := template.New("Gauge").Parse(txtTemplate)
 	if err != nil {
 		panic(err)
 	}
 
 	return func(f *ExpvarForwarder) {
+		if sourceId == "" {
+			sourceId = f.defaultSourceId
+		}
+
 		f.metrics[addr] = append(f.metrics[addr], metricInfo{
 			name:       metricName,
 			unit:       metricUnit,
-			sourceID:   sourceID,
+			sourceId:   sourceId,
 			template:   t,
 			metricType: "gauge",
 			tags:       tags,
@@ -151,7 +166,7 @@ func AddExpvarGaugeTemplate(addr, metricName, metricUnit, sourceID, txtTemplate 
 }
 
 // TODO: Put a comment here
-func AddExpvarMapTemplate(addr, metricName, sourceID, txtTemplate string, tags map[string]string) ExpvarForwarderOption {
+func AddExpvarMapTemplate(addr, metricName, sourceId, txtTemplate string, tags map[string]string) ExpvarForwarderOption {
 	funcMap := template.FuncMap{
 		"jsonMap": func(inputs map[string]interface{}) string {
 			s, err := json.Marshal(inputs)
@@ -171,9 +186,13 @@ func AddExpvarMapTemplate(addr, metricName, sourceID, txtTemplate string, tags m
 	}
 
 	return func(f *ExpvarForwarder) {
+		if sourceId == "" {
+			sourceId = f.defaultSourceId
+		}
+
 		f.metrics[addr] = append(f.metrics[addr], metricInfo{
 			name:       metricName,
-			sourceID:   sourceID,
+			sourceId:   sourceId,
 			template:   t,
 			metricType: "map",
 			tags:       tags,
@@ -239,7 +258,7 @@ func (f *ExpvarForwarder) Start() {
 
 					now := time.Now().UnixNano()
 					e = append(e, &loggregator_v2.Envelope{
-						SourceId:  metric.sourceID,
+						SourceId:  metric.sourceId,
 						Timestamp: now,
 						Tags:      metric.tags,
 						Message: &loggregator_v2.Envelope_Counter{
@@ -250,7 +269,7 @@ func (f *ExpvarForwarder) Start() {
 						},
 					})
 
-					f.slog.Printf(`{"timestamp":%d,"name":%q,"value":%d,"source_id":%q,"type":"counter"}`, now, metric.name, value, metric.sourceID)
+					f.slog.Printf(`{"timestamp":%d,"name":%q,"value":%d,"source_id":%q,"type":"counter"}`, now, metric.name, value, metric.sourceId)
 
 					continue
 				}
@@ -264,7 +283,7 @@ func (f *ExpvarForwarder) Start() {
 
 					now := time.Now().UnixNano()
 					e = append(e, &loggregator_v2.Envelope{
-						SourceId:  metric.sourceID,
+						SourceId:  metric.sourceId,
 						Timestamp: now,
 						Tags:      metric.tags,
 						Message: &loggregator_v2.Envelope_Gauge{
@@ -279,7 +298,7 @@ func (f *ExpvarForwarder) Start() {
 						},
 					})
 
-					f.slog.Printf(`{"timestamp":%d,"name":%q,"value":%f,"source_id":%q,"type":"gauge"}`, now, metric.name, value, metric.sourceID)
+					f.slog.Printf(`{"timestamp":%d,"name":%q,"value":%f,"source_id":%q,"type":"gauge"}`, now, metric.name, value, metric.sourceId)
 
 					continue
 				}
@@ -298,7 +317,7 @@ func (f *ExpvarForwarder) Start() {
 
 						now := time.Now().UnixNano()
 						e = append(e, &loggregator_v2.Envelope{
-							SourceId:  metric.sourceID,
+							SourceId:  metric.sourceId,
 							Timestamp: now,
 							Tags:      tags,
 							Message: &loggregator_v2.Envelope_Gauge{
@@ -312,7 +331,7 @@ func (f *ExpvarForwarder) Start() {
 							},
 						})
 
-						f.slog.Printf(`{"timestamp":%d,"name":%q,"value":%f,"source_id":%q,"type":"gauge"}`, now, metric.name, value, metric.sourceID)
+						f.slog.Printf(`{"timestamp":%d,"name":%q,"value":%f,"source_id":%q,"type":"gauge"}`, now, metric.name, value, metric.sourceId)
 					}
 
 					continue
@@ -335,7 +354,7 @@ func (f *ExpvarForwarder) Start() {
 			}
 
 			now := time.Now().UnixNano()
-			versionSourceId := "log-cache"
+			versionSourceId := f.defaultSourceId
 			e = append(e, &loggregator_v2.Envelope{
 				SourceId:  versionSourceId,
 				Timestamp: now,
@@ -378,7 +397,7 @@ func (f *ExpvarForwarder) Start() {
 type metricInfo struct {
 	name       string
 	unit       string
-	sourceID   string
+	sourceId   string
 	template   *template.Template
 	metricType string
 	tags       map[string]string
