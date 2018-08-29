@@ -139,7 +139,7 @@ var _ = Describe("ShardGroupReader", func() {
 		}).Should(Equal([]int64{99, 100, 101, 102}))
 	})
 
-	XIt("shards data from a group of sourceIDs", func() {
+	It("shards data from a group of sourceIDs", func() {
 		i := int64(99)
 		j := int64(100)
 

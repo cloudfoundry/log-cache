@@ -39,7 +39,8 @@ type Store struct {
 	oldestTimestamp         int64
 	minimumStoreSizeToPrune int
 
-	maxPerSource int
+	maxPerSource      int
+	maxTimestampFudge int64
 
 	metrics Metrics
 	mc      MemoryConsultant
@@ -61,6 +62,7 @@ func NewStore(maxPerSource, minimumStoreSizeToPrune int, mc MemoryConsultant, m 
 	store := &Store{
 		minimumStoreSizeToPrune: minimumStoreSizeToPrune,
 		maxPerSource:            maxPerSource,
+		maxTimestampFudge:       4000,
 		oldestTimestamp:         int64(^uint64(0) >> 1),
 
 		metrics: Metrics{
@@ -119,7 +121,16 @@ func (storage *storage) insertOrSwap(store *Store, e *loggregator_v2.Envelope) {
 		store.metrics.setStoreSize(float64(atomic.LoadInt64(&store.count)))
 	}
 
-	storage.Put(e.Timestamp, e)
+	var timestampFudge int64
+	for timestampFudge = 0; timestampFudge < store.maxTimestampFudge; timestampFudge++ {
+		_, exists := storage.Get(e.Timestamp + timestampFudge)
+
+		if !exists {
+			break
+		}
+	}
+
+	storage.Put(e.Timestamp+timestampFudge, e)
 
 	if e.Timestamp > storage.meta.NewestTimestamp {
 		storage.meta.NewestTimestamp = e.Timestamp

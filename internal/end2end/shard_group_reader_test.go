@@ -108,8 +108,10 @@ var _ = Describe("ShardGroupReader", func() {
 			}
 		}(client1, client2)
 
-		ic := ingressClient(logCache.Addr())
-		Eventually(func() []int {
+		ic, cleanup := ingressClient(logCache.Addr())
+		defer cleanup()
+
+		Eventually(func() []string {
 			_, err := ic.Send(context.Background(), &rpc.SendRequest{
 				Envelopes: &loggregator_v2.EnvelopeBatch{
 					Batch: []*loggregator_v2.Envelope{
@@ -133,12 +135,12 @@ var _ = Describe("ShardGroupReader", func() {
 				return nil
 			}
 
-			var results []int
+			var results []string
 			for _, e := range envelopes {
-				results = append(results, int(e.GetTimestamp()))
+				results = append(results, e.SourceId)
 			}
 			return results
-		}, 5).Should(ConsistOf(1, 2, 3, 4))
+		}, 5).Should(And(ContainElement("a"), ContainElement("b")))
 	})
 
 	It("shards data via requester_id", func() {
@@ -155,7 +157,9 @@ var _ = Describe("ShardGroupReader", func() {
 		}()
 
 		go func(addr string) {
-			ic := ingressClient(addr)
+			ic, cleanup := ingressClient(addr)
+			defer cleanup()
+
 			for i := int64(0); atomic.LoadInt64(&done) == 0; i += 5 {
 				ic.Send(context.Background(), &rpc.SendRequest{
 					Envelopes: &loggregator_v2.EnvelopeBatch{
@@ -218,11 +222,13 @@ var _ = Describe("ShardGroupReader", func() {
 	})
 })
 
-func ingressClient(addr string) rpc.IngressClient {
+func ingressClient(addr string) (client rpc.IngressClient, cleanup func()) {
 	conn, err := grpc.Dial(addr, grpc.WithInsecure())
 	if err != nil {
 		panic(err)
 	}
 
-	return rpc.NewIngressClient(conn)
+	return rpc.NewIngressClient(conn), func() {
+		conn.Close()
+	}
 }

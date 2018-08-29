@@ -63,9 +63,14 @@ var _ = Describe("LogCache", func() {
 	})
 
 	It("reads data from Log Cache", func() {
-		ic1 := ingressClient(node1.Addr())
-		ic2 := ingressClient(node2.Addr())
+
 		Eventually(func() []int64 {
+			ic1, cleanup1 := ingressClient(node1.Addr())
+			defer cleanup1()
+
+			ic2, cleanup2 := ingressClient(node2.Addr())
+			defer cleanup2()
+
 			_, err := ic1.Send(context.Background(), &rpc.SendRequest{
 				Envelopes: &loggregator_v2.EnvelopeBatch{
 					Batch: []*loggregator_v2.Envelope{
@@ -78,27 +83,22 @@ var _ = Describe("LogCache", func() {
 				},
 			})
 
-			if err != nil {
-				return nil
-			}
+			Expect(err).ToNot(HaveOccurred())
 
 			_, err = ic2.Send(context.Background(), &rpc.SendRequest{
 				Envelopes: &loggregator_v2.EnvelopeBatch{
 					Batch: []*loggregator_v2.Envelope{
-						{SourceId: "a", Timestamp: 6},
-						{SourceId: "a", Timestamp: 7},
-						{SourceId: "b", Timestamp: 8},
-						{SourceId: "b", Timestamp: 9},
-						{SourceId: "c", Timestamp: 10},
+						{SourceId: "a", Timestamp: 1000000006},
+						{SourceId: "a", Timestamp: 1000000007},
+						{SourceId: "b", Timestamp: 1000000008},
+						{SourceId: "b", Timestamp: 1000000009},
+						{SourceId: "c", Timestamp: 1000000010},
 					},
 				},
 			})
 
-			if err != nil {
-				return nil
-			}
-
-			es, err := client.Read(context.Background(), "a", time.Unix(0, 0))
+			Expect(err).ToNot(HaveOccurred())
+			es, err := client.Read(context.Background(), "a", time.Unix(0, 0), gologcache.WithLimit(500))
 			if err != nil {
 				return nil
 			}
@@ -109,6 +109,11 @@ var _ = Describe("LogCache", func() {
 			}
 			return result
 
-		}, 5).Should(Equal([]int64{1, 2, 6, 7}))
+		}, 5).Should(And(
+			ContainElement(int64(1)),
+			ContainElement(int64(2)),
+			ContainElement(int64(1000000006)),
+			ContainElement(int64(1000000007)),
+		))
 	})
 })

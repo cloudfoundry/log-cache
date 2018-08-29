@@ -90,7 +90,7 @@ var _ = Describe("Store", func() {
 		Expect(envelopes[2].GetTimestamp()).To(Equal(int64(2)))
 	})
 
-	It("does not increment the count during a timestamp overwrite", func() {
+	It("increments the timestamp as necessary to prevent overwrites", func() {
 		e1 := buildEnvelope(1, "a")
 		e2 := buildEnvelope(1, "a")
 		e3 := buildEnvelope(3, "a")
@@ -102,7 +102,7 @@ var _ = Describe("Store", func() {
 		s.Put(e4, e4.GetSourceId())
 
 		m := s.Meta()["a"]
-		Expect(m.Count).To(Equal(int64(3)))
+		Expect(m.Count).To(Equal(int64(4)))
 	})
 
 	DescribeTable("fetches data based on envelope type",
@@ -175,10 +175,10 @@ var _ = Describe("Store", func() {
 
 		// e3-e7 should be available
 		e3 := buildTypedEnvelope(3, "a", &loggregator_v2.Gauge{})
-		e4 := buildTypedEnvelope(4, "a", &loggregator_v2.Timer{})
-		e5 := buildTypedEnvelope(5, "a", &loggregator_v2.Event{})
-		e6 := buildTypedEnvelope(6, "a", &loggregator_v2.Event{})
-		e7 := buildTypedEnvelope(7, "a", &loggregator_v2.Event{})
+		e4 := buildTypedEnvelope(3, "a", &loggregator_v2.Timer{})
+		e5 := buildTypedEnvelope(3, "a", &loggregator_v2.Event{})
+		e6 := buildTypedEnvelope(3, "a", &loggregator_v2.Event{})
+		e7 := buildTypedEnvelope(3, "a", &loggregator_v2.Event{})
 
 		// e8 should be truncated even though it is late
 		e8 := buildTypedEnvelope(1, "a", &loggregator_v2.Event{})
@@ -204,8 +204,8 @@ var _ = Describe("Store", func() {
 		envelopes := s.Get("a", start, end, nil, 10, false)
 		Expect(envelopes).To(HaveLen(5))
 
-		for i, e := range envelopes {
-			Expect(e.Timestamp).To(Equal(int64(i + 3)))
+		for _, e := range envelopes {
+			Expect(e.Timestamp).To(Equal(int64(3)))
 		}
 
 		Expect(sm.GetValue("Expired")).To(Equal(3.0))
