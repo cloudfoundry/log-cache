@@ -31,6 +31,7 @@ func main() {
 		logcache.WithMetrics(metrics.New(expvar.NewMap("LogCache"))),
 		logcache.WithAddr(cfg.Addr),
 		logcache.WithMinimumSize(cfg.MinimumSize),
+		logcache.WithMemoryLimit(cfg.MemoryLimit),
 		logcache.WithClustered(
 			cfg.NodeIndex,
 			cfg.NodeAddrs,

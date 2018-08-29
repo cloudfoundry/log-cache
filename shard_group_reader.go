@@ -32,7 +32,8 @@ type ShardGroupReader struct {
 	serverOpts []grpc.ServerOption
 	dialOpts   []grpc.DialOption
 
-	maxPerSource int
+	maxPerSource       int
+	memoryLimitPercent float64
 }
 
 // NewGroupReader creates a new ShardGroupReader. NodeAddrs has the hostport of
@@ -49,9 +50,10 @@ func NewGroupReader(logCacheAddr string, nodeAddrs []string, nodeIndex int, opts
 		metrics:  nopMetrics{},
 		dialOpts: []grpc.DialOption{grpc.WithInsecure()},
 
-		nodeAddrs:    na,
-		nodeIndex:    nodeIndex,
-		maxPerSource: 1000,
+		nodeAddrs:          na,
+		nodeIndex:          nodeIndex,
+		maxPerSource:       1000,
+		memoryLimitPercent: 50,
 	}
 
 	for _, o := range opts {
@@ -117,6 +119,14 @@ func WithGroupReaderMaxPerSource(size int) GroupReaderOption {
 	}
 }
 
+// WithMemoryLimit sets the percentage of total system memory to use for the
+// cache. If exceeded, the cache will prune. Default is 50%.
+func WithGroupReaderMemoryLimit(memoryPercent float64) GroupReaderOption {
+	return func(g *ShardGroupReader) {
+		g.memoryLimitPercent = memoryPercent
+	}
+}
+
 // Start starts servicing for group requests. It does not block.
 func (g *ShardGroupReader) Start() {
 	lis, err := net.Listen("tcp", g.addr)
@@ -140,7 +150,7 @@ func (g *ShardGroupReader) Start() {
 			return crc64.Checksum([]byte(s), tableECMA)
 		}
 
-		p := store.NewPruneConsultant(2, 70, NewMemoryAnalyzer(g.metrics))
+		p := store.NewPruneConsultant(2, g.memoryLimitPercent, NewMemoryAnalyzer(g.metrics))
 		s := groups.NewStorage(g.maxPerSource, g.client.Read, time.Second, p, g.metrics, g.log)
 
 		m := groups.NewManager(s, time.Minute)

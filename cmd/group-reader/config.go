@@ -27,6 +27,10 @@ type Config struct {
 	// specific sourceID. Defaults to 1000 envelopes.
 	MaxPerSource int `env:"MAX_PER_SOURCE, report"`
 
+	// MemoryLimit sets the percentage of total system memory to use for the
+	// cache. If exceeded, the cache will prune. Default is 50%.
+	MemoryLimit float64 `env:"MEMORY_LIMIT_PERCENT, report"`
+
 	LogCacheTLS tls.TLS
 }
 
@@ -37,6 +41,7 @@ func LoadConfig() (*Config, error) {
 		LogCacheAddr: "localhost:8080",
 		HealthAddr:   "localhost:6062",
 		MaxPerSource: 1000,
+		MemoryLimit:  50,
 	}
 
 	if err := envstruct.Load(&c); err != nil {

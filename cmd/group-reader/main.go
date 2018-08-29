@@ -36,6 +36,7 @@ func main() {
 		logcache.WithGroupReaderMetrics(metrics.New(expvar.NewMap("GroupReader"))),
 		logcache.WithGroupReaderExternalAddr(extAddr),
 		logcache.WithGroupReaderMaxPerSource(cfg.MaxPerSource),
+		logcache.WithGroupReaderMemoryLimit(cfg.MemoryLimit),
 		logcache.WithGroupReaderServerOpts(
 			grpc.Creds(cfg.LogCacheTLS.Credentials("log-cache")),
 		),

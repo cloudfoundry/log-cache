@@ -29,8 +29,9 @@ type LogCache struct {
 	metrics    Metrics
 	closing    int64
 
-	maxPerSource int
-	min          int
+	maxPerSource       int
+	min                int
+	memoryLimitPercent float64
 
 	// Cluster Properties
 	addr     string
@@ -48,10 +49,11 @@ type LogCache struct {
 // NewLogCache creates a new LogCache.
 func New(opts ...LogCacheOption) *LogCache {
 	cache := &LogCache{
-		log:          log.New(ioutil.Discard, "", 0),
-		metrics:      nopMetrics{},
-		maxPerSource: 100000,
-		min:          500000,
+		log:                log.New(ioutil.Discard, "", 0),
+		metrics:            nopMetrics{},
+		maxPerSource:       100000,
+		min:                500000,
+		memoryLimitPercent: 50,
 
 		addr:     ":8080",
 		dialOpts: []grpc.DialOption{grpc.WithInsecure()},
@@ -97,7 +99,7 @@ func WithAddr(addr string) LogCacheOption {
 }
 
 // WithServerOpts configures the gRPC server options. It defaults to an
-// empty list
+// empty list.
 func WithServerOpts(opts ...grpc.ServerOption) LogCacheOption {
 	return func(c *LogCache) {
 		c.serverOpts = opts
@@ -109,6 +111,14 @@ func WithServerOpts(opts ...grpc.ServerOption) LogCacheOption {
 func WithMinimumSize(min int) LogCacheOption {
 	return func(c *LogCache) {
 		c.min = min
+	}
+}
+
+// WithMemoryLimit sets the percentage of total system memory to use for the
+// cache. If exceeded, the cache will prune. Default is 50%.
+func WithMemoryLimit(memoryPercent float64) LogCacheOption {
+	return func(c *LogCache) {
+		c.memoryLimitPercent = memoryPercent
 	}
 }
 
@@ -167,7 +177,7 @@ func (m nopMetrics) NewGauge(name string) func(float64) {
 // Start starts the LogCache. It has an internal go-routine that it creates
 // and therefore does not block.
 func (c *LogCache) Start() {
-	p := store.NewPruneConsultant(2, 70, NewMemoryAnalyzer(c.metrics))
+	p := store.NewPruneConsultant(2, c.memoryLimitPercent, NewMemoryAnalyzer(c.metrics))
 	store := store.NewStore(c.maxPerSource, c.min, p, c.metrics)
 	c.setupRouting(store)
 }
