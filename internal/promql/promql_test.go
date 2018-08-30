@@ -558,6 +558,19 @@ var _ = Describe("PromQL", func() {
 			Expect(r.GetVector().GetSamples()[0].Point.Value).To(Equal(99.0))
 		})
 
+		It("captures the query time as a metric", func() {
+			_, err := q.InstantQuery(
+				context.Background(),
+				&logcache_v1.PromQL_InstantQueryRequest{Query: `metric{source_id="some-id-1"}`},
+			)
+
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(spyMetrics.gauges).To(HaveKey("PromqlInstantQueryTime"))
+			Expect(spyMetrics.gauges["PromqlInstantQueryTime"]).To(HaveLen(1))
+			Expect(spyMetrics.gauges["PromqlInstantQueryTime"][0]).ToNot(BeZero())
+		})
+
 		It("returns an error for an invalid query", func() {
 			_, err := q.InstantQuery(
 				context.Background(),
@@ -956,6 +969,19 @@ var _ = Describe("PromQL", func() {
 			)
 		})
 
+		It("captures the query time as a metric", func() {
+			_, err := q.RangeQuery(
+				context.Background(),
+				&logcache_v1.PromQL_RangeQueryRequest{Query: `metric{source_id="some-id-1"}`, Start: 1, End: 1, Step: "1m"},
+			)
+
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(spyMetrics.gauges).To(HaveKey("PromqlRangeQueryTime"))
+			Expect(spyMetrics.gauges["PromqlRangeQueryTime"]).To(HaveLen(1))
+			Expect(spyMetrics.gauges["PromqlRangeQueryTime"][0]).ToNot(BeZero())
+		})
+
 		It("returns an error for an invalid query", func() {
 			_, err := q.RangeQuery(
 				context.Background(),
@@ -1066,15 +1092,24 @@ func (s *spyDataReader) setRead(es [][]*loggregator_v2.Envelope, errs []error) {
 type spyMetrics struct {
 	names  []string
 	deltas []uint64
+	gauges map[string][]float64
 }
 
 func newSpyMetrics() *spyMetrics {
-	return &spyMetrics{}
+	return &spyMetrics{
+		gauges: make(map[string][]float64),
+	}
 }
 
 func (s *spyMetrics) NewCounter(name string) func(delta uint64) {
 	s.names = append(s.names, name)
 	return func(delta uint64) {
 		s.deltas = append(s.deltas, delta)
+	}
+}
+
+func (s *spyMetrics) NewGauge(name string) func(value float64) {
+	return func(value float64) {
+		s.gauges[name] = append(s.gauges[name], value)
 	}
 }

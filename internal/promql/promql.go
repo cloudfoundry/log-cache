@@ -20,8 +20,10 @@ type PromQL struct {
 	r   DataReader
 	log *log.Logger
 
-	failureCounter func(uint64)
-	failures       int
+	failureCounter    func(uint64)
+	instantQueryGauge func(float64)
+	rangeQueryGauge   func(float64)
+	failures          int
 
 	result int64
 }
@@ -32,6 +34,7 @@ type DataReader interface {
 
 type Metrics interface {
 	NewCounter(name string) func(delta uint64)
+	NewGauge(name string) func(value float64)
 }
 
 func New(
@@ -40,10 +43,12 @@ func New(
 	log *log.Logger,
 ) *PromQL {
 	q := &PromQL{
-		r:              r,
-		log:            log,
-		failureCounter: m.NewCounter("PromQLTimeout"),
-		result:         1,
+		r:                 r,
+		log:               log,
+		failureCounter:    m.NewCounter("PromQLTimeout"),
+		instantQueryGauge: m.NewGauge("PromqlInstantQueryTime"),
+		rangeQueryGauge:   m.NewGauge("PromqlRangeQueryTime"),
+		result:            1,
 	}
 
 	return q
@@ -110,7 +115,10 @@ func (q *PromQL) InstantQuery(ctx context.Context, req *logcache_v1.PromQL_Insta
 		return nil, err
 	}
 
+	queryStartTime := time.Now().UnixNano()
 	r := qq.Exec(ctx)
+	q.instantQueryGauge(float64(time.Now().UnixNano() - queryStartTime))
+
 	if closureErr != nil {
 		q.failureCounter(1)
 		return nil, closureErr
@@ -222,7 +230,10 @@ func (q *PromQL) RangeQuery(ctx context.Context, req *logcache_v1.PromQL_RangeQu
 		return nil, err
 	}
 
+	queryStartTime := time.Now().UnixNano()
 	r := qq.Exec(ctx)
+	q.rangeQueryGauge(float64(time.Now().UnixNano() - queryStartTime))
+
 	if closureErr != nil {
 		q.failureCounter(1)
 		return nil, closureErr
