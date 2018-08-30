@@ -422,6 +422,7 @@ type spyLogCache struct {
 	envelopes          []*loggregator_v2.Envelope
 	readRequests       []*rpc.ReadRequest
 	queryRequests      []*rpc.PromQL_InstantQueryRequest
+	queryError         error
 	rangeQueryRequests []*rpc.PromQL_RangeQueryRequest
 	readEnvelopes      map[string]func() []*loggregator_v2.Envelope
 	metaResponses      map[string]*rpc.MetaInfo
@@ -536,7 +537,7 @@ func (s *spyLogCache) InstantQuery(ctx context.Context, r *rpc.PromQL_InstantQue
 				Value: s.value,
 			},
 		},
-	}, nil
+	}, s.queryError
 }
 
 func (s *spyLogCache) getQueryRequests() []*rpc.PromQL_InstantQueryRequest {

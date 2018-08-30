@@ -1,6 +1,7 @@
 package logcache_test
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -148,5 +149,18 @@ var _ = Describe("Gateway", func() {
 
 		body, _ := ioutil.ReadAll(resp.Body)
 		Expect(string(body)).To(Equal(`{"scalar":{"time":"99","value":0}}`))
+	})
+
+	It("passes through content-type correctly on errors", func() {
+		path := `v1/promql?query=metric{source_id="some-id"}&time=1234`
+		spyLogCache.queryError = errors.New("expected error")
+		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
+		req, _ := http.NewRequest("GET", URL, nil)
+		spyLogCache.SetValue(0)
+
+		resp, err := http.DefaultClient.Do(req)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusInternalServerError))
+		Expect(resp.Header).To(HaveKeyWithValue("Content-Type", []string{"application/json"}))
 	})
 })

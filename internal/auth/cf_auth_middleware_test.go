@@ -531,6 +531,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 			authHandler.ServeHTTP(recorder, request)
 
 			Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+			Expect(recorder.Header()).To(HaveKeyWithValue("Content-Type", []string{"application/json"}))
 			Expect(baseHandlerCalled).To(BeFalse())
 		})
 
@@ -548,6 +549,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 			authHandler.ServeHTTP(recorder, request)
 
 			Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+			Expect(recorder.Header()).To(HaveKeyWithValue("Content-Type", []string{"application/json"}))
 			Expect(baseHandlerCalled).To(BeFalse())
 		})
 

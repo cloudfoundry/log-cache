@@ -104,12 +104,14 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		query := r.URL.Query().Get("query")
 		sourceIDs, err := m.parser.Parse(query)
 		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte(fmt.Sprintf(`{"error":%q}`, err)))
 			return
 		}
 
 		if len(sourceIDs) == 0 {
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte(`{"error":"query does not request any source_ids"}`))
 			return
