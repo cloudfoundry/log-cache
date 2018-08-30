@@ -560,12 +560,12 @@ func (s *spyLogCache) RangeQuery(ctx context.Context, r *rpc.PromQL_RangeQueryRe
 		Result: &rpc.PromQL_RangeQueryResult_Matrix{
 			Matrix: &rpc.PromQL_Matrix{
 				Series: []*rpc.PromQL_Series{
-					&rpc.PromQL_Series{
+					{
 						Metric: map[string]string{
 							"__name__": "test",
 						},
 						Points: []*rpc.PromQL_Point{
-							&rpc.PromQL_Point{
+							{
 								Time:  99,
 								Value: s.value,
 							},

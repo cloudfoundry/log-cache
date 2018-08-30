@@ -58,8 +58,8 @@ type MapDescription struct {
 // LoadConfig creates Config object from environment variables
 func LoadConfig() (*Config, error) {
 	c := Config{
-		Interval: time.Minute,
-		Version:  "0.0.0",
+		Interval:        time.Minute,
+		Version:         "0.0.0",
 		DefaultSourceId: "log-cache",
 	}
 
