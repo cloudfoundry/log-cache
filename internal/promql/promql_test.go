@@ -643,9 +643,9 @@ var _ = Describe("PromQL", func() {
 
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(spyMetrics.gauges).To(HaveKey("PromqlInstantQueryTime"))
-			Expect(spyMetrics.gauges["PromqlInstantQueryTime"]).To(HaveLen(1))
-			Expect(spyMetrics.gauges["PromqlInstantQueryTime"][0]).ToNot(BeZero())
+			Expect(spyMetrics.gauges).To(HaveKey("PromQLInstantQueryTime"))
+			Expect(spyMetrics.gauges["PromQLInstantQueryTime"]).To(HaveLen(1))
+			Expect(spyMetrics.gauges["PromQLInstantQueryTime"][0]).ToNot(BeZero())
 		})
 
 		It("returns an error for an invalid query", func() {
@@ -1053,9 +1053,9 @@ var _ = Describe("PromQL", func() {
 
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(spyMetrics.gauges).To(HaveKey("PromqlRangeQueryTime"))
-			Expect(spyMetrics.gauges["PromqlRangeQueryTime"]).To(HaveLen(1))
-			Expect(spyMetrics.gauges["PromqlRangeQueryTime"][0]).ToNot(BeZero())
+			Expect(spyMetrics.gauges).To(HaveKey("PromQLRangeQueryTime"))
+			Expect(spyMetrics.gauges["PromQLRangeQueryTime"]).To(HaveLen(1))
+			Expect(spyMetrics.gauges["PromQLRangeQueryTime"][0]).ToNot(BeZero())
 		})
 
 		It("returns an error for an invalid query", func() {

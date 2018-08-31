@@ -46,8 +46,8 @@ func New(
 		r:                 r,
 		log:               log,
 		failureCounter:    m.NewCounter("PromQLTimeout"),
-		instantQueryTimer: m.NewGauge("PromqlInstantQueryTime"),
-		rangeQueryTimer:   m.NewGauge("PromqlRangeQueryTime"),
+		instantQueryTimer: m.NewGauge("PromQLInstantQueryTime"),
+		rangeQueryTimer:   m.NewGauge("PromQLRangeQueryTime"),
 		result:            1,
 	}
 
