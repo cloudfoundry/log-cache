@@ -108,7 +108,7 @@ var _ = Describe("Gateway", func() {
 	})
 
 	It("upgrades HTTP requests for instant queries via PromQLQuerier GETs into gRPC requests", func() {
-		path := `v1/promql?query=metric{source_id="some-id"}&time=1234`
+		path := `api/v1/query?query=metric{source_id="some-id"}&time=1234`
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 		req, _ := http.NewRequest("GET", URL, nil)
 		resp, err := http.DefaultClient.Do(req)
@@ -122,7 +122,7 @@ var _ = Describe("Gateway", func() {
 	})
 
 	It("upgrades HTTP requests for range queries via PromQLQuerier GETs into gRPC requests", func() {
-		path := `v1/promql_range?query=metric{source_id="some-id"}&start=1234&end=5678&step=30s`
+		path := `api/v1/query_range?query=metric{source_id="some-id"}&start=1234&end=5678&step=30s`
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 		req, _ := http.NewRequest("GET", URL, nil)
 		resp, err := http.DefaultClient.Do(req)
@@ -137,8 +137,8 @@ var _ = Describe("Gateway", func() {
 		Expect(reqs[0].Step).To(Equal("30s"))
 	})
 
-	It("outputs json with zero-value points", func() {
-		path := `v1/promql?query=metric{source_id="some-id"}&time=1234`
+	It("outputs json with zero-value points and correct Prometheus API fields", func() {
+		path := `api/v1/query?query=metric{source_id="some-id"}&time=1234`
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 		req, _ := http.NewRequest("GET", URL, nil)
 		spyLogCache.SetValue(0)
@@ -148,19 +148,39 @@ var _ = Describe("Gateway", func() {
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
 		body, _ := ioutil.ReadAll(resp.Body)
-		Expect(string(body)).To(Equal(`{"scalar":{"time":"99","value":0}}`))
+		Expect(body).To(MatchJSON(`{"status":"success","data":{"resultType":"scalar","result":[99,0]}}`))
 	})
 
-	It("passes through content-type correctly on errors", func() {
-		path := `v1/promql?query=metric{source_id="some-id"}&time=1234`
-		spyLogCache.queryError = errors.New("expected error")
-		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
-		req, _ := http.NewRequest("GET", URL, nil)
-		spyLogCache.SetValue(0)
+	Context("errors", func() {
+		It("passes through content-type correctly on errors", func() {
+			path := `api/v1/query?query=metric{source_id="some-id"}&time=1234`
+			spyLogCache.queryError = errors.New("expected error")
+			URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
+			req, _ := http.NewRequest("GET", URL, nil)
 
-		resp, err := http.DefaultClient.Do(req)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(resp.StatusCode).To(Equal(http.StatusInternalServerError))
-		Expect(resp.Header).To(HaveKeyWithValue("Content-Type", []string{"application/json"}))
+			resp, err := http.DefaultClient.Do(req)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusInternalServerError))
+			Expect(resp.Header).To(HaveKeyWithValue("Content-Type", []string{"application/json"}))
+		})
+
+		It("adds necessary fields to match Prometheus API", func() {
+			path := `api/v1/query?query=metric{source_id="some-id"}&time=1234`
+			spyLogCache.queryError = errors.New("expected error")
+			URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
+			req, _ := http.NewRequest("GET", URL, nil)
+
+			resp, err := http.DefaultClient.Do(req)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusInternalServerError))
+
+			body, _ := ioutil.ReadAll(resp.Body)
+			Expect(body).To(MatchJSON(`{
+				"status": "error",
+
+				"errorType": "internal",
+				"error": "expected error"
+			}`))
+		})
 	})
 })

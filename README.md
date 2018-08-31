@@ -175,19 +175,21 @@ curl "http://<log-cache-addr>:8080/v1/experimental/shard_group/<group-name>/meta
 }
 ```
 
-### **GET** `/v1/promql`
+### **GET** `/api/v1/query`
 
 Issues a PromQL query against Log Cache data.
 
 ```
-curl -G "http://<log-cache-addr>:8080/v1/promql" --data-urlencode 'query=metrics{source_id="source-id-1"}'
+curl -G "http://<log-cache-addr>:8080/api/v1/query" --data-urlencode 'query=metrics{source_id="source-id-1"}'
 ```
 
 ##### Response Body
 ```
 {
-  "vector": {
-    "samples": [{ "metric": {...}, "point": {...} }]
+  "status": "success",
+  "data": {
+    "resultType": "vector",
+    "result": [{ "metric": {...}, "point": [...] }]
   }
 }
 ```

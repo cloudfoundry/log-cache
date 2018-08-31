@@ -14,6 +14,7 @@ import (
 	"context"
 
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	"github.com/Benjamintf1/unmarshalledmatchers"
 	"github.com/golang/protobuf/jsonpb"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
@@ -471,13 +472,13 @@ var _ = Describe("CfAuthMiddleware", func() {
 		})
 	})
 
-	Describe("/v1/promql", func() {
+	Describe("/api/v1/query", func() {
 		BeforeEach(func() {
 			spyPromQLParser.sourceIDs = []string{"some-id"}
-			request = httptest.NewRequest(http.MethodGet, `/v1/promql?query=metric{source_id="some-id"}`, nil)
+			request = httptest.NewRequest(http.MethodGet, `/api/v1/query?query=metric{source_id="some-id"}`, nil)
 		})
 
-		It("forwards the /v1/promql request to the handler if user is an admin", func() {
+		It("forwards the /api/v1/query request to the handler if user is an admin", func() {
 			var baseHandlerCalled bool
 			baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 				baseHandlerCalled = true
@@ -497,7 +498,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 			Expect(spyPromQLParser.query).To(Equal(`metric{source_id="some-id"}`))
 		})
 
-		It("forwards the /v1/promql request to the handler if non-admin user has log access", func() {
+		It("forwards the /api/v1/query request to the handler if non-admin user has log access", func() {
 			spyLogAuthorizer.result = true
 			var baseHandlerCalled bool
 			baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -532,6 +533,10 @@ var _ = Describe("CfAuthMiddleware", func() {
 
 			Expect(recorder.Code).To(Equal(http.StatusBadRequest))
 			Expect(recorder.Header()).To(HaveKeyWithValue("Content-Type", []string{"application/json"}))
+			Expect(recorder.Body.String()).To(unmarshalledmatchers.ContainUnorderedJSON(`{
+				"status": "error",
+				"errorType": "bad_data"
+			}`))
 			Expect(baseHandlerCalled).To(BeFalse())
 		})
 
@@ -550,6 +555,10 @@ var _ = Describe("CfAuthMiddleware", func() {
 
 			Expect(recorder.Code).To(Equal(http.StatusBadRequest))
 			Expect(recorder.Header()).To(HaveKeyWithValue("Content-Type", []string{"application/json"}))
+			Expect(recorder.Body.String()).To(unmarshalledmatchers.ContainUnorderedJSON(`{
+				"status": "error",
+				"errorType": "bad_data"
+			}`))
 			Expect(baseHandlerCalled).To(BeFalse())
 		})
 

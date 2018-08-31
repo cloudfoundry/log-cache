@@ -7,7 +7,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 
-	"code.cloudfoundry.org/go-envstruct"
+	envstruct "code.cloudfoundry.org/go-envstruct"
 	logcache "code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"google.golang.org/grpc"

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -61,6 +62,12 @@ func NewCFAuthMiddlewareProvider(
 	}
 }
 
+type promqlErrorBody struct {
+	Status    string `json:"status"`
+	ErrorType string `json:"errorType"`
+	Error     string `json:"error"`
+}
+
 func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 	router := mux.NewRouter()
 
@@ -94,7 +101,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		h.ServeHTTP(w, r)
 	})
 
-	router.HandleFunc("/v1/promql", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/api/v1/query", func(w http.ResponseWriter, r *http.Request) {
 		authToken := r.Header.Get("Authorization")
 		if authToken == "" {
 			w.WriteHeader(http.StatusNotFound)
@@ -106,14 +113,24 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(fmt.Sprintf(`{"error":%q}`, err)))
+
+			json.NewEncoder(w).Encode(&promqlErrorBody{
+				Status:    "error",
+				ErrorType: "bad_data",
+				Error:     err.Error(),
+			})
 			return
 		}
 
 		if len(sourceIDs) == 0 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{"error":"query does not request any source_ids"}`))
+
+			json.NewEncoder(w).Encode(&promqlErrorBody{
+				Status:    "error",
+				ErrorType: "bad_data",
+				Error:     "query does not request any source_ids",
+			})
 			return
 		}
 

@@ -7,13 +7,13 @@ import "google/api/annotations.proto";
 service PromQLQuerier {
     rpc InstantQuery(PromQL.InstantQueryRequest) returns (PromQL.InstantQueryResult){
         option (google.api.http) = {
-            get: "/v1/promql"
+            get: "/api/v1/query"
         };
     }
 
     rpc RangeQuery(PromQL.RangeQueryRequest) returns (PromQL.RangeQueryResult){
         option (google.api.http) = {
-            get: "/v1/promql_range"
+            get: "/api/v1/query_range"
         };
     }
 }

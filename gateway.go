@@ -1,17 +1,18 @@
 package logcache
 
 import (
+	"io"
 	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 
+	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"golang.org/x/net/context"
-
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"google.golang.org/grpc"
 
-	"github.com/grpc-ecosystem/grpc-gateway/runtime"
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	"code.cloudfoundry.org/log-cache/internal/gateway"
 )
 
 // Gateway provides a RESTful API into LogCache's gRPC API.
@@ -111,9 +112,11 @@ func (g *Gateway) Addr() string {
 func (g *Gateway) listenAndServe() {
 	mux := runtime.NewServeMux(
 		runtime.WithMarshalerOption(
-			runtime.MIMEWildcard, &runtime.JSONPb{OrigName: true, EmitDefaults: true},
+			runtime.MIMEWildcard, gateway.NewPromqlMarshaler(&runtime.JSONPb{OrigName: true, EmitDefaults: true}),
 		),
 	)
+
+	runtime.HTTPError = g.httpErrorHandler
 
 	conn, err := grpc.Dial(g.logCacheAddr, g.logCacheDialOpts...)
 	if err != nil {
@@ -155,5 +158,51 @@ func (g *Gateway) listenAndServe() {
 	server := &http.Server{Handler: mux}
 	if err := server.Serve(g.lis); err != nil {
 		g.log.Fatalf("failed to serve HTTP endpoint: %s", err)
+	}
+}
+
+type errorBody struct {
+	Status    string `json:"status"`
+	ErrorType string `json:"errorType"`
+	Error     string `json:"error"`
+}
+
+func (g *Gateway) httpErrorHandler(
+	ctx context.Context,
+	mux *runtime.ServeMux,
+	marshaler runtime.Marshaler,
+	w http.ResponseWriter,
+	r *http.Request,
+	err error,
+) {
+	if r.URL.Path != "/api/v1/query" && r.URL.Path != "/api/v1/query_range" {
+		runtime.DefaultHTTPError(ctx, mux, marshaler, w, r, err)
+		return
+	}
+
+	const fallback = `{"error": "failed to marshal error message"}`
+
+	w.Header().Del("Trailer")
+	w.Header().Set("Content-Type", marshaler.ContentType())
+
+	body := &errorBody{
+		Status:    "error",
+		ErrorType: "internal",
+		Error:     grpc.ErrorDesc(err),
+	}
+
+	buf, merr := marshaler.Marshal(body)
+	if merr != nil {
+		g.log.Printf("Failed to marshal error message %q: %v", body, merr)
+		w.WriteHeader(http.StatusInternalServerError)
+		if _, err := io.WriteString(w, fallback); err != nil {
+			g.log.Printf("Failed to write response: %v", err)
+		}
+		return
+	}
+
+	w.WriteHeader(runtime.HTTPStatusFromCode(grpc.Code(err)))
+	if _, err := w.Write(buf); err != nil {
+		g.log.Printf("Failed to write response: %v", err)
 	}
 }

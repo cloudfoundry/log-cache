@@ -12,7 +12,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 
-	"code.cloudfoundry.org/go-envstruct"
+	envstruct "code.cloudfoundry.org/go-envstruct"
 	gologcache "code.cloudfoundry.org/go-log-cache"
 	"code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/auth"
