@@ -352,10 +352,6 @@ func (l *LogCacheQuerier) Select(params *storage.SelectParams, ll ...*labels.Mat
 
 	builder := newSeriesBuilder()
 	for _, e := range envelopeBatch.GetEnvelopes().GetBatch() {
-		if invalidMetricType(e, metric) {
-			continue
-		}
-
 		if !l.hasLabels(e.GetTags(), ls) {
 			continue
 		}
@@ -383,6 +379,8 @@ func (l *LogCacheQuerier) Select(params *storage.SelectParams, ll ...*labels.Mat
 
 			timer := e.GetTimer()
 			f = float64(timer.GetStop() - timer.GetStart())
+		default:
+			continue
 		}
 
 		e.Timestamp = time.Unix(0, e.GetTimestamp()).Truncate(l.interval).UnixNano()
@@ -394,12 +392,6 @@ func (l *LogCacheQuerier) Select(params *storage.SelectParams, ll ...*labels.Mat
 	}
 
 	return builder.buildSeriesSet(), nil
-}
-
-func invalidMetricType(e *loggregator_v2.Envelope, metricName string) bool {
-	return e.GetCounter().GetName() != metricName &&
-		e.GetTimer().GetName() != metricName &&
-		e.GetGauge().GetMetrics()[metricName] == nil
 }
 
 func checkMapForSanitizedMetricName(gauge *loggregator_v2.Gauge, metric string) *loggregator_v2.GaugeValue {
