@@ -431,6 +431,10 @@ var _ = Describe("PromQL", func() {
 			Expect(
 				spyDataReader.readEnds[0].Sub(spyDataReader.readStarts[0]),
 			).To(Equal(time.Minute*5 + time.Second))
+
+			Expect(spyDataReader.readEnvelopeTypes[0]).To(ContainElement(logcache_v1.EnvelopeType_COUNTER))
+			Expect(spyDataReader.readEnvelopeTypes[0]).To(ContainElement(logcache_v1.EnvelopeType_GAUGE))
+			Expect(spyDataReader.readEnvelopeTypes[0]).To(ContainElement(logcache_v1.EnvelopeType_TIMER))
 		})
 
 		It("returns a matrix", func() {
@@ -1102,10 +1106,11 @@ var _ = Describe("PromQL", func() {
 })
 
 type spyDataReader struct {
-	mu            sync.Mutex
-	readSourceIDs []string
-	readStarts    []time.Time
-	readEnds      []time.Time
+	mu                sync.Mutex
+	readSourceIDs     []string
+	readStarts        []time.Time
+	readEnds          []time.Time
+	readEnvelopeTypes [][]logcache_v1.EnvelopeType
 
 	readResults [][]*loggregator_v2.Envelope
 	readErrs    []error
@@ -1125,6 +1130,7 @@ func (s *spyDataReader) Read(
 	s.readSourceIDs = append(s.readSourceIDs, req.SourceId)
 	s.readStarts = append(s.readStarts, time.Unix(0, req.StartTime))
 	s.readEnds = append(s.readEnds, time.Unix(0, req.EndTime))
+	s.readEnvelopeTypes = append(s.readEnvelopeTypes, req.EnvelopeTypes)
 
 	if len(s.readResults) != len(s.readErrs) {
 		panic("readResults and readErrs are out of sync")

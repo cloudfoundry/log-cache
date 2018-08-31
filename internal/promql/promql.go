@@ -344,6 +344,11 @@ func (l *LogCacheQuerier) Select(params *storage.SelectParams, ll ...*labels.Mat
 		SourceId:  sourceID,
 		StartTime: l.start.Add(-time.Second).UnixNano(),
 		EndTime:   l.end.UnixNano(),
+		EnvelopeTypes: []logcache_v1.EnvelopeType{
+			logcache_v1.EnvelopeType_COUNTER,
+			logcache_v1.EnvelopeType_GAUGE,
+			logcache_v1.EnvelopeType_TIMER,
+		},
 	})
 	if err != nil {
 		l.errf(err)
