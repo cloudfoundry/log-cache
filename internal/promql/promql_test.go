@@ -80,6 +80,83 @@ var _ = Describe("PromQL", func() {
 		Expect(err).To(HaveOccurred())
 	})
 
+	It("a query against data with invalid envelope types returns only the valid metrics", func() {
+		now := time.Now().Add(-time.Minute)
+		spyDataReader.readResults = [][]*loggregator_v2.Envelope{
+			{
+				{
+					SourceId:  "some-id",
+					Timestamp: now.UnixNano(),
+					Message: &loggregator_v2.Envelope_Counter{
+						Counter: &loggregator_v2.Counter{Name: "metric", Total: 100},
+					},
+					Tags: map[string]string{
+						"tag": "a",
+					},
+				},
+				{
+					SourceId:  "some-id",
+					Timestamp: now.UnixNano() + 1,
+					Message: &loggregator_v2.Envelope_Event{
+						Event: &loggregator_v2.Event{Title: "some-title", Body: "some-body"},
+					},
+					Tags: map[string]string{
+						"tag": "b",
+					},
+				},
+				{
+					SourceId:  "some-id",
+					Timestamp: now.UnixNano() + 2,
+					Message: &loggregator_v2.Envelope_Log{
+						Log: &loggregator_v2.Log{Payload: []byte("some-payload")},
+					},
+					Tags: map[string]string{
+						"tag": "c",
+					},
+				},
+				{
+					SourceId:  "some-id",
+					Timestamp: now.UnixNano() + 3,
+					Message: &loggregator_v2.Envelope_Gauge{
+						Gauge: &loggregator_v2.Gauge{
+							Metrics: map[string]*loggregator_v2.GaugeValue{
+								"metric": {Unit: "some-unit", Value: 1},
+							},
+						},
+					},
+					Tags: map[string]string{
+						"tag": "d",
+					},
+				},
+				{
+					SourceId:  "some-id",
+					Timestamp: now.UnixNano() + 4,
+					Message: &loggregator_v2.Envelope_Timer{
+						Timer: &loggregator_v2.Timer{Name: "metric", Start: 10, Stop: 20},
+					},
+					Tags: map[string]string{
+						"tag": "e",
+					},
+				},
+			},
+		}
+
+		spyDataReader.readErrs = []error{nil}
+
+		r, err := q.InstantQuery(
+			context.Background(),
+			&logcache_v1.PromQL_InstantQueryRequest{
+				Query: `metric{source_id="some-id"}`,
+			},
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(r.GetVector().GetSamples()).To(HaveLen(3))
+
+		Eventually(spyDataReader.ReadSourceIDs).Should(
+			ConsistOf("some-id"),
+		)
+	})
+
 	Context("when metric names contain unsupported characters", func() {
 		It("converts counter metric names to proper promql format", func() {
 			now := time.Now()
@@ -610,7 +687,6 @@ var _ = Describe("PromQL", func() {
 			)
 			Expect(err).To(HaveOccurred())
 		})
-
 	})
 
 	Context("When using a RangeQuery", func() {
