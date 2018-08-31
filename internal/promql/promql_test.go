@@ -1122,6 +1122,9 @@ func (s *spyDataReader) Read(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Give ourselves some time to capture runtime metrics
+	time.Sleep(time.Millisecond)
+
 	s.readSourceIDs = append(s.readSourceIDs, req.SourceId)
 	s.readStarts = append(s.readStarts, time.Unix(0, req.StartTime))
 	s.readEnds = append(s.readEnds, time.Unix(0, req.EndTime))

@@ -21,8 +21,8 @@ type PromQL struct {
 	log *log.Logger
 
 	failureCounter    func(uint64)
-	instantQueryGauge func(float64)
-	rangeQueryGauge   func(float64)
+	instantQueryTimer func(float64)
+	rangeQueryTimer   func(float64)
 	failures          int
 
 	result int64
@@ -46,8 +46,8 @@ func New(
 		r:                 r,
 		log:               log,
 		failureCounter:    m.NewCounter("PromQLTimeout"),
-		instantQueryGauge: m.NewGauge("PromqlInstantQueryTime"),
-		rangeQueryGauge:   m.NewGauge("PromqlRangeQueryTime"),
+		instantQueryTimer: m.NewGauge("PromqlInstantQueryTime"),
+		rangeQueryTimer:   m.NewGauge("PromqlRangeQueryTime"),
 		result:            1,
 	}
 
@@ -115,9 +115,9 @@ func (q *PromQL) InstantQuery(ctx context.Context, req *logcache_v1.PromQL_Insta
 		return nil, err
 	}
 
-	queryStartTime := time.Now().UnixNano()
+	queryStartTime := time.Now()
 	r := qq.Exec(ctx)
-	q.instantQueryGauge(float64(time.Now().UnixNano() - queryStartTime))
+	q.instantQueryTimer(float64(time.Since(queryStartTime) / time.Millisecond))
 
 	if closureErr != nil {
 		q.failureCounter(1)
@@ -230,9 +230,9 @@ func (q *PromQL) RangeQuery(ctx context.Context, req *logcache_v1.PromQL_RangeQu
 		return nil, err
 	}
 
-	queryStartTime := time.Now().UnixNano()
+	queryStartTime := time.Now()
 	r := qq.Exec(ctx)
-	q.rangeQueryGauge(float64(time.Now().UnixNano() - queryStartTime))
+	q.rangeQueryTimer(float64(time.Since(queryStartTime) / time.Millisecond))
 
 	if closureErr != nil {
 		q.failureCounter(1)
