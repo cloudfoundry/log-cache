@@ -597,6 +597,124 @@ var _ = Describe("CfAuthMiddleware", func() {
 			Expect(baseHandlerCalled).To(BeFalse())
 		})
 	})
+
+	Describe("/v1/promql_range", func() {
+		BeforeEach(func() {
+			spyPromQLParser.sourceIDs = []string{"some-id"}
+			request = httptest.NewRequest(http.MethodGet, `/v1/promql_range?query=metric{source_id="some-id"}&start=0&end=10&step=1m`, nil)
+		})
+
+		It("forwards the /v1/promql_range request to the handler if user is an admin", func() {
+			var baseHandlerCalled bool
+			baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				baseHandlerCalled = true
+			})
+			authHandler := provider.Middleware(baseHandler)
+
+			spyOauth2ClientReader.result = true
+
+			request.Header.Set("Authorization", "bearer valid-token")
+
+			authHandler.ServeHTTP(recorder, request)
+
+			Expect(recorder.Code).To(Equal(http.StatusOK))
+			Expect(baseHandlerCalled).To(BeTrue())
+
+			Expect(spyOauth2ClientReader.token).To(Equal("bearer valid-token"))
+			Expect(spyPromQLParser.query).To(Equal(`metric{source_id="some-id"}`))
+		})
+
+		It("forwards the /v1/promql_range request to the handler if non-admin user has log access", func() {
+			spyLogAuthorizer.result = true
+			var baseHandlerCalled bool
+			baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				baseHandlerCalled = true
+			})
+			authHandler := provider.Middleware(baseHandler)
+
+			request.Header.Set("Authorization", "valid-token")
+
+			// Call result
+			authHandler.ServeHTTP(recorder, request)
+			Expect(recorder.Code).To(Equal(http.StatusOK))
+			Expect(baseHandlerCalled).To(BeTrue())
+
+			//verify CAPI called with correct info
+			Expect(spyLogAuthorizer.token).To(Equal("valid-token"))
+			Expect(spyLogAuthorizer.sourceID).To(Equal("some-id"))
+		})
+
+		It("returns a 400 (Bad Request) if a query doesn't have a source_id", func() {
+			spyPromQLParser.sourceIDs = nil
+
+			spyLogAuthorizer.result = true
+			var baseHandlerCalled bool
+			baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				baseHandlerCalled = true
+			})
+			authHandler := provider.Middleware(baseHandler)
+			request.Header.Set("Authorization", "valid-token")
+
+			authHandler.ServeHTTP(recorder, request)
+
+			Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+			Expect(recorder.Header()).To(HaveKeyWithValue("Content-Type", []string{"application/json"}))
+			Expect(baseHandlerCalled).To(BeFalse())
+		})
+
+		It("returns a 400 (Bad Request) for an invalid query", func() {
+			spyPromQLParser.err = errors.New("some-error")
+
+			spyLogAuthorizer.result = true
+			var baseHandlerCalled bool
+			baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				baseHandlerCalled = true
+			})
+			authHandler := provider.Middleware(baseHandler)
+			request.Header.Set("Authorization", "valid-token")
+
+			authHandler.ServeHTTP(recorder, request)
+
+			Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+			Expect(recorder.Header()).To(HaveKeyWithValue("Content-Type", []string{"application/json"}))
+			Expect(baseHandlerCalled).To(BeFalse())
+		})
+
+		It("returns 404 if Oauth2ClientReader returns an error", func() {
+			var baseHandlerCalled bool
+			baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				baseHandlerCalled = true
+			})
+			authHandler := provider.Middleware(baseHandler)
+
+			spyOauth2ClientReader.err = errors.New("some-error")
+			spyOauth2ClientReader.result = true
+			spyLogAuthorizer.result = true
+
+			request.Header.Set("Authorization", "valid-token")
+			authHandler.ServeHTTP(recorder, request)
+
+			Expect(recorder.Code).To(Equal(http.StatusNotFound))
+			Expect(baseHandlerCalled).To(BeFalse())
+		})
+
+		It("returns 404 if user is not authorized", func() {
+			var baseHandlerCalled bool
+			baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				baseHandlerCalled = true
+			})
+			authHandler := provider.Middleware(baseHandler)
+
+			spyOauth2ClientReader.result = false
+			spyLogAuthorizer.result = false
+
+			request.Header.Set("Authorization", "valid-token")
+			authHandler.ServeHTTP(recorder, request)
+
+			Expect(recorder.Code).To(Equal(http.StatusNotFound))
+			Expect(baseHandlerCalled).To(BeFalse())
+		})
+	})
 })
 
 type spyOauth2ClientReader struct {

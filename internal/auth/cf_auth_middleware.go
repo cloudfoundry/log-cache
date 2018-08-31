@@ -119,6 +119,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 				ErrorType: "bad_data",
 				Error:     err.Error(),
 			})
+
 			return
 		}
 
@@ -131,6 +132,61 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 				ErrorType: "bad_data",
 				Error:     "query does not request any source_ids",
 			})
+
+			return
+		}
+
+		c, err := m.oauth2Reader.Read(authToken)
+		if err != nil {
+			log.Printf("failed to read from Oauth2 server: %s", err)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		if !c.IsAdmin {
+			for _, sourceID := range sourceIDs {
+				if !m.logAuthorizer.IsAuthorized(sourceID, authToken) {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+			}
+		}
+
+		h.ServeHTTP(w, r)
+	})
+
+	router.HandleFunc("/v1/promql_range", func(w http.ResponseWriter, r *http.Request) {
+		authToken := r.Header.Get("Authorization")
+		if authToken == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		query := r.URL.Query().Get("query")
+		sourceIDs, err := m.parser.Parse(query)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+
+			json.NewEncoder(w).Encode(&promqlErrorBody{
+				Status:    "error",
+				ErrorType: "bad_data",
+				Error:     err.Error(),
+			})
+
+			return
+		}
+
+		if len(sourceIDs) == 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+
+			json.NewEncoder(w).Encode(&promqlErrorBody{
+				Status:    "error",
+				ErrorType: "bad_data",
+				Error:     "query does not request any source_ids",
+			})
+
 			return
 		}
 
