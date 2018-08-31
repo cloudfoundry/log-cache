@@ -175,11 +175,11 @@ var _ = Describe("Scheduler", func() {
 
 			Eventually(func() int {
 				return len(logCacheSpy1.removeReqs())
-			}).Should(BeNumerically(">=", 3))
+			}, 5).Should(BeNumerically(">=", 3))
 
 			Eventually(func() int {
 				return len(logCacheSpy2.addReqs())
-			}).Should(BeNumerically(">=", 3))
+			}, 5).Should(BeNumerically(">=", 3))
 		})
 	})
 
@@ -221,8 +221,8 @@ var _ = Describe("Scheduler", func() {
 		It("sets the range table after listing all the nodes", func() {
 			s.Start()
 
-			Eventually(groupSpy1.setCount).ShouldNot(BeZero())
-			Eventually(groupSpy2.setCount).ShouldNot(BeZero())
+			Eventually(groupSpy1.setCount, 5).ShouldNot(BeZero())
+			Eventually(groupSpy2.setCount, 5).ShouldNot(BeZero())
 
 			Expect(groupSpy1.setReqs()[0].Ranges).To(HaveLen(2))
 			Expect(groupSpy2.setReqs()[0].Ranges).To(HaveLen(2))
@@ -244,8 +244,8 @@ var _ = Describe("Scheduler", func() {
 			Consistently(groupSpy2.removeReqs).Should(BeEmpty())
 
 			leadershipSpy.setResult(true)
-			Eventually(groupSpy1.setCount).ShouldNot(BeZero())
-			Eventually(groupSpy2.setCount).ShouldNot(BeZero())
+			Eventually(groupSpy1.setCount, 5).ShouldNot(BeZero())
+			Eventually(groupSpy2.setCount, 5).ShouldNot(BeZero())
 
 			Consistently(groupSpy1.addReqs).ShouldNot(BeEmpty())
 			Consistently(groupSpy2.addReqs).ShouldNot(BeEmpty())
