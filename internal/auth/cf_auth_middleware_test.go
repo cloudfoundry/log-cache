@@ -715,6 +715,33 @@ var _ = Describe("CfAuthMiddleware", func() {
 			Expect(baseHandlerCalled).To(BeFalse())
 		})
 	})
+
+	Describe("/api/v1/query_range", func() {
+		BeforeEach(func() {
+			spyPromQLParser.sourceIDs = []string{"some-id"}
+			request = httptest.NewRequest(http.MethodGet, `/api/v1/query_range?query=metric{source_id="some-id"}`, nil)
+		})
+
+		It("forwards the /api/v1/query_range request to the handler if user is an admin", func() {
+			var baseHandlerCalled bool
+			baseHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				baseHandlerCalled = true
+			})
+			authHandler := provider.Middleware(baseHandler)
+
+			spyOauth2ClientReader.result = true
+
+			request.Header.Set("Authorization", "bearer valid-token")
+
+			authHandler.ServeHTTP(recorder, request)
+
+			Expect(recorder.Code).To(Equal(http.StatusOK))
+			Expect(baseHandlerCalled).To(BeTrue())
+
+			Expect(spyOauth2ClientReader.token).To(Equal("bearer valid-token"))
+			Expect(spyPromQLParser.query).To(Equal(`metric{source_id="some-id"}`))
+		})
+	})
 })
 
 type spyOauth2ClientReader struct {

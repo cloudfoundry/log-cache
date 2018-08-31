@@ -101,7 +101,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		h.ServeHTTP(w, r)
 	})
 
-	router.HandleFunc("/api/v1/query", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/api/v1/{subpath:query|query_range}", func(w http.ResponseWriter, r *http.Request) {
 		authToken := r.Header.Get("Authorization")
 		if authToken == "" {
 			w.WriteHeader(http.StatusNotFound)
