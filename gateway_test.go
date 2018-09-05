@@ -105,7 +105,7 @@ var _ = Describe("Gateway", func() {
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
 		body, _ := ioutil.ReadAll(resp.Body)
-		Expect(body).To(MatchJSON(`{"status":"success","data":{"resultType":"scalar","result":[99,0]}}`))
+		Expect(body).To(MatchJSON(`{"status":"success","data":{"resultType":"scalar","result":[99,"0"]}}`))
 	})
 
 	Context("errors", func() {
