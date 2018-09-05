@@ -25,12 +25,9 @@ func main() {
 
 	envstruct.WriteReport(cfg)
 
-	gateway := logcache.NewGateway(cfg.LogCacheAddr, cfg.GroupReaderAddr, cfg.Addr,
+	gateway := logcache.NewGateway(cfg.LogCacheAddr, cfg.Addr,
 		logcache.WithGatewayLogger(log.New(os.Stderr, "[GATEWAY] ", log.LstdFlags)),
 		logcache.WithGatewayLogCacheDialOpts(
-			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
-		),
-		logcache.WithGatewayGroupReaderDialOpts(
 			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
 		),
 	)

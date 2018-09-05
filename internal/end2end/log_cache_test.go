@@ -23,6 +23,11 @@ var _ = Describe("LogCache", func() {
 		scheduler *logcache.Scheduler
 
 		client *gologcache.Client
+
+		// Run is incremented for each spec. It is used to set the port
+		// numbers.
+		run      int
+		runIncBy = 3
 	)
 
 	BeforeEach(func() {
@@ -46,7 +51,6 @@ var _ = Describe("LogCache", func() {
 
 		scheduler = logcache.NewScheduler(
 			addrs, // Log Cache addrs
-			nil,   // Group Reader addrs
 			logcache.WithSchedulerInterval(50*time.Millisecond),
 		)
 
@@ -117,3 +121,14 @@ var _ = Describe("LogCache", func() {
 		))
 	})
 })
+
+func ingressClient(addr string) (client rpc.IngressClient, cleanup func()) {
+	conn, err := grpc.Dial(addr, grpc.WithInsecure())
+	if err != nil {
+		panic(err)
+	}
+
+	return rpc.NewIngressClient(conn), func() {
+		conn.Close()
+	}
+}

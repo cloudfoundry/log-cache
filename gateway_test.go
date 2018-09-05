@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strings"
 
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/log-cache"
@@ -19,10 +18,8 @@ import (
 
 var _ = Describe("Gateway", func() {
 	var (
-		spyLogCache         *spyLogCache
-		spyShardGroupReader *spyShardGroupReader
-
-		gw *logcache.Gateway
+		spyLogCache *spyLogCache
+		gw          *logcache.Gateway
 	)
 
 	BeforeEach(func() {
@@ -37,17 +34,10 @@ var _ = Describe("Gateway", func() {
 		spyLogCache = newSpyLogCache(tlsConfig)
 		logCacheAddr := spyLogCache.start()
 
-		spyShardGroupReader = newSpyGroupReader(tlsConfig)
-		groupReaderAddr := spyShardGroupReader.start()
-
 		gw = logcache.NewGateway(
 			logCacheAddr,
-			groupReaderAddr,
 			"127.0.0.1:0",
 			logcache.WithGatewayLogCacheDialOpts(
-				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
-			),
-			logcache.WithGatewayGroupReaderDialOpts(
 				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 			),
 		)
@@ -73,39 +63,6 @@ var _ = Describe("Gateway", func() {
 		Entry("with slash", "some-source/id", "some-source/id"),
 		Entry("with dash", "some-source-id", "some-source-id"),
 	)
-
-	It("upgrades HTTP requests for ShardGroupReader into gRPC requests", func() {
-		path := "v1/experimental/shard_group/some-name?start_time=99&end_time=101&limit=103&envelope_types=LOG"
-		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
-		resp, err := http.Get(URL)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-		reqs := spyShardGroupReader.getReadRequests()
-		Expect(reqs).To(HaveLen(1))
-		Expect(reqs[0].Name).To(Equal("some-name"))
-		Expect(reqs[0].StartTime).To(Equal(int64(99)))
-		Expect(reqs[0].EndTime).To(Equal(int64(101)))
-		Expect(reqs[0].Limit).To(Equal(int64(103)))
-		Expect(reqs[0].EnvelopeTypes).To(ConsistOf(rpc.EnvelopeType_LOG))
-	})
-
-	It("upgrades HTTP requests for ShardGroupReader PUTs into gRPC requests", func() {
-		path := "v1/experimental/shard_group/some-name"
-		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
-		req, _ := http.NewRequest("PUT", URL, strings.NewReader(`{
-			"sourceIds": ["some-source/id"]
-		}`))
-
-		resp, err := http.DefaultClient.Do(req)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-		reqs := spyShardGroupReader.AddRequests()
-		Expect(reqs).To(HaveLen(1))
-		Expect(reqs[0].Name).To(Equal("some-name"))
-		Expect(reqs[0].GetSubGroup().GetSourceIds()).To(ConsistOf("some-source/id"))
-	})
 
 	It("upgrades HTTP requests for instant queries via PromQLQuerier GETs into gRPC requests", func() {
 		path := `api/v1/query?query=metric{source_id="some-id"}&time=1234`

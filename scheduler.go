@@ -25,17 +25,15 @@ type Scheduler struct {
 	count                    int
 	replicationFactor        int
 	logCacheOrch             *orchestrator.Orchestrator
-	groupOrch                *orchestrator.Orchestrator
 	dialOpts                 []grpc.DialOption
 	isLeader                 func() bool
 
 	logCacheClients []clientInfo
-	groupClients    []clientInfo
 }
 
 // NewScheduler returns a new Scheduler. Addrs are the addresses of the Cache
 // nodes.
-func NewScheduler(logCacheAddrs, groupAddrs []string, opts ...SchedulerOption) *Scheduler {
+func NewScheduler(logCacheAddrs []string, opts ...SchedulerOption) *Scheduler {
 	// TODO: This is a hack to avoid test collisions. Please fix this.
 	workerAssignmentReporter := expvar.Get("WorkerAssignments")
 	workerHealthReporter := expvar.Get("WorkerHealth")
@@ -68,25 +66,12 @@ func NewScheduler(logCacheAddrs, groupAddrs []string, opts ...SchedulerOption) *
 		isLeader: s.isLeader,
 	})
 
-	s.groupOrch = orchestrator.New(&comm{
-		log:      s.log,
-		isLeader: s.isLeader,
-	})
-
 	for _, addr := range logCacheAddrs {
 		conn, err := grpc.Dial(addr, s.dialOpts...)
 		if err != nil {
 			s.log.Panic(err)
 		}
 		s.logCacheClients = append(s.logCacheClients, clientInfo{l: rpc.NewOrchestrationClient(conn), addr: addr})
-	}
-
-	for _, addr := range groupAddrs {
-		conn, err := grpc.Dial(addr, s.dialOpts...)
-		if err != nil {
-			s.log.Panic(err)
-		}
-		s.groupClients = append(s.groupClients, clientInfo{l: rpc.NewOrchestrationClient(conn), addr: addr})
 	}
 
 	return s
@@ -160,10 +145,6 @@ func (s *Scheduler) Start() {
 		s.logCacheOrch.AddWorker(lc)
 	}
 
-	for _, lc := range s.groupClients {
-		s.groupOrch.AddWorker(lc)
-	}
-
 	maxHash := uint64(18446744073709551615)
 	x := maxHash / uint64(s.count)
 	var start uint64
@@ -176,12 +157,6 @@ func (s *Scheduler) Start() {
 			orchestrator.WithTaskInstances(s.replicationFactor),
 		)
 
-		s.groupOrch.AddTask(rpc.Range{
-			Start: start,
-			End:   start + x,
-		},
-			orchestrator.WithTaskInstances(5),
-		)
 		start += x + 1
 	}
 
@@ -192,28 +167,18 @@ func (s *Scheduler) Start() {
 		orchestrator.WithTaskInstances(s.replicationFactor),
 	)
 
-	s.groupOrch.AddTask(rpc.Range{
-		Start: start,
-		End:   maxHash,
-	},
-		orchestrator.WithTaskInstances(5),
-	)
-
 	go func() {
 		for range time.Tick(s.interval) {
 
 			// Apply changes
 			s.logCacheOrch.NextTerm(context.Background())
-			s.groupOrch.NextTerm(context.Background())
 
 			// Run again before setting remote tables to allow the
 			// orchestrator to go and query for updates.
 			s.logCacheOrch.NextTerm(context.Background())
-			s.groupOrch.NextTerm(context.Background())
 
 			if s.isLeader() {
 				s.setRemoteTables(s.logCacheClients, s.convertWorkerState(s.logCacheOrch.LastActual()))
-				s.setRemoteTables(s.groupClients, s.convertWorkerState(s.groupOrch.LastActual()))
 
 				lastActual := s.logCacheOrch.LastActual()
 

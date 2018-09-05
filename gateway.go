@@ -19,27 +19,22 @@ import (
 type Gateway struct {
 	log *log.Logger
 
-	logCacheAddr    string
-	groupReaderAddr string
+	logCacheAddr string
 
-	gatewayAddr         string
-	lis                 net.Listener
-	blockOnStart        bool
-	logCacheDialOpts    []grpc.DialOption
-	groupReaderDialOpts []grpc.DialOption
+	gatewayAddr      string
+	lis              net.Listener
+	blockOnStart     bool
+	logCacheDialOpts []grpc.DialOption
 }
 
 // NewGateway creates a new Gateway. It will listen on the gatewayAddr and
 // submit requests via gRPC to the LogCache on logCacheAddr. Start() must be
 // invoked before using the Gateway.
-func NewGateway(logCacheAddr, groupReaderAddr, gatewayAddr string, opts ...GatewayOption) *Gateway {
+func NewGateway(logCacheAddr, gatewayAddr string, opts ...GatewayOption) *Gateway {
 	g := &Gateway{
-		log: log.New(ioutil.Discard, "", 0),
-
-		logCacheAddr:    logCacheAddr,
-		groupReaderAddr: groupReaderAddr,
-
-		gatewayAddr: gatewayAddr,
+		log:          log.New(ioutil.Discard, "", 0),
+		logCacheAddr: logCacheAddr,
+		gatewayAddr:  gatewayAddr,
 	}
 
 	for _, o := range opts {
@@ -74,14 +69,6 @@ func WithGatewayBlock() GatewayOption {
 func WithGatewayLogCacheDialOpts(opts ...grpc.DialOption) GatewayOption {
 	return func(g *Gateway) {
 		g.logCacheDialOpts = opts
-	}
-}
-
-// WithGatewayGroupReaderDialOpts returns a GatewayOption that sets grpc.DialOptions on the
-// log-cache group reader dial
-func WithGatewayGroupReaderDialOpts(opts ...grpc.DialOption) GatewayOption {
-	return func(g *Gateway) {
-		g.groupReaderDialOpts = opts
 	}
 }
 
@@ -139,20 +126,6 @@ func (g *Gateway) listenAndServe() {
 	)
 	if err != nil {
 		g.log.Fatalf("failed to register PromQLQuerier handler: %s", err)
-	}
-
-	gconn, err := grpc.Dial(g.groupReaderAddr, g.groupReaderDialOpts...)
-	if err != nil {
-		g.log.Fatalf("failed to dial Shard Group Reader: %s", err)
-	}
-
-	err = logcache_v1.RegisterShardGroupReaderHandlerClient(
-		context.Background(),
-		mux,
-		logcache_v1.NewShardGroupReaderClient(gconn),
-	)
-	if err != nil {
-		g.log.Fatalf("failed to register ShardGroupReader handler: %s", err)
 	}
 
 	server := &http.Server{Handler: mux}

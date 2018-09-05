@@ -27,12 +27,6 @@ to read data from any source ID.
 If the source ID is an app guid, the Cloud Controller is consulted to verify
 if the provided token has the appropriate app access.
 
-## Shard Groups
-
-Shard groups can be used to split up consumption among multiple readers. With
-a shard group and set of requester IDs, Log Cache will do its best to evenly
-spread results among the requesters.
-
 ## Restful API via Gateway
 
 Log Cache implements a restful interface for getting data.
@@ -86,94 +80,6 @@ Lists the available source IDs that Log Cache has persisted.
  - **expired**, if present, is a count of envelopes that have been pruned
  - **oldestTimestamp** and **newestTimestamp** are the oldest and newest
    entries for the source, in nanoseconds since the Unix epoch.
-
-### **GET** `/v1/experimental/shard_group/<group-name>`
-
-*This endpoint is still experimental. SLOs are not yet met, and breaking changes should be expected.*
-
-Reads from the given shard-group. The shard-group's source-ids are merged and sorted.
-
-Query Parameters:
-
-- **requester_id** is a string used to shard data across multiple clients. This
-  string should be unique for each client reading from the group. If multiple
-  clients use the same requester ID, sharding may not be reliable.
-- **start_time** is UNIX timestamp in nanoseconds. It defaults to the start of the
-  cache (e.g. `date +%s`). Start time is inclusive. `[starttime..endtime)`
-- **end_time** is UNIX timestamp in nanoseconds. It defaults to current time of the
-  cache (e.g. `date +%s`). End time is exclusive. `[starttime..endtime)`
-- **envelope_types** is a filter for Envelope Type. The available filters are:
-  `LOG`, `COUNTER`, `GAUGE`, `TIMER`, and `EVENT`. If set, then only those
-  types of envelopes will be emitted. This parameter may be specified multiple times
-  to include more types.
-- **limit** is the maximum number of envelopes to request. The max limit size
-  is 1000 and defaults to 100.
-
-```
-curl "http://<log-cache-addr>:8080/v1/experimental/shard_group/<group-name>?start_time=<start-time>&end_time=<end-time>&requester_id=<requester-id>"
-```
-
-##### Response Body
-```
-{
-  "envelopes": {"batch": [...] },
-  "args": [...]
-}
-```
-
-### **PUT** `/v1/experimental/shard_group/<group-name>/`
-
-*This endpoint is still experimental. SLOs are not yet met, and breaking changes should be expected.*
-
-Adds the given source ids to the given shard-group. If the shard-group does
-not exist, then it gets created. Each shard-group may contain many sub-groups.
-Each sub-group may contain many source-ids. Each requester (identified by a
-`requester_id`) will receive an equal subset of the shard group. A sub-group
-ensures that each requester receives envelopes for the given source-ids
-grouped together (and not spread across other requesters). When setting a
-shard-group, an `arg` can also be provided. This arg will be returned when
-reading back from the group. This gives context as to what data has been
-read.
-
-##### Request Body
-
-```
-{
-  "sourceIds": [
-    "source-id-1",
-    "source-id-2"
-  ],
-  "arg": "some-arg"
-}
-```
-
-```
-curl "http://<log-cache-addr>:8080/v1/experimental/shard_group/<group-name>" -XPUT -d'{"sourceIds":["source-id-1","source-id-2"]}'
-```
-
-##### Response Body
-```
-{}
-```
-
-### **GET** `/v1/experimental/shard_group/<group-name>/meta`
-
-*This endpoint is still experimental. SLOs are not yet met, and breaking changes should be expected.*
-
-Gets meta information about the shard-group.
-
-```
-curl "http://<log-cache-addr>:8080/v1/experimental/shard_group/<group-name>/meta"
-```
-
-##### Response Body
-```
-{
-  "source_ids": [...],
-  "requester_ids": [...],
-  "args": [...]
-}
-```
 
 ### **GET** `/api/v1/query`
 

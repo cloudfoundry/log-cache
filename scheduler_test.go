@@ -21,27 +21,18 @@ var _ = Describe("Scheduler", func() {
 		logCacheSpy1 *spyOrchestration
 		logCacheSpy2 *spyOrchestration
 
-		groupSpy1 *spyOrchestration
-		groupSpy2 *spyOrchestration
-
 		leadershipSpy *spyLeadership
 	)
 
 	BeforeEach(func() {
 		logCacheSpy1 = startSpyOrchestration()
 		logCacheSpy2 = startSpyOrchestration()
-		groupSpy1 = startSpyOrchestration()
-		groupSpy2 = startSpyOrchestration()
 		leadershipSpy = newSpyLeadership(true)
 
 		s = logcache.NewScheduler(
 			[]string{
 				logCacheSpy1.lis.Addr().String(),
 				logCacheSpy2.lis.Addr().String(),
-			},
-			[]string{
-				groupSpy1.lis.Addr().String(),
-				groupSpy2.lis.Addr().String(),
 			},
 			logcache.WithSchedulerInterval(time.Millisecond),
 			logcache.WithSchedulerCount(7),
@@ -116,10 +107,6 @@ var _ = Describe("Scheduler", func() {
 			func() *spyOrchestration { return logCacheSpy1 },
 			func() *spyOrchestration { return logCacheSpy2 },
 		),
-		Entry("GroupReader Ranges",
-			func() *spyOrchestration { return groupSpy1 },
-			func() *spyOrchestration { return groupSpy2 },
-		),
 	)
 
 	Describe("Log Cache Ranges", func() {
@@ -163,10 +150,6 @@ var _ = Describe("Scheduler", func() {
 					logCacheSpy1.lis.Addr().String(),
 					logCacheSpy2.lis.Addr().String(),
 				},
-				[]string{
-					groupSpy1.lis.Addr().String(),
-					groupSpy2.lis.Addr().String(),
-				},
 				logcache.WithSchedulerInterval(time.Millisecond),
 				logcache.WithSchedulerCount(7),
 			)
@@ -183,72 +166,26 @@ var _ = Describe("Scheduler", func() {
 		})
 	})
 
-	Describe("Group Ranges", func() {
-		It("schedules the ranges evenly across the nodes", func() {
-			s.Start()
-
-			Eventually(func() int {
-				return groupSpy1.reqCount() + groupSpy2.reqCount()
-			}, 5).Should(BeNumerically(">", 20))
-
-			Expect(groupSpy1.reqCount() - groupSpy2.reqCount()).To(BeNumerically("~", 0, 5))
-
-			reqs := append(groupSpy1.addReqs(), groupSpy2.addReqs()...)
-
-			count := 7
-
-			maxHash := uint64(18446744073709551615)
-			x := maxHash / uint64(count)
-			var start uint64
-
-			for i := 0; i < count; i++ {
-				if i == count-1 {
-					Expect(reqs).To(ContainElement(&rpc.Range{
-						Start: start,
-						End:   maxHash,
-					}))
-					break
-				}
-				Expect(reqs).To(ContainElement(&rpc.Range{
-					Start: start,
-					End:   start + x,
-				}))
-
-				start += x + 1
-			}
-		})
-
-		It("sets the range table after listing all the nodes", func() {
-			s.Start()
-
-			Eventually(groupSpy1.setCount, 5).ShouldNot(BeZero())
-			Eventually(groupSpy2.setCount, 5).ShouldNot(BeZero())
-
-			Expect(groupSpy1.setReqs()[0].Ranges).To(HaveLen(2))
-			Expect(groupSpy2.setReqs()[0].Ranges).To(HaveLen(2))
-		})
-	})
-
 	Describe("leader and follower", func() {
 		It("does not schedule until it is the leader", func() {
 			leadershipSpy.setResult(false)
 			s.Start()
 
-			Consistently(groupSpy1.setCount).Should(BeZero())
-			Consistently(groupSpy2.setCount).Should(BeZero())
+			Consistently(logCacheSpy1.setCount).Should(BeZero())
+			Consistently(logCacheSpy2.setCount).Should(BeZero())
 
-			Consistently(groupSpy1.addReqs).Should(BeEmpty())
-			Consistently(groupSpy2.addReqs).Should(BeEmpty())
+			Consistently(logCacheSpy1.addReqs).Should(BeEmpty())
+			Consistently(logCacheSpy2.addReqs).Should(BeEmpty())
 
-			Consistently(groupSpy1.removeReqs).Should(BeEmpty())
-			Consistently(groupSpy2.removeReqs).Should(BeEmpty())
+			Consistently(logCacheSpy1.removeReqs).Should(BeEmpty())
+			Consistently(logCacheSpy2.removeReqs).Should(BeEmpty())
 
 			leadershipSpy.setResult(true)
-			Eventually(groupSpy1.setCount, 5).ShouldNot(BeZero())
-			Eventually(groupSpy2.setCount, 5).ShouldNot(BeZero())
+			Eventually(logCacheSpy1.setCount, 5).ShouldNot(BeZero())
+			Eventually(logCacheSpy2.setCount, 5).ShouldNot(BeZero())
 
-			Consistently(groupSpy1.addReqs).ShouldNot(BeEmpty())
-			Consistently(groupSpy2.addReqs).ShouldNot(BeEmpty())
+			Consistently(logCacheSpy1.addReqs).ShouldNot(BeEmpty())
+			Consistently(logCacheSpy2.addReqs).ShouldNot(BeEmpty())
 		})
 	})
 })

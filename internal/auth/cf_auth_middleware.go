@@ -3,9 +3,6 @@ package auth
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
-	"io"
-	"io/ioutil"
 	"net/http"
 
 	"log"
@@ -208,112 +205,6 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 
 		h.ServeHTTP(w, r)
 	})
-
-	router.HandleFunc("/v1/experimental/shard_group/{name}", func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			io.Copy(ioutil.Discard, r.Body)
-			r.Body.Close()
-		}()
-
-		vars := mux.Vars(r)
-
-		authToken := r.Header.Get("Authorization")
-		if authToken == "" {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		var groupedSourceIDs rpc.GroupedSourceIds
-		if err := jsonpb.Unmarshal(r.Body, &groupedSourceIDs); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			println(err.Error())
-			w.Write([]byte(fmt.Sprintf(`{"error": %q}`, err)))
-			return
-		}
-
-		c, err := m.oauth2Reader.Read(authToken)
-		if err != nil {
-			log.Printf("failed to read from Oauth2 server: %s", err)
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		for _, sourceID := range groupedSourceIDs.GetSourceIds() {
-			if !c.IsAdmin {
-				if !m.logAuthorizer.IsAuthorized(sourceID, authToken) {
-					w.WriteHeader(http.StatusNotFound)
-					return
-				}
-			}
-		}
-
-		r.URL.Path = fmt.Sprintf(
-			"/v1/experimental/shard_group/%s-%s-%s",
-			c.ClientID,
-			c.UserID,
-			vars["name"],
-		)
-
-		buf := &bytes.Buffer{}
-		m := jsonpb.Marshaler{}
-		m.Marshal(buf, &groupedSourceIDs)
-		r.Body = ioutil.NopCloser(buf)
-
-		h.ServeHTTP(w, r)
-	}).Methods("PUT")
-
-	router.HandleFunc("/v1/experimental/shard_group/{name}", func(w http.ResponseWriter, r *http.Request) {
-		vars := mux.Vars(r)
-
-		authToken := r.Header.Get("Authorization")
-		if authToken == "" {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		c, err := m.oauth2Reader.Read(authToken)
-		if err != nil {
-			log.Printf("failed to read from Oauth2 server: %s", err)
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		prefixedName := fmt.Sprintf("%s-%s-%s", c.ClientID, c.UserID, vars["name"])
-		r.URL.Path = "/v1/experimental/shard_group/" + prefixedName
-
-		interceptor := &interceptingResponseWriter{
-			ResponseWriter: w,
-			search:         []byte(prefixedName),
-			replace:        []byte(vars["name"]),
-		}
-		h.ServeHTTP(interceptor, r)
-	}).Methods("GET")
-
-	router.HandleFunc("/v1/experimental/shard_group/{name}/meta", func(w http.ResponseWriter, r *http.Request) {
-		vars := mux.Vars(r)
-
-		authToken := r.Header.Get("Authorization")
-		if authToken == "" {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		c, err := m.oauth2Reader.Read(authToken)
-		if err != nil {
-			log.Printf("failed to read from Oauth2 server: %s", err)
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		r.URL.Path = fmt.Sprintf(
-			"/v1/experimental/shard_group/%s-%s-%s/meta",
-			c.ClientID,
-			c.UserID,
-			vars["name"],
-		)
-
-		h.ServeHTTP(w, r)
-	}).Methods("GET")
 
 	router.HandleFunc("/v1/meta", func(w http.ResponseWriter, r *http.Request) {
 		authToken := r.Header.Get("Authorization")

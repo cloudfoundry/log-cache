@@ -15,10 +15,6 @@ type Config struct {
 	Count             int           `env:"COUNT, report"`
 	ReplicationFactor int           `env:"REPLICATION_FACTOR, report"`
 
-	// GroupReaderNodeAddrs are all the GroupReader addresses. They are in
-	// order according to their NodeIndex.
-	GroupReaderNodeAddrs []string `env:"GROUP_READER_NODE_ADDRS, report"`
-
 	// NodeAddrs are all the LogCache addresses. They are in order according
 	// to their NodeIndex.
 	NodeAddrs []string `env:"NODE_ADDRS, report"`
