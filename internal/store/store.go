@@ -2,6 +2,9 @@ package store
 
 import (
 	"container/heap"
+	"errors"
+	"fmt"
+	"io/ioutil"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -10,6 +13,10 @@ import (
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"github.com/emirpasic/gods/trees/avltree"
 	"github.com/emirpasic/gods/utils"
+	"github.com/influxdata/influxdb/models"
+	"github.com/influxdata/influxdb/tsdb"
+	_ "github.com/influxdata/influxdb/tsdb/engine/tsm1"
+	_ "github.com/influxdata/influxdb/tsdb/index/inmem"
 )
 
 type MetricsInitializer interface {
@@ -30,6 +37,7 @@ type MemoryConsultant interface {
 // Pruner. All functions are thread safe.
 type Store struct {
 	storageIndex sync.Map
+	tsdbShard    *tsdb.Shard
 
 	initializationMutex sync.Mutex
 
@@ -59,6 +67,11 @@ type Metrics struct {
 }
 
 func NewStore(maxPerSource, minimumStoreSizeToPrune int, mc MemoryConsultant, m MetricsInitializer) *Store {
+	dbDir, err := ioutil.TempDir("/tmp", "log-cache-influxdb")
+	if err != nil {
+		panic(err)
+	}
+
 	store := &Store{
 		minimumStoreSizeToPrune: minimumStoreSizeToPrune,
 		maxPerSource:            maxPerSource,
@@ -77,6 +90,23 @@ func NewStore(maxPerSource, minimumStoreSizeToPrune int, mc MemoryConsultant, m 
 
 		mc:                  mc,
 		truncationCompleted: make(chan bool),
+
+		tsdbShard: tsdb.NewShard(0, dbDir),
+	}
+
+	opts := tsdb.NewEngineOptions()
+	opts.WALDir =
+	store.tsdbStore.EngineOptions.WALEnabled = true
+	store.tsdbStore.EngineOptions.Config.WALDir = dbDir
+
+	err = store.tsdbStore.Open()
+	if err != nil {
+		panic(err)
+	}
+
+	err = store.tsdbStore.CreateShard("db", "rp", 0, true)
+	if err != nil {
+		panic(err)
 	}
 
 	store.mc.SetMemoryReporter(store.metrics.setMemoryUtilization)
@@ -84,6 +114,10 @@ func NewStore(maxPerSource, minimumStoreSizeToPrune int, mc MemoryConsultant, m 
 	go store.truncationLoop(500 * time.Millisecond)
 
 	return store
+}
+
+func (store *Store) Close() {
+	store.tsdbStore.Close()
 }
 
 func (store *Store) getOrInitializeStorage(sourceId string) (*storage, bool) {
@@ -180,8 +214,49 @@ func (store *Store) truncationLoop(runInterval time.Duration) {
 func (store *Store) Put(envelope *loggregator_v2.Envelope, sourceId string) {
 	store.metrics.incIngress(1)
 
+	points, err := convertEnvelopeToPoints(envelope)
+	if err == nil {
+		err = store.tsdbStore.WriteToShard(0, points)
+		if err != nil {
+			panic(err)
+		}
+		store.tsdbStore.Shard(0)
+	} else {
+		fmt.Printf("ERROR CONVERTING TO POINT: %q\n", err)
+	}
+
 	envelopeStorage, _ := store.getOrInitializeStorage(sourceId)
 	envelopeStorage.insertOrSwap(store, envelope)
+}
+
+func convertEnvelopeToPoints(envelope *loggregator_v2.Envelope) ([]models.Point, error) {
+	switch envelope.Message.(type) {
+	case *loggregator_v2.Envelope_Gauge:
+		gauge := envelope.GetGauge()
+
+		var name string
+		var metric *loggregator_v2.GaugeValue
+
+		for name, metric = range gauge.GetMetrics() {
+			break
+		}
+
+		fields := make(models.Fields)
+		for tagName, tagValue := range envelope.GetTags() {
+			fields[tagName] = tagValue
+		}
+		fields["unit"] = metric.GetUnit()
+		fields["value"] = metric.GetValue()
+
+		point, err := models.NewPoint(name, nil, fields, time.Unix(0, envelope.GetTimestamp()))
+		if err != nil {
+			return nil, err
+		}
+
+		return []models.Point{point}, nil
+	default:
+		return nil, errors.New("unhandled message type")
+	}
 }
 
 func (store *Store) BuildExpirationHeap() *ExpirationHeap {
