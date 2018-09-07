@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
@@ -13,7 +14,8 @@ import (
 )
 
 const (
-	StoreSize = 1000000
+	StoreSize   = 1000000
+	StoragePath = "/tmp/log-cache"
 )
 
 var (
@@ -26,7 +28,9 @@ var (
 )
 
 func BenchmarkStoreWrite(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(StoragePath, StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	defer s.Close()
+	defer os.RemoveAll(StoragePath)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -36,7 +40,9 @@ func BenchmarkStoreWrite(b *testing.B) {
 }
 
 func BenchmarkStoreTruncationOnWrite(b *testing.B) {
-	s := store.NewStore(100, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(StoragePath, 100, StoreSize, &staticPruner{}, nopMetrics{})
+	defer s.Close()
+	defer os.RemoveAll(StoragePath)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -46,7 +52,9 @@ func BenchmarkStoreTruncationOnWrite(b *testing.B) {
 }
 
 func BenchmarkStoreWriteParallel(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(StoragePath, StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	defer s.Close()
+	defer os.RemoveAll(StoragePath)
 
 	b.ResetTimer()
 
@@ -59,7 +67,9 @@ func BenchmarkStoreWriteParallel(b *testing.B) {
 }
 
 func BenchmarkStoreGetTime5MinRange(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(StoragePath, StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	defer s.Close()
+	defer os.RemoveAll(StoragePath)
 
 	for i := 0; i < StoreSize/10; i++ {
 		e := gen()
@@ -75,7 +85,9 @@ func BenchmarkStoreGetTime5MinRange(b *testing.B) {
 }
 
 func BenchmarkStoreGetLogType(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(StoragePath, StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	defer s.Close()
+	defer os.RemoveAll(StoragePath)
 
 	for i := 0; i < StoreSize/10; i++ {
 		e := gen()
@@ -91,7 +103,9 @@ func BenchmarkStoreGetLogType(b *testing.B) {
 }
 
 func BenchmarkMeta(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(StoragePath, StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	defer s.Close()
+	defer os.RemoveAll(StoragePath)
 
 	for i := 0; i < b.N; i++ {
 		e := gen()
@@ -105,7 +119,9 @@ func BenchmarkMeta(b *testing.B) {
 }
 
 func BenchmarkMetaWhileWriting(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(StoragePath, StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	defer s.Close()
+	defer os.RemoveAll(StoragePath)
 
 	ready := make(chan struct{}, 1)
 	go func() {
@@ -124,7 +140,9 @@ func BenchmarkMetaWhileWriting(b *testing.B) {
 }
 
 func BenchmarkMetaWhileReading(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(StoragePath, StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	defer s.Close()
+	defer os.RemoveAll(StoragePath)
 
 	for i := 0; i < b.N; i++ {
 		e := gen()

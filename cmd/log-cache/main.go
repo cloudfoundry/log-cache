@@ -32,6 +32,7 @@ func main() {
 		logcache.WithAddr(cfg.Addr),
 		logcache.WithMinimumSize(cfg.MinimumSize),
 		logcache.WithMemoryLimit(cfg.MemoryLimit),
+		logcache.WithStoragePath(cfg.StoragePath),
 		logcache.WithClustered(
 			cfg.NodeIndex,
 			cfg.NodeAddrs,

@@ -7,8 +7,9 @@ import (
 
 // Config is the configuration for a LogCache.
 type Config struct {
-	Addr       string `env:"ADDR, required, report"`
-	HealthAddr string `env:"HEALTH_ADDR, report"`
+	Addr        string `env:"ADDR, required, report"`
+	HealthAddr  string `env:"HEALTH_ADDR, report"`
+	StoragePath string `env:"STORAGE_PATH, report"`
 
 	// MinimumSize sets the lower bound for pruning. It will not prune beyond
 	// the set size. Defaults to 500000.
@@ -38,6 +39,7 @@ func LoadConfig() (*Config, error) {
 	c := Config{
 		Addr:        ":8080",
 		HealthAddr:  "localhost:6060",
+		StoragePath: "/tmp/log-cache",
 		MinimumSize: 500000,
 		MemoryLimit: 50,
 	}

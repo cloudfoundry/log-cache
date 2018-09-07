@@ -32,6 +32,7 @@ type LogCache struct {
 	maxPerSource       int
 	min                int
 	memoryLimitPercent float64
+	storagePath        string
 
 	// Cluster Properties
 	addr     string
@@ -54,6 +55,7 @@ func New(opts ...LogCacheOption) *LogCache {
 		maxPerSource:       100000,
 		min:                500000,
 		memoryLimitPercent: 50,
+		storagePath:        "/tmp/log-cache",
 
 		addr:     ":8080",
 		dialOpts: []grpc.DialOption{grpc.WithInsecure()},
@@ -122,6 +124,12 @@ func WithMemoryLimit(memoryPercent float64) LogCacheOption {
 	}
 }
 
+func WithStoragePath(storagePath string) LogCacheOption {
+	return func(c *LogCache) {
+		c.storagePath = storagePath
+	}
+}
+
 // WithClustered enables the LogCache to route data to peer nodes. It hashes
 // each envelope by SourceId and routes data that does not belong on the node
 // to the correct node. NodeAddrs is a slice of node addresses where the slice
@@ -178,7 +186,7 @@ func (m nopMetrics) NewGauge(name string) func(float64) {
 // and therefore does not block.
 func (c *LogCache) Start() {
 	p := store.NewPruneConsultant(2, c.memoryLimitPercent, NewMemoryAnalyzer(c.metrics))
-	store := store.NewStore(c.maxPerSource, c.min, p, c.metrics)
+	store := store.NewStore(c.storagePath, c.maxPerSource, c.min, p, c.metrics)
 	c.setupRouting(store)
 }
 

@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 )
 
 var _ = Describe("Store", func() {
+	var storagePath = "/tmp/log-cache"
 	var (
 		s  *store.Store
 		sm *spyMetrics
@@ -24,11 +26,12 @@ var _ = Describe("Store", func() {
 	BeforeEach(func() {
 		sm = newSpyMetrics()
 		sp = newSpyPruner()
-		s = store.NewStore(5, 10, sp, sm)
+		s = store.NewStore(storagePath, 5, 10, sp, sm)
 	})
 
 	AfterEach(func() {
 		s.Close()
+		os.RemoveAll(storagePath)
 	})
 
 	It("fetches data based on time and source ID", func() {
@@ -181,16 +184,14 @@ var _ = Describe("Store", func() {
 	})
 
 	It("survives being over pruned", func() {
-		s = store.NewStore(10, 10, sp, sm)
-		defer s.Close()
+		s = store.NewStore(storagePath, 10, 10, sp, sm)
 		sp.SetNumberToPrune(1000)
 		e1 := buildTypedEnvelope(0, "b", &loggregator_v2.Log{})
 		Expect(func() { s.Put(e1, e1.GetSourceId()) }).ToNot(Panic())
 	})
 
 	It("truncates older envelopes when max size is reached", func() {
-		s = store.NewStore(10, 5, sp, sm)
-		defer s.Close()
+		s = store.NewStore(storagePath, 10, 5, sp, sm)
 		// e1 should be truncated and sourceID "b" should be forgotten.
 		e1 := buildTypedEnvelope(1, "b", &loggregator_v2.Log{})
 		// e2 should be truncated.
@@ -241,8 +242,7 @@ var _ = Describe("Store", func() {
 	})
 
 	It("truncates envelopes for a specific source-id if its max size is reached", func() {
-		s = store.NewStore(2, 2, sp, sm)
-		defer s.Close()
+		s = store.NewStore(storagePath, 2, 2, sp, sm)
 		// e1 should not be truncated
 		e1 := buildTypedEnvelope(1, "b", &loggregator_v2.Log{})
 		// e2 should be truncated
@@ -276,8 +276,7 @@ var _ = Describe("Store", func() {
 	})
 
 	It("uses the given index", func() {
-		s = store.NewStore(2, 2, sp, sm)
-		defer s.Close()
+		s = store.NewStore(storagePath, 2, 2, sp, sm)
 		e := buildTypedEnvelope(0, "a", &loggregator_v2.Log{})
 		s.Put(e, "some-id")
 
@@ -289,8 +288,7 @@ var _ = Describe("Store", func() {
 	})
 
 	It("returns the indices in the store", func() {
-		s = store.NewStore(2, 2, sp, sm)
-		defer s.Close()
+		s = store.NewStore(storagePath, 2, 2, sp, sm)
 
 		// Will be pruned by pruner
 		s.Put(buildTypedEnvelope(1, "index-0", &loggregator_v2.Log{}), "index-0")
@@ -332,8 +330,7 @@ var _ = Describe("Store", func() {
 	})
 
 	It("survives the just added entry from being pruned", func() {
-		s = store.NewStore(2, 2, sp, sm)
-		defer s.Close()
+		s = store.NewStore(storagePath, 2, 2, sp, sm)
 
 		s.Put(buildTypedEnvelope(2, "index-0", &loggregator_v2.Log{}), "index-0")
 		s.Put(buildTypedEnvelope(3, "index-0", &loggregator_v2.Log{}), "index-0")
@@ -352,8 +349,7 @@ var _ = Describe("Store", func() {
 	It("demonstrates thread safety under heavy concurrent load", func() {
 		sp := newSpyPruner()
 		sp.SetNumberToPrune(10)
-		loadStore := store.NewStore(10000, 5000, sp, sm)
-		defer loadStore.Close()
+		loadStore := store.NewStore(storagePath, 10000, 5000, sp, sm)
 		start := time.Now()
 
 		for i := 0; i < 10; i++ {
@@ -396,15 +392,19 @@ func buildTypedEnvelope(timestamp int64, sourceID string, t interface{}) *loggre
 		}
 	case *loggregator_v2.Counter:
 		e.Message = &loggregator_v2.Envelope_Counter{
-			Counter: &loggregator_v2.Counter{},
+			Counter: &loggregator_v2.Counter{Name: "counter", Delta: 0, Total: 1},
 		}
 	case *loggregator_v2.Gauge:
 		e.Message = &loggregator_v2.Envelope_Gauge{
-			Gauge: &loggregator_v2.Gauge{},
+			Gauge: &loggregator_v2.Gauge{
+				Metrics: map[string]*loggregator_v2.GaugeValue{
+					"metric": {Unit: "ms", Value: 1},
+				},
+			},
 		}
 	case *loggregator_v2.Timer:
 		e.Message = &loggregator_v2.Envelope_Timer{
-			Timer: &loggregator_v2.Timer{},
+			Timer: &loggregator_v2.Timer{Name: "timer", Start: 0, Stop: 1},
 		}
 	case *loggregator_v2.Event:
 		e.Message = &loggregator_v2.Envelope_Event{

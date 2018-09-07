@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,15 +15,19 @@ import (
 
 var _ = Describe("store under high concurrent load", func() {
 	timeoutInSeconds := 300
+	StoragePath := "/tmp/log-cache"
 
-	FIt("", func(done Done) {
+	It("", func(done Done) {
 		var wg sync.WaitGroup
 
 		sp := newSpyPruner()
 		sp.numberToPrune = 128
 		sm := newSpyMetrics()
 
-		loadStore := store.NewStore(2500, 20000, sp, sm)
+		loadStore := store.NewStore(StoragePath, 2500, 20000, sp, sm)
+		defer loadStore.Close()
+		defer os.RemoveAll(StoragePath)
+
 		start := time.Now()
 		var envelopesWritten uint64
 
@@ -34,7 +39,7 @@ var _ = Describe("store under high concurrent load", func() {
 					defer wg.Done()
 
 					for envelopes := 0; envelopes < 500; envelopes++ {
-						e := buildTypedEnvelope(time.Now().UnixNano(), sourceId, &loggregator_v2.Log{})
+						e := buildTypedEnvelope(time.Now().UnixNano(), sourceId, &loggregator_v2.Timer{})
 						loadStore.Put(e, sourceId)
 						atomic.AddUint64(&envelopesWritten, 1)
 						time.Sleep(50 * time.Microsecond)

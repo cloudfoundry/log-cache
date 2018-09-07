@@ -3,8 +3,8 @@ package store
 import (
 	"container/heap"
 	"errors"
-	"fmt"
-	"io/ioutil"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,10 +13,12 @@ import (
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"github.com/emirpasic/gods/trees/avltree"
 	"github.com/emirpasic/gods/utils"
+	"github.com/influxdata/influxdb/logger"
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/tsdb"
-	_ "github.com/influxdata/influxdb/tsdb/engine/tsm1"
-	_ "github.com/influxdata/influxdb/tsdb/index/inmem"
+	_ "github.com/influxdata/influxdb/tsdb/engine"
+	_ "github.com/influxdata/influxdb/tsdb/index"
+	"github.com/influxdata/influxdb/tsdb/index/inmem"
 )
 
 type MetricsInitializer interface {
@@ -66,11 +68,23 @@ type Metrics struct {
 	setMemoryUtilization  func(value float64)
 }
 
-func NewStore(maxPerSource, minimumStoreSizeToPrune int, mc MemoryConsultant, m MetricsInitializer) *Store {
-	dbDir, err := ioutil.TempDir("/tmp", "log-cache-influxdb")
-	if err != nil {
+func NewStore(storagePath string, maxPerSource, minimumStoreSizeToPrune int, mc MemoryConsultant, m MetricsInitializer) *Store {
+	baseDir := filepath.Join(storagePath, "influxdb")
+
+	shardDir := filepath.Join(baseDir, "shard")
+	walDir := filepath.Join(baseDir, "wal")
+	seriesFileDir := filepath.Join(baseDir, "series-file")
+
+	seriesFile := tsdb.NewSeriesFile(seriesFileDir)
+	seriesFile.Logger = logger.New(os.Stdout)
+	if err := seriesFile.Open(); err != nil {
 		panic(err)
 	}
+
+	opts := tsdb.NewEngineOptions()
+	opts.Config.WALDir = walDir
+	opts.InmemIndex = inmem.NewIndex(baseDir, seriesFile)
+	shard := tsdb.NewShard(0, shardDir, walDir, seriesFile, opts)
 
 	store := &Store{
 		minimumStoreSizeToPrune: minimumStoreSizeToPrune,
@@ -91,21 +105,10 @@ func NewStore(maxPerSource, minimumStoreSizeToPrune int, mc MemoryConsultant, m 
 		mc:                  mc,
 		truncationCompleted: make(chan bool),
 
-		tsdbShard: tsdb.NewShard(0, dbDir),
+		tsdbShard: shard,
 	}
 
-	opts := tsdb.NewEngineOptions()
-	opts.WALDir =
-	store.tsdbStore.EngineOptions.WALEnabled = true
-	store.tsdbStore.EngineOptions.Config.WALDir = dbDir
-
-	err = store.tsdbStore.Open()
-	if err != nil {
-		panic(err)
-	}
-
-	err = store.tsdbStore.CreateShard("db", "rp", 0, true)
-	if err != nil {
+	if err := store.tsdbShard.Open(); err != nil {
 		panic(err)
 	}
 
@@ -117,7 +120,7 @@ func NewStore(maxPerSource, minimumStoreSizeToPrune int, mc MemoryConsultant, m 
 }
 
 func (store *Store) Close() {
-	store.tsdbStore.Close()
+	store.tsdbShard.Close()
 }
 
 func (store *Store) getOrInitializeStorage(sourceId string) (*storage, bool) {
@@ -216,13 +219,10 @@ func (store *Store) Put(envelope *loggregator_v2.Envelope, sourceId string) {
 
 	points, err := convertEnvelopeToPoints(envelope)
 	if err == nil {
-		err = store.tsdbStore.WriteToShard(0, points)
+		err = store.tsdbShard.WritePoints(points)
 		if err != nil {
 			panic(err)
 		}
-		store.tsdbStore.Shard(0)
-	} else {
-		fmt.Printf("ERROR CONVERTING TO POINT: %q\n", err)
 	}
 
 	envelopeStorage, _ := store.getOrInitializeStorage(sourceId)
@@ -232,23 +232,49 @@ func (store *Store) Put(envelope *loggregator_v2.Envelope, sourceId string) {
 func convertEnvelopeToPoints(envelope *loggregator_v2.Envelope) ([]models.Point, error) {
 	switch envelope.Message.(type) {
 	case *loggregator_v2.Envelope_Gauge:
+		var points []models.Point
+
 		gauge := envelope.GetGauge()
 
-		var name string
-		var metric *loggregator_v2.GaugeValue
+		for name, metric := range gauge.GetMetrics() {
+			fields := make(models.Fields)
+			for tagName, tagValue := range envelope.GetTags() {
+				fields[tagName] = tagValue
+			}
+			fields["unit"] = metric.GetUnit()
+			fields["value"] = metric.GetValue()
 
-		for name, metric = range gauge.GetMetrics() {
-			break
+			point, err := models.NewPoint(name, nil, fields, time.Unix(0, envelope.GetTimestamp()))
+			if err != nil {
+				return nil, err
+			}
+			points = append(points, point)
 		}
+
+		return points, nil
+	case *loggregator_v2.Envelope_Counter:
+		counter := envelope.GetCounter()
 
 		fields := make(models.Fields)
 		for tagName, tagValue := range envelope.GetTags() {
 			fields[tagName] = tagValue
 		}
-		fields["unit"] = metric.GetUnit()
-		fields["value"] = metric.GetValue()
+		fields["value"] = counter.GetTotal()
+		point, err := models.NewPoint(counter.GetName(), nil, fields, time.Unix(0, envelope.GetTimestamp()))
+		if err != nil {
+			return nil, err
+		}
 
-		point, err := models.NewPoint(name, nil, fields, time.Unix(0, envelope.GetTimestamp()))
+		return []models.Point{point}, nil
+	case *loggregator_v2.Envelope_Timer:
+		timer := envelope.GetTimer()
+
+		fields := make(models.Fields)
+		for tagName, tagValue := range envelope.GetTags() {
+			fields[tagName] = tagValue
+		}
+		fields["value"] = timer.GetStop() - timer.GetStart()
+		point, err := models.NewPoint(timer.GetName(), nil, fields, time.Unix(0, envelope.GetTimestamp()))
 		if err != nil {
 			return nil, err
 		}
