@@ -130,7 +130,8 @@ func (storage *storage) insertOrSwap(store *Store, e *loggregator_v2.Envelope) {
 		}
 	}
 
-	storage.Put(e.Timestamp+timestampFudge, e)
+	e.Timestamp += timestampFudge
+	storage.Put(e.Timestamp, e)
 
 	if e.Timestamp > storage.meta.NewestTimestamp {
 		storage.meta.NewestTimestamp = e.Timestamp

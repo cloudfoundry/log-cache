@@ -221,8 +221,8 @@ var _ = Describe("Store", func() {
 		envelopes := s.Get("a", start, end, nil, 10, false)
 		Expect(envelopes).To(HaveLen(5))
 
-		for _, e := range envelopes {
-			Expect(e.Timestamp).To(Equal(int64(3)))
+		for i, e := range envelopes {
+			Expect(e.Timestamp).To(Equal(int64(3 + i)))
 		}
 
 		Expect(sm.GetValue("Expired")).To(Equal(3.0))
