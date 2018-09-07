@@ -70,21 +70,157 @@ var _ = Describe("Store", func() {
 		Expect(envelopes[2].GetTimestamp()).To(Equal(int64(3)))
 	})
 
-	It("returns envelopes inclusive of the start time, up to and exclusive of the end time", func() {
-		e0 := buildEnvelope(0, "a")
-		e1 := buildEnvelope(1, "a")
-		e2 := buildEnvelope(2, "a")
+	Context("in ascending order", func() {
+		It("respects timestamp fudging when checking the time boundaries", func() {
+			s = store.NewStore(50, 10, sp, sm)
 
-		s.Put(e0, e0.GetSourceId())
-		s.Put(e1, e1.GetSourceId())
-		s.Put(e2, e2.GetSourceId())
+			e0 := buildEnvelope(0, "a")
+			e1 := buildEnvelope(1, "a")
+			e2 := buildEnvelope(2, "a")
+			e3 := buildEnvelope(3, "a")
 
-		start := time.Unix(0, 0)
-		end := time.Unix(0, 2)
-		envelopes := s.Get("a", start, end, nil, 3, false)
-		Expect(envelopes).To(HaveLen(2))
-		Expect(envelopes[0].GetTimestamp()).To(Equal(int64(0)))
-		Expect(envelopes[1].GetTimestamp()).To(Equal(int64(1)))
+			s.Put(e0, e0.GetSourceId())
+			s.Put(e0, e0.GetSourceId())
+			s.Put(e0, e0.GetSourceId())
+			s.Put(e0, e0.GetSourceId())
+			s.Put(e0, e0.GetSourceId())
+
+			s.Put(e1, e1.GetSourceId())
+			s.Put(e1, e1.GetSourceId())
+			s.Put(e1, e1.GetSourceId())
+
+			s.Put(e2, e2.GetSourceId())
+
+			s.Put(e3, e3.GetSourceId())
+			s.Put(e3, e3.GetSourceId())
+
+			start := time.Unix(0, 1)
+			end := time.Unix(0, 3)
+			envelopes := s.Get("a", start, end, nil, 5, false)
+			Expect(envelopes).To(HaveLen(4))
+			Expect(envelopes[0].GetTimestamp()).To(Equal(int64(1)))
+			Expect(envelopes[1].GetTimestamp()).To(Equal(int64(1)))
+			Expect(envelopes[2].GetTimestamp()).To(Equal(int64(1)))
+			Expect(envelopes[3].GetTimestamp()).To(Equal(int64(2)))
+		})
+
+		It("intentionally exceeds the limit when it would otherwise break up a group of fudged timestamps", func() {
+			s = store.NewStore(50, 10, sp, sm)
+
+			e0 := buildEnvelope(0, "a")
+			e1 := buildEnvelope(1, "a")
+			e2 := buildEnvelope(2, "a")
+			e3 := buildEnvelope(3, "a")
+			e4 := buildEnvelope(4, "a")
+
+			s.Put(e0, e0.GetSourceId())
+			s.Put(e0, e0.GetSourceId())
+			s.Put(e0, e0.GetSourceId())
+
+			s.Put(e1, e1.GetSourceId())
+
+			s.Put(e2, e2.GetSourceId())
+			s.Put(e2, e2.GetSourceId())
+
+			s.Put(e3, e3.GetSourceId())
+			s.Put(e3, e3.GetSourceId())
+			s.Put(e3, e3.GetSourceId())
+			s.Put(e3, e3.GetSourceId())
+
+			s.Put(e4, e4.GetSourceId())
+
+			start := time.Unix(0, 0)
+			end := time.Unix(0, 4)
+			envelopes := s.Get("a", start, end, nil, 8, false)
+			Expect(envelopes).To(HaveLen(10))
+			Expect(envelopes[0].GetTimestamp()).To(Equal(int64(0)))
+			Expect(envelopes[1].GetTimestamp()).To(Equal(int64(0)))
+			Expect(envelopes[2].GetTimestamp()).To(Equal(int64(0)))
+			Expect(envelopes[3].GetTimestamp()).To(Equal(int64(1)))
+			Expect(envelopes[4].GetTimestamp()).To(Equal(int64(2)))
+			Expect(envelopes[5].GetTimestamp()).To(Equal(int64(2)))
+			Expect(envelopes[6].GetTimestamp()).To(Equal(int64(3)))
+			Expect(envelopes[7].GetTimestamp()).To(Equal(int64(3)))
+			Expect(envelopes[8].GetTimestamp()).To(Equal(int64(3)))
+			Expect(envelopes[9].GetTimestamp()).To(Equal(int64(3)))
+		})
+
+	})
+
+	Context("in descending order", func() {
+		It("respects timestamp fudging when checking the time boundaries", func() {
+			s = store.NewStore(50, 10, sp, sm)
+
+			e0 := buildEnvelope(0, "a")
+			e1 := buildEnvelope(1, "a")
+			e2 := buildEnvelope(2, "a")
+			e3 := buildEnvelope(3, "a")
+
+			s.Put(e0, e0.GetSourceId())
+			s.Put(e0, e0.GetSourceId())
+
+			s.Put(e1, e1.GetSourceId())
+
+			s.Put(e2, e2.GetSourceId())
+			s.Put(e2, e2.GetSourceId())
+			s.Put(e2, e2.GetSourceId())
+
+			s.Put(e3, e3.GetSourceId())
+			s.Put(e3, e3.GetSourceId())
+			s.Put(e3, e3.GetSourceId())
+			s.Put(e3, e3.GetSourceId())
+			s.Put(e3, e3.GetSourceId())
+
+			start := time.Unix(0, 1)
+			end := time.Unix(0, 3)
+			envelopes := s.Get("a", start, end, nil, 5, true)
+			Expect(envelopes).To(HaveLen(4))
+			Expect(envelopes[0].GetTimestamp()).To(Equal(int64(2)))
+			Expect(envelopes[1].GetTimestamp()).To(Equal(int64(2)))
+			Expect(envelopes[2].GetTimestamp()).To(Equal(int64(2)))
+			Expect(envelopes[3].GetTimestamp()).To(Equal(int64(1)))
+		})
+
+		It("intentionally exceeds the limit when it would otherwise break up a group of fudged timestamps", func() {
+			s = store.NewStore(50, 10, sp, sm)
+
+			e0 := buildEnvelope(0, "a")
+			e1 := buildEnvelope(1, "a")
+			e2 := buildEnvelope(2, "a")
+			e3 := buildEnvelope(3, "a")
+			e4 := buildEnvelope(4, "a")
+
+			s.Put(e0, e0.GetSourceId())
+			s.Put(e0, e0.GetSourceId())
+			s.Put(e0, e0.GetSourceId())
+
+			s.Put(e1, e1.GetSourceId())
+
+			s.Put(e2, e2.GetSourceId())
+			s.Put(e2, e2.GetSourceId())
+
+			s.Put(e3, e3.GetSourceId())
+			s.Put(e3, e3.GetSourceId())
+			s.Put(e3, e3.GetSourceId())
+			s.Put(e3, e3.GetSourceId())
+
+			s.Put(e4, e4.GetSourceId())
+
+			start := time.Unix(0, 0)
+			end := time.Unix(0, 4)
+			envelopes := s.Get("a", start, end, nil, 8, true)
+			Expect(envelopes).To(HaveLen(10))
+			Expect(envelopes[0].GetTimestamp()).To(Equal(int64(3)))
+			Expect(envelopes[1].GetTimestamp()).To(Equal(int64(3)))
+			Expect(envelopes[2].GetTimestamp()).To(Equal(int64(3)))
+			Expect(envelopes[3].GetTimestamp()).To(Equal(int64(3)))
+			Expect(envelopes[4].GetTimestamp()).To(Equal(int64(2)))
+			Expect(envelopes[5].GetTimestamp()).To(Equal(int64(2)))
+			Expect(envelopes[6].GetTimestamp()).To(Equal(int64(1)))
+			Expect(envelopes[7].GetTimestamp()).To(Equal(int64(0)))
+			Expect(envelopes[8].GetTimestamp()).To(Equal(int64(0)))
+			Expect(envelopes[9].GetTimestamp()).To(Equal(int64(0)))
+		})
 	})
 
 	It("returns a maximum number of envelopes in descending order", func() {

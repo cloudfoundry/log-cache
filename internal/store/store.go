@@ -328,15 +328,15 @@ func (s *Store) treeAscTraverse(
 		return false
 	}
 
-	t := n.Key.(int64)
+	e := n.Value.(*loggregator_v2.Envelope)
+	t := e.GetTimestamp()
+
 	if t >= start {
 		if s.treeAscTraverse(n.Children[0], start, end, f) {
 			return true
 		}
 
-		e := n.Value.(*loggregator_v2.Envelope)
-
-		if t >= end || f(e) {
+		if (t >= end || f(e)) && (t == n.Key.(int64)) {
 			return true
 		}
 	}
@@ -354,15 +354,15 @@ func (s *Store) treeDescTraverse(
 		return false
 	}
 
-	t := n.Key.(int64)
+	e := n.Value.(*loggregator_v2.Envelope)
+	t := e.GetTimestamp()
+
 	if t < end {
 		if s.treeDescTraverse(n.Children[1], start, end, f) {
 			return true
 		}
 
-		e := n.Value.(*loggregator_v2.Envelope)
-
-		if t < start || f(e) {
+		if (t < start || f(e)) && (t == n.Key.(int64)) {
 			return true
 		}
 	}
