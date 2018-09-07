@@ -155,6 +155,16 @@ var _ = Describe("PromQL", func() {
 		Eventually(spyDataReader.ReadSourceIDs).Should(
 			ConsistOf("some-id"),
 		)
+
+		Expect(spyDataReader.ReadEnvelopeTypes()).To(HaveLen(1))
+		Expect(spyDataReader.ReadEnvelopeTypes()[0]).To(Equal(
+			[]logcache_v1.EnvelopeType{
+				logcache_v1.EnvelopeType_GAUGE,
+				logcache_v1.EnvelopeType_COUNTER,
+				logcache_v1.EnvelopeType_TIMER,
+			},
+		),
+		)
 	})
 
 	Context("when metric names contain unsupported characters", func() {
@@ -1106,6 +1116,7 @@ type spyDataReader struct {
 	readSourceIDs []string
 	readStarts    []time.Time
 	readEnds      []time.Time
+	readTypes     [][]logcache_v1.EnvelopeType
 
 	readResults [][]*loggregator_v2.Envelope
 	readErrs    []error
@@ -1128,6 +1139,7 @@ func (s *spyDataReader) Read(
 	s.readSourceIDs = append(s.readSourceIDs, req.SourceId)
 	s.readStarts = append(s.readStarts, time.Unix(0, req.StartTime))
 	s.readEnds = append(s.readEnds, time.Unix(0, req.EndTime))
+	s.readTypes = append(s.readTypes, req.EnvelopeTypes)
 
 	if len(s.readResults) != len(s.readErrs) {
 		panic("readResults and readErrs are out of sync")
@@ -1156,6 +1168,16 @@ func (s *spyDataReader) ReadSourceIDs() []string {
 
 	result := make([]string, len(s.readSourceIDs))
 	copy(result, s.readSourceIDs)
+
+	return result
+}
+
+func (s *spyDataReader) ReadEnvelopeTypes() [][]logcache_v1.EnvelopeType {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := make([][]logcache_v1.EnvelopeType, len(s.readTypes))
+	copy(result, s.readTypes)
 
 	return result
 }
