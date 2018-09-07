@@ -55,13 +55,12 @@ func main() {
 
 	metaFetcher := gologcache.NewClient(cfg.LogCacheGatewayAddr)
 
-	promQLParser := promql.New(nil, metrics, log)
-
 	middlewareProvider := auth.NewCFAuthMiddlewareProvider(
 		uaaClient,
 		capiClient,
 		metaFetcher,
-		promQLParser,
+		promql.ExtractSourceIds,
+		capiClient,
 	)
 
 	proxy := logcache.NewCFAuthProxy(

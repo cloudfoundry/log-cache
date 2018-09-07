@@ -193,4 +193,87 @@ var _ = Describe("CAPIClient", func() {
 			wg.Wait()
 		})
 	})
+
+	Describe("GetRelatedSourceIds", func() {
+		It("hits CAPI correctly", func() {
+			client.GetRelatedSourceIds([]string{"app-name-1", "app-name-2"}, "some-token")
+			Expect(capiClient.requests).To(HaveLen(1))
+
+			appsReq := capiClient.requests[0]
+			Expect(appsReq.Method).To(Equal(http.MethodGet))
+			Expect(appsReq.URL.Host).To(Equal("external.capi.com"))
+			Expect(appsReq.URL.Path).To(Equal("/v3/apps"))
+			Expect(appsReq.URL.Query().Get("names")).To(Equal("app-name-1,app-name-2"))
+			Expect(appsReq.URL.Query().Get("per_page")).To(Equal("5000"))
+			Expect(appsReq.Header.Get("Authorization")).To(Equal("some-token"))
+		})
+
+		It("gets related source IDs for a single app", func() {
+			capiClient.resps = []response{
+				{status: http.StatusOK, body: []byte(`{
+					"resources": [
+						{"guid": "app-0", "name": "app-name"},
+						{"guid": "app-1", "name": "app-name"}
+					]
+				}`)},
+			}
+
+			sourceIds := client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
+			Expect(sourceIds).To(HaveKeyWithValue("app-name", ConsistOf("app-0", "app-1")))
+		})
+
+		It("gets related source IDs for multiple apps", func() {
+			capiClient.resps = []response{
+				{status: http.StatusOK, body: []byte(`{
+					"resources": [
+						{"guid": "app-a-0", "name": "app-a"},
+						{"guid": "app-a-1", "name": "app-a"},
+						{"guid": "app-b-0", "name": "app-b"}
+					]
+				}`)},
+			}
+
+			sourceIds := client.GetRelatedSourceIds([]string{"app-a", "app-b"}, "some-token")
+			Expect(sourceIds).To(HaveKeyWithValue("app-a", ConsistOf("app-a-0", "app-a-1")))
+			Expect(sourceIds).To(HaveKeyWithValue("app-b", ConsistOf("app-b-0")))
+		})
+
+		It("doesn't issue a request when given no app names", func() {
+			client.GetRelatedSourceIds([]string{}, "some-token")
+			Expect(capiClient.requests).To(HaveLen(0))
+		})
+
+		It("stores the latency", func() {
+			capiClient.resps = []response{
+				{status: http.StatusNotFound},
+			}
+			client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
+
+			Expect(metrics.m["LastCAPIV3AppsByNameLatency"]).ToNot(BeZero())
+		})
+
+		It("returns no source IDs when the request fails", func() {
+			capiClient.resps = []response{
+				{status: http.StatusNotFound},
+			}
+			sourceIds := client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
+			Expect(sourceIds).To(HaveLen(0))
+		})
+
+		It("returns no source IDs when the request returns a non-200 status code", func() {
+			capiClient.resps = []response{
+				{err: errors.New("intentional error")},
+			}
+			sourceIds := client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
+			Expect(sourceIds).To(HaveLen(0))
+		})
+
+		It("returns no source IDs when JSON decoding fails", func() {
+			capiClient.resps = []response{
+				{status: http.StatusOK, body: []byte(`{`)},
+			}
+			sourceIds := client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
+			Expect(sourceIds).To(HaveLen(0))
+		})
+	})
 })

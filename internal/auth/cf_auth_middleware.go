@@ -12,18 +12,17 @@ import (
 	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/gorilla/mux"
+
+	"code.cloudfoundry.org/log-cache/internal/promql"
 )
 
-type PromQLParser interface {
-	Parse(query string) ([]string, error)
-}
-
 type CFAuthMiddlewareProvider struct {
-	oauth2Reader  Oauth2ClientReader
-	logAuthorizer LogAuthorizer
-	metaFetcher   MetaFetcher
-	marshaller    jsonpb.Marshaler
-	parser        PromQLParser
+	oauth2Reader            Oauth2ClientReader
+	logAuthorizer           LogAuthorizer
+	metaFetcher             MetaFetcher
+	marshaller              jsonpb.Marshaler
+	promQLSourceIdExtractor PromQLSourceIdExtractor
+	appNameTranslator       AppNameTranslator
 }
 
 type Oauth2Client struct {
@@ -45,17 +44,24 @@ type MetaFetcher interface {
 	Meta(context.Context) (map[string]*rpc.MetaInfo, error)
 }
 
+type AppNameTranslator interface {
+	GetRelatedSourceIds(appNames []string, token string) map[string][]string
+}
+
+type PromQLSourceIdExtractor func(query string) ([]string, error)
+
 func NewCFAuthMiddlewareProvider(
 	oauth2Reader Oauth2ClientReader,
 	logAuthorizer LogAuthorizer,
 	metaFetcher MetaFetcher,
-	parser PromQLParser,
+	promQLSourceIdExtractor PromQLSourceIdExtractor, appNameTranslator AppNameTranslator,
 ) CFAuthMiddlewareProvider {
 	return CFAuthMiddlewareProvider{
-		oauth2Reader:  oauth2Reader,
-		logAuthorizer: logAuthorizer,
-		metaFetcher:   metaFetcher,
-		parser:        parser,
+		oauth2Reader:            oauth2Reader,
+		logAuthorizer:           logAuthorizer,
+		metaFetcher:             metaFetcher,
+		promQLSourceIdExtractor: promQLSourceIdExtractor,
+		appNameTranslator:       appNameTranslator,
 	}
 }
 
@@ -106,7 +112,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		}
 
 		query := r.URL.Query().Get("query")
-		sourceIDs, err := m.parser.Parse(query)
+		sourceIds, err := m.promQLSourceIdExtractor(query)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
@@ -120,7 +126,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 			return
 		}
 
-		if len(sourceIDs) == 0 {
+		if len(sourceIds) == 0 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
 
@@ -140,68 +146,32 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 			return
 		}
 
-		if !c.IsAdmin {
-			for _, sourceID := range sourceIDs {
-				if !m.logAuthorizer.IsAuthorized(sourceID, authToken) {
+		relatedSourceIds := m.appNameTranslator.GetRelatedSourceIds(sourceIds, authToken)
+		for _, sourceId := range sourceIds {
+			sourceIdSet := append(relatedSourceIds[sourceId], sourceId)
+
+			if !c.IsAdmin {
+				sourceIdSet = m.authorizeSourceIds(sourceIdSet, authToken)
+
+				if len(sourceIdSet) == 0 {
 					w.WriteHeader(http.StatusNotFound)
 					return
 				}
 			}
+
+			relatedSourceIds[sourceId] = sourceIdSet
 		}
 
-		h.ServeHTTP(w, r)
-	})
-
-	router.HandleFunc("/v1/promql_range", func(w http.ResponseWriter, r *http.Request) {
-		authToken := r.Header.Get("Authorization")
-		if authToken == "" {
+		modifiedQuery, err := promql.ReplaceSourceIdSets(query, relatedSourceIds)
+		if err != nil {
+			log.Printf("failed to expand source IDs: %s", err)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
-		query := r.URL.Query().Get("query")
-		sourceIDs, err := m.parser.Parse(query)
-		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-
-			json.NewEncoder(w).Encode(&promqlErrorBody{
-				Status:    "error",
-				ErrorType: "bad_data",
-				Error:     err.Error(),
-			})
-
-			return
-		}
-
-		if len(sourceIDs) == 0 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-
-			json.NewEncoder(w).Encode(&promqlErrorBody{
-				Status:    "error",
-				ErrorType: "bad_data",
-				Error:     "query does not request any source_ids",
-			})
-
-			return
-		}
-
-		c, err := m.oauth2Reader.Read(authToken)
-		if err != nil {
-			log.Printf("failed to read from Oauth2 server: %s", err)
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		if !c.IsAdmin {
-			for _, sourceID := range sourceIDs {
-				if !m.logAuthorizer.IsAuthorized(sourceID, authToken) {
-					w.WriteHeader(http.StatusNotFound)
-					return
-				}
-			}
-		}
+		q := r.URL.Query()
+		q.Set("query", modifiedQuery)
+		r.URL.RawQuery = q.Encode()
 
 		h.ServeHTTP(w, r)
 	})
@@ -234,6 +204,18 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 	})
 
 	return router
+}
+
+func (m CFAuthMiddlewareProvider) authorizeSourceIds(sourceIds []string, authToken string) []string {
+	var authorizedSourceIds []string
+
+	for _, sourceId := range sourceIds {
+		if m.logAuthorizer.IsAuthorized(sourceId, authToken) {
+			authorizedSourceIds = append(authorizedSourceIds, sourceId)
+		}
+	}
+
+	return authorizedSourceIds
 }
 
 func (m CFAuthMiddlewareProvider) onlyAuthorized(authToken string, meta map[string]*rpc.MetaInfo, c Oauth2Client) map[string]*rpc.MetaInfo {

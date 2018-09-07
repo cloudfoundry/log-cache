@@ -69,15 +69,91 @@ var _ = Describe("PromQL", func() {
 		})
 	})
 
-	It("returns the given source_ids", func() {
-		sIDs, err := q.Parse(`metric{source_id="a"}+metric{source_id="b"}`)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(sIDs).To(ConsistOf("a", "b"))
+	Context("ExtractSourceIds", func() {
+		It("returns the given source IDs", func() {
+			sIDs, err := promql.ExtractSourceIds(`metric{source_id="a"}+metric{source_id="b"}`)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(sIDs).To(ConsistOf("a", "b"))
+		})
+
+		It("returns the given source IDs in deeply nested queries", func() {
+			sIDs, err := promql.ExtractSourceIds(`avg_over_time(gauge_example{source_id="a"}[10m])`)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(sIDs).To(ConsistOf("a"))
+		})
+
+		It("expands requests filtered for multiple source IDs", func() {
+			sIDs, err := promql.ExtractSourceIds(`metric{source_id=~"a|b"}`)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(sIDs).To(ConsistOf("a", "b"))
+		})
+
+		It("returns an error for an invalid query", func() {
+			_, err := promql.ExtractSourceIds(`invalid.query`)
+			Expect(err).To(HaveOccurred())
+		})
 	})
 
-	It("returns an error for an invalid query", func() {
-		_, err := q.Parse(`invalid.query`)
-		Expect(err).To(HaveOccurred())
+	Context("ReplaceSourceIdSets", func() {
+		It("returns queries unmodified when given no expansions", func() {
+			query := `metric{source_id="a"} + avg_over_time(gauge_example{source_id="b"}[10m])`
+			modifiedQuery, err := promql.ReplaceSourceIdSets(query, map[string][]string{})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(modifiedQuery).To(Equal(query))
+		})
+
+		It("returns queries unmodified when no expansions match", func() {
+			query := `metric{source_id="a"} + avg_over_time(gauge_example{source_id="b"}[10m])`
+			modifiedQuery, err := promql.ReplaceSourceIdSets(query, map[string][]string{
+				"expanded": []string{"expansion-1", "expansion-2"},
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(modifiedQuery).To(Equal(query))
+		})
+
+		It("returns appropriate queries when the original sourceId is elided", func() {
+			query := `metric{source_id="a"} + avg_over_time(gauge_example{source_id="expanded"}[10m])`
+			modifiedQuery, err := promql.ReplaceSourceIdSets(query, map[string][]string{
+				"expanded": []string{"expansion-1", "expansion-2"},
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(modifiedQuery).To(
+				Equal(`metric{source_id="a"} + avg_over_time(gauge_example{source_id=~"expansion-1|expansion-2"}[10m])`),
+			)
+		})
+
+		It("returns queries using the equality matcher when replacing a single sourceId", func() {
+			query := `metric{source_id="to-be-replaced"}`
+			modifiedQuery, err := promql.ReplaceSourceIdSets(query, map[string][]string{
+				"to-be-replaced": []string{"replacement"},
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(modifiedQuery).To(
+				Equal(`metric{source_id="replacement"}`),
+			)
+		})
+
+		It("returns queries using the equality matcher when replacing multiple sourceIds with a single sourceId", func() {
+			query := `metric{source_id=~"to-be-replaced-1|to-be-replaced-2"}`
+			modifiedQuery, err := promql.ReplaceSourceIdSets(query, map[string][]string{
+				"to-be-replaced-1": []string{"replacement"},
+				"to-be-replaced-2": []string{},
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(modifiedQuery).To(
+				Equal(`metric{source_id="replacement"}`),
+			)
+		})
+
+		It("returns an error for an invalid query", func() {
+			_, err := promql.ReplaceSourceIdSets(`invalid.query`, map[string][]string{})
+			Expect(err).To(HaveOccurred())
+		})
 	})
 
 	It("a query against data with invalid envelope types returns only the valid metrics", func() {
@@ -646,6 +722,66 @@ var _ = Describe("PromQL", func() {
 			Expect(spyMetrics.gauges).To(HaveKey("PromQLInstantQueryTime"))
 			Expect(spyMetrics.gauges["PromQLInstantQueryTime"]).To(HaveLen(1))
 			Expect(spyMetrics.gauges["PromQLInstantQueryTime"][0]).ToNot(BeZero())
+		})
+
+		It("expands requests filtered for multiple source IDs", func() {
+			now := time.Now()
+			spyDataReader.readErrs = []error{nil, nil}
+			spyDataReader.readResults = [][]*loggregator_v2.Envelope{
+				{
+					{
+						SourceId:  "some-id-1",
+						Timestamp: now.UnixNano(),
+						Message: &loggregator_v2.Envelope_Gauge{
+							Gauge: &loggregator_v2.Gauge{
+								Metrics: map[string]*loggregator_v2.GaugeValue{
+									"metric": {Unit: "thing", Value: 99},
+								},
+							},
+						},
+						Tags: map[string]string{
+							"source_id": "some-id-1",
+						},
+					},
+				},
+				{
+					{
+						SourceId:  "some-id-2",
+						Timestamp: now.UnixNano(),
+						Message: &loggregator_v2.Envelope_Gauge{
+							Gauge: &loggregator_v2.Gauge{
+								Metrics: map[string]*loggregator_v2.GaugeValue{
+									"metric": {Unit: "thing", Value: 101},
+								},
+							},
+						},
+						Tags: map[string]string{
+							"source_id": "some-id-2",
+						},
+					},
+				},
+			}
+
+			result, err := q.InstantQuery(
+				context.Background(),
+				&logcache_v1.PromQL_InstantQueryRequest{Query: `metric{source_id=~"some-id-1|some-id-2"}`},
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			Eventually(spyDataReader.ReadSourceIDs).Should(ConsistOf("some-id-1", "some-id-2"))
+
+			Expect(func() []map[string]string {
+				var metrics []map[string]string
+
+				for _, sample := range result.GetVector().GetSamples() {
+					metrics = append(metrics, sample.GetMetric())
+				}
+
+				return metrics
+			}()).To(ConsistOf(
+				HaveKeyWithValue("source_id", "some-id-1"),
+				HaveKeyWithValue("source_id", "some-id-2"),
+			))
 		})
 
 		It("returns an error for an invalid query", func() {

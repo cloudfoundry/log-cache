@@ -3,10 +3,10 @@ package promql
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
@@ -52,43 +52,6 @@ func New(
 	}
 
 	return q
-}
-
-func (q *PromQL) Parse(query string) ([]string, error) {
-	sit := &sourceIDTracker{}
-	var closureErr error
-	lcq := &logCacheQueryable{
-		log:        log.New(ioutil.Discard, "", 0),
-		interval:   time.Second,
-		dataReader: sit,
-
-		// Prometheus does not hand us back the error the way you might
-		// expect.  Therefore, we have to propagate the error back up
-		// manually.
-		errf: func(e error) { closureErr = e },
-	}
-	queryable := promql.NewEngine(nil, nil, 10, 10*time.Second)
-
-	qq, err := queryable.NewInstantQuery(lcq, query, time.Time{})
-	if err != nil {
-		return nil, err
-	}
-
-	qq.Exec(context.Background())
-	if closureErr != nil {
-		return nil, closureErr
-	}
-
-	return sit.sourceIDs, nil
-}
-
-type sourceIDTracker struct {
-	sourceIDs []string
-}
-
-func (t *sourceIDTracker) Read(ctx context.Context, in *logcache_v1.ReadRequest) (*logcache_v1.ReadResponse, error) {
-	t.sourceIDs = append(t.sourceIDs, in.GetSourceId())
-	return &logcache_v1.ReadResponse{}, nil
 }
 
 func (q *PromQL) InstantQuery(ctx context.Context, req *logcache_v1.PromQL_InstantQueryRequest) (*logcache_v1.PromQL_InstantQueryResult, error) {
@@ -314,17 +277,17 @@ type LogCacheQuerier struct {
 
 func (l *LogCacheQuerier) Select(params *storage.SelectParams, ll ...*labels.Matcher) (storage.SeriesSet, error) {
 	var (
-		sourceID string
-		metric   string
-		ls       []labels.Label
+		metric string
+		ls     []labels.Label
 	)
+	sourceIDs := make(map[string]struct{})
 	for _, l := range ll {
 		if l.Name == "__name__" {
 			metric = l.Value
 			continue
 		}
 		if l.Name == "source_id" {
-			sourceID = l.Value
+			addSourceIDsFromLabelMatcher(sourceIDs, l)
 			continue
 		}
 		ls = append(ls, labels.Label{
@@ -333,62 +296,65 @@ func (l *LogCacheQuerier) Select(params *storage.SelectParams, ll ...*labels.Mat
 		})
 	}
 
-	if sourceID == "" {
+	if len(sourceIDs) == 0 {
 		err := fmt.Errorf("Metric '%s' does not have a 'source_id' label.", metric)
 		l.errf(err)
 		return nil, err
 	}
 
-	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-	envelopeBatch, err := l.dataReader.Read(ctx, &logcache_v1.ReadRequest{
-		SourceId:  sourceID,
-		StartTime: l.start.Add(-time.Second).UnixNano(),
-		EndTime:   l.end.UnixNano(),
-	})
-	if err != nil {
-		l.errf(err)
-		return nil, err
-	}
-
 	builder := newSeriesBuilder()
-	for _, e := range envelopeBatch.GetEnvelopes().GetBatch() {
-		if !l.hasLabels(e.GetTags(), ls) {
-			continue
-		}
 
-		var f float64
-		switch e.Message.(type) {
-		case *loggregator_v2.Envelope_Counter:
-			if SanitizeMetricName(e.GetCounter().GetName()) != metric {
-				continue
-			}
-
-			f = float64(e.GetCounter().GetTotal())
-		case *loggregator_v2.Envelope_Gauge:
-			value := checkMapForSanitizedMetricName(e.GetGauge(), metric)
-
-			if value == nil {
-				continue
-			}
-
-			f = value.GetValue()
-		case *loggregator_v2.Envelope_Timer:
-			if SanitizeMetricName(e.GetTimer().GetName()) != metric {
-				continue
-			}
-
-			timer := e.GetTimer()
-			f = float64(timer.GetStop() - timer.GetStart())
-		default:
-			continue
-		}
-
-		e.Timestamp = time.Unix(0, e.GetTimestamp()).Truncate(l.interval).UnixNano()
-
-		builder.add(e.Tags, sample{
-			t: e.GetTimestamp() / int64(time.Millisecond),
-			v: f,
+	for sourceID, _ := range sourceIDs {
+		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+		envelopeBatch, err := l.dataReader.Read(ctx, &logcache_v1.ReadRequest{
+			SourceId:  sourceID,
+			StartTime: l.start.Add(-time.Second).UnixNano(),
+			EndTime:   l.end.UnixNano(),
 		})
+		if err != nil {
+			l.errf(err)
+			return nil, err
+		}
+
+		for _, e := range envelopeBatch.GetEnvelopes().GetBatch() {
+			if !l.hasLabels(e.GetTags(), ls) {
+				continue
+			}
+
+			var f float64
+			switch e.Message.(type) {
+			case *loggregator_v2.Envelope_Counter:
+				if SanitizeMetricName(e.GetCounter().GetName()) != metric {
+					continue
+				}
+
+				f = float64(e.GetCounter().GetTotal())
+			case *loggregator_v2.Envelope_Gauge:
+				value := checkMapForSanitizedMetricName(e.GetGauge(), metric)
+
+				if value == nil {
+					continue
+				}
+
+				f = value.GetValue()
+			case *loggregator_v2.Envelope_Timer:
+				if SanitizeMetricName(e.GetTimer().GetName()) != metric {
+					continue
+				}
+
+				timer := e.GetTimer()
+				f = float64(timer.GetStop() - timer.GetStart())
+			default:
+				continue
+			}
+
+			e.Timestamp = time.Unix(0, e.GetTimestamp()).Truncate(l.interval).UnixNano()
+
+			builder.add(e.Tags, sample{
+				t: e.GetTimestamp() / int64(time.Millisecond),
+				v: f,
+			})
+		}
 	}
 
 	return builder.buildSeriesSet(), nil
@@ -580,4 +546,159 @@ func (b *seriesSetBuilder) buildSeriesSet() storage.SeriesSet {
 	}
 
 	return set
+}
+
+// TODO - move elsewhere and clean up [#160353522]
+func ExtractSourceIds(query string) ([]string, error) {
+	expr, err := promql.ParseExpr(query)
+	if err != nil {
+		return nil, err
+	}
+
+	visitor := newSourceIDVisitor()
+
+	promql.Walk(
+		visitor,
+		expr,
+		nil,
+	)
+
+	var sourceIDs []string
+
+	for sourceID, _ := range visitor.sourceIDs {
+		sourceIDs = append(sourceIDs, sourceID)
+	}
+
+	return sourceIDs, nil
+}
+
+type sourceIDVisitor struct {
+	sourceIDs map[string]struct{}
+}
+
+func newSourceIDVisitor() *sourceIDVisitor {
+	return &sourceIDVisitor{
+		sourceIDs: make(map[string]struct{}),
+	}
+}
+
+func (s *sourceIDVisitor) Visit(node promql.Node, _ []promql.Node) (promql.Visitor, error) {
+	if node == nil {
+		return nil, nil
+	}
+
+	switch selector := node.(type) {
+	case *promql.VectorSelector:
+		s.addSourceIDsFromMatchers(selector.LabelMatchers)
+	case *promql.MatrixSelector:
+		s.addSourceIDsFromMatchers(selector.LabelMatchers)
+	}
+
+	return s, nil
+}
+
+func (s *sourceIDVisitor) addSourceIDsFromMatchers(labelMatchers []*labels.Matcher) {
+	for _, labelMatcher := range labelMatchers {
+		if labelMatcher.Name == "source_id" {
+			addSourceIDsFromLabelMatcher(s.sourceIDs, labelMatcher)
+		}
+	}
+}
+
+func addSourceIDsFromLabelMatcher(sourceIDs map[string]struct{}, labelMatcher *labels.Matcher) {
+	switch labelMatcher.Type {
+	case labels.MatchRegexp:
+		matchedSourceIDs := strings.Split(labelMatcher.Value, "|")
+		for _, matchedSourceID := range matchedSourceIDs {
+			sourceIDs[matchedSourceID] = struct{}{}
+		}
+	case labels.MatchEqual:
+		sourceIDs[labelMatcher.Value] = struct{}{}
+	}
+}
+
+func ReplaceSourceIdSets(query string, sourceIDExpansions map[string][]string) (string, error) {
+	expr, err := promql.ParseExpr(query)
+	if err != nil {
+		return "", err
+	}
+
+	visitor := newSourceIdReplacementVisitor(sourceIDExpansions)
+
+	promql.Walk(
+		visitor,
+		expr,
+		nil,
+	)
+
+	return expr.String(), nil
+}
+
+type sourceIdReplacementVisitor struct {
+	sourceIdSets map[string][]string
+}
+
+func newSourceIdReplacementVisitor(sourceIdSets map[string][]string) *sourceIdReplacementVisitor {
+	return &sourceIdReplacementVisitor{
+		sourceIdSets: sourceIdSets,
+	}
+}
+
+func (s *sourceIdReplacementVisitor) Visit(node promql.Node, _ []promql.Node) (promql.Visitor, error) {
+	if node == nil {
+		return nil, nil
+	}
+
+	switch selector := node.(type) {
+	case *promql.VectorSelector:
+		s.replaceInMatchers(selector.LabelMatchers)
+	case *promql.MatrixSelector:
+		s.replaceInMatchers(selector.LabelMatchers)
+	}
+
+	return s, nil
+}
+
+func (s *sourceIdReplacementVisitor) replaceInMatchers(labelMatchers []*labels.Matcher) {
+	for _, labelMatcher := range labelMatchers {
+		if labelMatcher.Name == "source_id" {
+			switch labelMatcher.Type {
+			case labels.MatchEqual:
+				s.replaceSourceIdsInEqualMatcher(labelMatcher)
+			case labels.MatchRegexp:
+				s.replaceSourceIdsInRegexpMatcher(labelMatcher)
+			}
+		}
+	}
+}
+
+func (s *sourceIdReplacementVisitor) replaceSourceIdsInEqualMatcher(labelMatcher *labels.Matcher) {
+	expansions, ok := s.sourceIdSets[labelMatcher.Value]
+
+	if ok {
+		if len(expansions) > 1 {
+			labelMatcher.Type = labels.MatchRegexp
+		} else {
+			labelMatcher.Type = labels.MatchEqual
+		}
+		labelMatcher.Value = strings.Join(expansions, "|")
+	}
+}
+
+func (s *sourceIdReplacementVisitor) replaceSourceIdsInRegexpMatcher(labelMatcher *labels.Matcher) {
+	var expansions []string
+
+	startingSourceIds := strings.Split(labelMatcher.Value, "|")
+
+	for _, sourceId := range startingSourceIds {
+		sourceIdExpansions := s.sourceIdSets[sourceId]
+		expansions = append(expansions, sourceIdExpansions...)
+	}
+
+	if len(expansions) > 1 {
+		labelMatcher.Type = labels.MatchRegexp
+	} else {
+		labelMatcher.Type = labels.MatchEqual
+	}
+	labelMatcher.Value = strings.Join(expansions, "|")
 }
