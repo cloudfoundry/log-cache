@@ -39,7 +39,7 @@ var _ = Describe("store under high concurrent load", func() {
 					defer wg.Done()
 
 					for envelopes := 0; envelopes < 500; envelopes++ {
-						e := buildTypedEnvelope(time.Now().UnixNano(), sourceId, &loggregator_v2.Timer{})
+						e := buildTypedEnvelope(time.Now().UnixNano(), sourceId, &loggregator_v2.Gauge{})
 						loadStore.Put(e, sourceId)
 						atomic.AddUint64(&envelopesWritten, 1)
 						time.Sleep(50 * time.Microsecond)
@@ -59,7 +59,12 @@ var _ = Describe("store under high concurrent load", func() {
 
 		go func() {
 			wg.Wait()
-			// fmt.Printf("Finished writing %d envelopes in %s\n", atomic.LoadUint64(&envelopesWritten), time.Since(start))
+
+			// err := loadStore.QueryTSDB()
+			// if err != nil {
+			// 	fmt.Println(err)
+			// }
+
 			close(done)
 		}()
 

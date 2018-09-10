@@ -34,7 +34,7 @@ var _ = Describe("Store", func() {
 		os.RemoveAll(storagePath)
 	})
 
-	It("fetches data based on time and source ID", func() {
+	FIt("fetches data based on time and source ID", func() {
 		e1 := buildEnvelope(1, "a")
 		e2 := buildEnvelope(2, "b")
 		e3 := buildEnvelope(3, "a")
@@ -376,6 +376,13 @@ func buildEnvelope(timestamp int64, sourceID string) *loggregator_v2.Envelope {
 	return &loggregator_v2.Envelope{
 		Timestamp: timestamp,
 		SourceId:  sourceID,
+		Message: &loggregator_v2.Envelope_Gauge{
+			Gauge: &loggregator_v2.Gauge{
+				Metrics: map[string]*loggregator_v2.GaugeValue{
+					"metric": {Unit: "ms", Value: 1},
+				},
+			},
+		},
 	}
 }
 

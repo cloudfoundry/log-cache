@@ -2,8 +2,9 @@ package store
 
 import (
 	"container/heap"
+	"context"
 	"errors"
-	"os"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -13,12 +14,12 @@ import (
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"github.com/emirpasic/gods/trees/avltree"
 	"github.com/emirpasic/gods/utils"
-	"github.com/influxdata/influxdb/logger"
 	"github.com/influxdata/influxdb/models"
+	"github.com/influxdata/influxdb/query"
 	"github.com/influxdata/influxdb/tsdb"
 	_ "github.com/influxdata/influxdb/tsdb/engine"
 	_ "github.com/influxdata/influxdb/tsdb/index"
-	"github.com/influxdata/influxdb/tsdb/index/inmem"
+	"github.com/influxdata/influxql"
 )
 
 type MetricsInitializer interface {
@@ -39,7 +40,7 @@ type MemoryConsultant interface {
 // Pruner. All functions are thread safe.
 type Store struct {
 	storageIndex sync.Map
-	tsdbShard    *tsdb.Shard
+	tsdbStore    *tsdb.Store
 
 	initializationMutex sync.Mutex
 
@@ -71,20 +72,34 @@ type Metrics struct {
 func NewStore(storagePath string, maxPerSource, minimumStoreSizeToPrune int, mc MemoryConsultant, m MetricsInitializer) *Store {
 	baseDir := filepath.Join(storagePath, "influxdb")
 
-	shardDir := filepath.Join(baseDir, "shard")
+	dataDir := filepath.Join(baseDir, "data")
 	walDir := filepath.Join(baseDir, "wal")
-	seriesFileDir := filepath.Join(baseDir, "series-file")
 
-	seriesFile := tsdb.NewSeriesFile(seriesFileDir)
-	seriesFile.Logger = logger.New(os.Stdout)
-	if err := seriesFile.Open(); err != nil {
+	// shardDir := filepath.Join(baseDir, "shard")
+	// seriesFileDir := filepath.Join(baseDir, "series-file")
+
+	// seriesFile := tsdb.NewSeriesFile(seriesFileDir)
+	// seriesFile.Logger = logger.New(os.Stdout)
+	// if err := seriesFile.Open(); err != nil {
+	// 	panic(err)
+	// }
+
+	// opts := tsdb.NewEngineOptions()
+
+	tsdbStore := tsdb.NewStore(dataDir)
+	tsdbStore.EngineOptions.WALEnabled = true
+	tsdbStore.EngineOptions.Config.WALDir = walDir
+
+	if err := tsdbStore.Open(); err != nil {
 		panic(err)
 	}
 
-	opts := tsdb.NewEngineOptions()
-	opts.Config.WALDir = walDir
-	opts.InmemIndex = inmem.NewIndex(baseDir, seriesFile)
-	shard := tsdb.NewShard(0, shardDir, walDir, seriesFile, opts)
+	if err := tsdbStore.CreateShard("db", "rp", 0, true); err != nil {
+		panic(err)
+	}
+
+	// opts.InmemIndex = inmem.NewIndex(baseDir, seriesFile)
+	// shard := tsdb.NewShard(0, shardDir, walDir, seriesFile, opts)
 
 	store := &Store{
 		minimumStoreSizeToPrune: minimumStoreSizeToPrune,
@@ -105,11 +120,7 @@ func NewStore(storagePath string, maxPerSource, minimumStoreSizeToPrune int, mc 
 		mc:                  mc,
 		truncationCompleted: make(chan bool),
 
-		tsdbShard: shard,
-	}
-
-	if err := store.tsdbShard.Open(); err != nil {
-		panic(err)
+		tsdbStore: tsdbStore,
 	}
 
 	store.mc.SetMemoryReporter(store.metrics.setMemoryUtilization)
@@ -120,7 +131,119 @@ func NewStore(storagePath string, maxPerSource, minimumStoreSizeToPrune int, mc 
 }
 
 func (store *Store) Close() {
-	store.tsdbShard.Close()
+	store.tsdbStore.Close()
+}
+
+func (store *Store) QueryTSDB(index string, start, end int64, limit int) ([]*query.FloatPoint, error) {
+	shard := store.tsdbStore.Shard(0)
+	m := &influxql.Measurement{
+		Database:        "db",
+		RetentionPolicy: "rp",
+		Name:            "envelopes",
+	}
+
+	opts := query.IteratorOptions{
+		Expr:      influxql.MustParseExpr(`value`),
+		Aux:       []influxql.VarRef{{Val: "source_id"}},
+		StartTime: start,
+		EndTime:   end - 1,
+		Condition: &influxql.BinaryExpr{
+			LHS: &influxql.VarRef{Val: "source_id"},
+			RHS: &influxql.StringLiteral{Val: index},
+			Op:  influxql.EQ,
+		},
+		Ascending: true,
+		Limit:     100,
+	}
+
+	iterator, err := shard.CreateIterator(context.Background(), m, opts)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var points []*query.FloatPoint
+	fitr := iterator.(query.FloatIterator)
+	for {
+		point, _ := fitr.Next()
+		if point == nil {
+			break
+		}
+		fmt.Printf("%#v\b", point)
+
+		// if point.Aux[0] == index {
+		points = append(points, point)
+		// }
+	}
+
+	return points, nil
+}
+
+// Iterators is a test wrapper for iterators.
+type Iterators []query.Iterator
+
+// Next returns the next value from each iterator.
+// Returns nil if any iterator returns a nil.
+func (itrs Iterators) Next() ([]query.Point, error) {
+	a := make([]query.Point, len(itrs))
+	for i, itr := range itrs {
+		switch itr := itr.(type) {
+		case query.FloatIterator:
+			fp, err := itr.Next()
+			if fp == nil || err != nil {
+				return nil, err
+			}
+			a[i] = fp
+		case query.IntegerIterator:
+			ip, err := itr.Next()
+			if ip == nil || err != nil {
+				return nil, err
+			}
+			a[i] = ip
+		case query.UnsignedIterator:
+			up, err := itr.Next()
+			if up == nil || err != nil {
+				return nil, err
+			}
+			a[i] = up
+		case query.StringIterator:
+			sp, err := itr.Next()
+			if sp == nil || err != nil {
+				return nil, err
+			}
+			a[i] = sp
+		case query.BooleanIterator:
+			bp, err := itr.Next()
+			if bp == nil || err != nil {
+				return nil, err
+			}
+			a[i] = bp
+		default:
+			panic(fmt.Sprintf("iterator type not supported: %T", itr))
+		}
+	}
+	return a, nil
+}
+
+// ReadAll reads all points from all iterators.
+func (itrs Iterators) ReadAll() ([][]query.Point, error) {
+	var a [][]query.Point
+
+	// Read from every iterator until a nil is encountered.
+	for {
+		points, err := itrs.Next()
+		if err != nil {
+			return nil, err
+		} else if points == nil {
+			break
+		}
+		a = append(a, query.Points(points).Clone())
+	}
+
+	// Close all iterators.
+	query.Iterators(itrs).Close()
+
+	return a, nil
 }
 
 func (store *Store) getOrInitializeStorage(sourceId string) (*storage, bool) {
@@ -219,7 +342,7 @@ func (store *Store) Put(envelope *loggregator_v2.Envelope, sourceId string) {
 
 	points, err := convertEnvelopeToPoints(envelope)
 	if err == nil {
-		err = store.tsdbShard.WritePoints(points)
+		err = store.tsdbStore.WriteToShard(0, points)
 		if err != nil {
 			panic(err)
 		}
@@ -241,10 +364,16 @@ func convertEnvelopeToPoints(envelope *loggregator_v2.Envelope) ([]models.Point,
 			for tagName, tagValue := range envelope.GetTags() {
 				fields[tagName] = tagValue
 			}
+			fields["name"] = name
 			fields["unit"] = metric.GetUnit()
 			fields["value"] = metric.GetValue()
 
-			point, err := models.NewPoint(name, nil, fields, time.Unix(0, envelope.GetTimestamp()))
+			tags := models.Tags{{
+				Key:   []byte("source_id"),
+				Value: []byte(envelope.GetSourceId()),
+			}}
+
+			point, err := models.NewPoint("envelopes", tags, fields, time.Unix(0, envelope.GetTimestamp()))
 			if err != nil {
 				return nil, err
 			}
@@ -259,8 +388,9 @@ func convertEnvelopeToPoints(envelope *loggregator_v2.Envelope) ([]models.Point,
 		for tagName, tagValue := range envelope.GetTags() {
 			fields[tagName] = tagValue
 		}
+		fields["name"] = counter.GetName()
 		fields["value"] = counter.GetTotal()
-		point, err := models.NewPoint(counter.GetName(), nil, fields, time.Unix(0, envelope.GetTimestamp()))
+		point, err := models.NewPoint("envelopes", nil, fields, time.Unix(0, envelope.GetTimestamp()))
 		if err != nil {
 			return nil, err
 		}
@@ -273,8 +403,9 @@ func convertEnvelopeToPoints(envelope *loggregator_v2.Envelope) ([]models.Point,
 		for tagName, tagValue := range envelope.GetTags() {
 			fields[tagName] = tagValue
 		}
+		fields["name"] = timer.GetName()
 		fields["value"] = timer.GetStop() - timer.GetStart()
-		point, err := models.NewPoint(timer.GetName(), nil, fields, time.Unix(0, envelope.GetTimestamp()))
+		point, err := models.NewPoint("envelopes", nil, fields, time.Unix(0, envelope.GetTimestamp()))
 		if err != nil {
 			return nil, err
 		}
@@ -380,31 +511,40 @@ func (store *Store) Get(
 	limit int,
 	descending bool,
 ) []*loggregator_v2.Envelope {
-	tree, ok := store.storageIndex.Load(index)
-	if !ok {
+	var res []*loggregator_v2.Envelope
+	points, err := store.QueryTSDB(index, start.UnixNano(), end.UnixNano(), limit)
+	if err != nil {
+		fmt.Println("Error fetching points from tsdb:", err)
 		return nil
 	}
 
-	tree.(*storage).RLock()
-	defer tree.(*storage).RUnlock()
-
-	traverser := store.treeAscTraverse
-	if descending {
-		traverser = store.treeDescTraverse
-	}
-
-	var res []*loggregator_v2.Envelope
-	traverser(tree.(*storage).Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope) bool {
-		if store.validEnvelopeType(e, envelopeTypes) {
-			res = append(res, e)
-		}
-
-		// Return true to stop traversing
-		return len(res) >= limit
-	})
+	envelopes := convertPointsToEnvelopes(points)
 
 	store.metrics.incEgress(uint64(len(res)))
-	return res
+	return envelopes
+}
+
+func convertPointsToEnvelopes(points []*query.FloatPoint) []*loggregator_v2.Envelope {
+	var envelopes []*loggregator_v2.Envelope
+	for _, point := range points {
+		metric := make(map[string]*loggregator_v2.GaugeValue)
+		metric[point.Name] = &loggregator_v2.GaugeValue{Unit: "ms", Value: 1}
+
+		fmt.Printf("%#v", point.Tags)
+		envelope := &loggregator_v2.Envelope{
+			Timestamp: point.Time,
+			SourceId:  point.Aux[0].(string),
+			Message: &loggregator_v2.Envelope_Gauge{
+				Gauge: &loggregator_v2.Gauge{
+					Metrics: metric,
+				},
+			},
+		}
+
+		envelopes = append(envelopes, envelope)
+	}
+
+	return envelopes
 }
 
 func (s *Store) validEnvelopeType(e *loggregator_v2.Envelope, types []logcache_v1.EnvelopeType) bool {
