@@ -18,7 +18,7 @@ The source ID should distinguish the cluster from other clusters. It should not 
 
 ### Cloud Foundry
 
-In terms of Cloud Foundry, the source ID can either represent an application
+In Cloud Foundry terms, the source ID can either represent an application
 guid (e.g. `cf app <app-name> --guid`), or a component name (e.g. `doppler`).
 
 Each request must have the `Authorization` header set with a UAA provided token.
