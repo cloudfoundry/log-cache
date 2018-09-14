@@ -4,16 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
@@ -184,7 +181,7 @@ func (q *PromQL) RangeQuery(ctx context.Context, req *logcache_v1.PromQL_RangeQu
 	}
 	queryable := promql.NewEngine(nil, nil, 10, 10*time.Second)
 
-	step, err := parseDuration(req.Step)
+	step, err := ParseStep(req.Step)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't parse step: %s", err)
 	}
@@ -206,20 +203,6 @@ func (q *PromQL) RangeQuery(ctx context.Context, req *logcache_v1.PromQL_RangeQu
 	}
 
 	return q.toRangeQueryResult(r)
-}
-
-func parseDuration(s string) (time.Duration, error) {
-	if d, err := strconv.ParseFloat(s, 64); err == nil {
-		ts := d * float64(time.Second)
-		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
-			return 0, fmt.Errorf("cannot parse %q to a valid duration. It overflows int64", s)
-		}
-		return time.Duration(ts), nil
-	}
-	if d, err := model.ParseDuration(s); err == nil {
-		return time.Duration(d), nil
-	}
-	return 0, fmt.Errorf("cannot parse %q to a valid duration", s)
 }
 
 func (q *PromQL) toRangeQueryResult(r *promql.Result) (*logcache_v1.PromQL_RangeQueryResult, error) {
