@@ -21,13 +21,13 @@ service PromQLQuerier {
 message PromQL {
     message InstantQueryRequest {
         string query = 1;
-        int64 time = 2;
+        string time = 2;
     }
 
     message RangeQueryRequest {
         string query = 1;
-        int64 start = 2;
-        int64 end = 3;
+        string start = 2;
+        string end = 3;
         string step = 4;
     }
 
@@ -46,7 +46,7 @@ message PromQL {
     }
 
     message Scalar {
-        int64 time = 1;
+        string time = 1;
         double value = 2;
     }
 
@@ -55,7 +55,7 @@ message PromQL {
     }
 
     message Point {
-        int64 time = 1;
+        string time = 1;
         double value = 2;
     }
 

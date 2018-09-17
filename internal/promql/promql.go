@@ -69,11 +69,18 @@ func (q *PromQL) InstantQuery(ctx context.Context, req *logcache_v1.PromQL_Insta
 	}
 	queryable := promql.NewEngine(nil, nil, 10, 10*time.Second)
 
-	if req.Time == 0 {
-		req.Time = time.Now().Truncate(time.Second).UnixNano()
+	var requestTime time.Time
+	var err error
+	if req.Time == "" {
+		requestTime = time.Now().Truncate(time.Second)
+	} else {
+		requestTime, err = ParseTime(req.Time)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	qq, err := queryable.NewInstantQuery(lcq, req.Query, time.Unix(0, req.Time))
+	qq, err := queryable.NewInstantQuery(lcq, req.Query, requestTime)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +108,7 @@ func (q *PromQL) toInstantQueryResult(r *promql.Result) (*logcache_v1.PromQL_Ins
 		return &logcache_v1.PromQL_InstantQueryResult{
 			Result: &logcache_v1.PromQL_InstantQueryResult_Scalar{
 				Scalar: &logcache_v1.PromQL_Scalar{
-					Time:  s.T * int64(time.Millisecond),
+					Time:  formatPromqlTime(s.T),
 					Value: s.V,
 				},
 			},
@@ -117,7 +124,7 @@ func (q *PromQL) toInstantQueryResult(r *promql.Result) (*logcache_v1.PromQL_Ins
 			samples = append(samples, &logcache_v1.PromQL_Sample{
 				Metric: metric,
 				Point: &logcache_v1.PromQL_Point{
-					Time:  s.T * int64(time.Millisecond),
+					Time:  formatPromqlTime(s.T),
 					Value: s.V,
 				},
 			})
@@ -141,7 +148,7 @@ func (q *PromQL) toInstantQueryResult(r *promql.Result) (*logcache_v1.PromQL_Ins
 			var points []*logcache_v1.PromQL_Point
 			for _, p := range s.Points {
 				points = append(points, &logcache_v1.PromQL_Point{
-					Time:  p.T * int64(time.Millisecond),
+					Time:  formatPromqlTime(p.T),
 					Value: p.V,
 				})
 			}
@@ -187,8 +194,17 @@ func (q *PromQL) RangeQuery(ctx context.Context, req *logcache_v1.PromQL_RangeQu
 	}
 
 	// TODO: Should there be some boundary checking on Start and End?
+	startTime, err := ParseTime(req.Start)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't parse start: %s", err)
+	}
 
-	qq, err := queryable.NewRangeQuery(lcq, req.Query, time.Unix(0, req.Start), time.Unix(0, req.End), step)
+	endTime, err := ParseTime(req.End)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't parse end: %s", err)
+	}
+
+	qq, err := queryable.NewRangeQuery(lcq, req.Query, startTime, endTime, step)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +237,7 @@ func (q *PromQL) toRangeQueryResult(r *promql.Result) (*logcache_v1.PromQL_Range
 			var points []*logcache_v1.PromQL_Point
 			for _, p := range s.Points {
 				points = append(points, &logcache_v1.PromQL_Point{
-					Time:  p.T * int64(time.Millisecond),
+					Time:  formatPromqlTime(p.T),
 					Value: p.V,
 				})
 			}
@@ -706,4 +722,8 @@ func (s *sourceIdReplacementVisitor) replaceSourceIdsInRegexpMatcher(labelMatche
 		labelMatcher.Type = labels.MatchEqual
 	}
 	labelMatcher.Value = strings.Join(expansions, "|")
+}
+
+func formatPromqlTime(timeInMillis int64) string {
+	return fmt.Sprintf("%.3f", float64(timeInMillis)/1000)
 }

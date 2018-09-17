@@ -76,6 +76,34 @@ var _ = Describe("PromQL Parsing", func() {
 			Entry("overflows int64", strconv.Itoa(math.MaxInt64)+"0"),
 		)
 	})
+
+	Describe("ParseTime", func() {
+		DescribeTable("it supports all Prometheus-accepted formats",
+			func(inputTime string, expectedResult time.Time) {
+				result, err := promql.ParseTime(inputTime)
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(BeTemporally("==", expectedResult))
+			},
+
+			Entry("whole seconds", "123456", time.Unix(123456, 0)),
+			Entry("decimal seconds", "123456.789", time.Unix(123456, 789000000)),
+			Entry("RFC3339 with UTC", "2015-07-01T20:10:30.781Z", time.Date(2015, 7, 1, 20, 10, 30, 781000000, time.UTC)),
+			Entry("RFC3339 with MST", "2015-07-01T20:10:30.781-06:00", time.Date(2015, 7, 1, 20, 10, 30, 781000000, time.FixedZone("MST", -6*60*60))),
+		)
+
+		DescribeTable("it handles errors",
+			func(inputTime string) {
+				_, err := promql.ParseTime(inputTime)
+
+				Expect(err).To(HaveOccurred())
+			},
+
+			Entry("empty time", ""),
+			Entry("not a number", "potato"),
+			Entry("RFC3339 without timezone", "2015-07-01T20:10:30.781"),
+		)
+	})
 })
 
 const (

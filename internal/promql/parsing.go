@@ -31,3 +31,13 @@ func ParseDuration(param string) (time.Duration, error) {
 
 	return time.Duration(duration), nil
 }
+
+func ParseTime(param string) (time.Time, error) {
+	if decimalTime, err := strconv.ParseFloat(param, 64); err == nil {
+		return time.Unix(0, int64(decimalTime*1e9)), nil
+	}
+	if t, err := time.Parse(time.RFC3339Nano, param); err == nil {
+		return t, nil
+	}
+	return time.Unix(0, 0), fmt.Errorf("cannot parse %q to a valid Unix or RFC3339 timestamp", param)
+}

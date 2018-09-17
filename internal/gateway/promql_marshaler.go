@@ -106,7 +106,12 @@ func (m *PromqlMarshaler) assembleRangeQueryResult(v *logcache_v1.PromQL_RangeQu
 }
 
 func assembleScalarResultData(v *logcache_v1.PromQL_Scalar) (resultData, error) {
-	data, err := json.Marshal(assemblePoint(v.GetTime(), v.GetValue()))
+	point, err := assemblePoint(v.GetTime(), v.GetValue())
+	if err != nil {
+		return resultData{}, err
+	}
+
+	data, err := json.Marshal(point)
 	if err != nil {
 		return resultData{}, err
 	}
@@ -122,9 +127,14 @@ func assembleVectorResultData(v *logcache_v1.PromQL_Vector) (resultData, error) 
 
 	for _, s := range v.GetSamples() {
 		p := s.GetPoint()
+		point, err := assemblePoint(p.GetTime(), p.GetValue())
+		if err != nil {
+			return resultData{}, err
+		}
+
 		samples = append(samples, sample{
 			Metric: s.GetMetric(),
-			Value:  assemblePoint(p.GetTime(), p.GetValue()),
+			Value:  point,
 		})
 	}
 
@@ -145,7 +155,12 @@ func assembleMatrixResultData(v *logcache_v1.PromQL_Matrix) (resultData, error) 
 	for _, s := range v.GetSeries() {
 		var values [][]interface{}
 		for _, p := range s.GetPoints() {
-			values = append(values, assemblePoint(p.GetTime(), p.GetValue()))
+			point, err := assemblePoint(p.GetTime(), p.GetValue())
+			if err != nil {
+				return resultData{}, err
+			}
+
+			values = append(values, point)
 		}
 		result = append(result, series{
 			Metric: s.GetMetric(),
@@ -164,11 +179,16 @@ func assembleMatrixResultData(v *logcache_v1.PromQL_Matrix) (resultData, error) 
 	}, nil
 }
 
-func assemblePoint(time int64, value float64) []interface{} {
-	return []interface{}{
-		time,
-		strconv.FormatFloat(value, 'f', -1, 64),
+func assemblePoint(time string, value float64) ([]interface{}, error) {
+	t, err := strconv.ParseFloat(time, 64)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't parse float %s: %s", time, err.Error())
 	}
+	formattedTime := fmt.Sprintf("%.3f", t)
+	return []interface{}{
+		json.RawMessage(formattedTime),
+		strconv.FormatFloat(value, 'f', -1, 64),
+	}, nil
 }
 
 func (m *PromqlMarshaler) NewEncoder(w io.Writer) runtime.Encoder {
@@ -367,27 +387,27 @@ func unmarshalMatrixResultData(data []byte) (*logcache_v1.PromQL_Matrix, error) 
 	}, nil
 }
 
-func disassemblePoint(point []interface{}) (int64, float64, error) {
+func disassemblePoint(point []interface{}) (string, float64, error) {
 	if len(point) != 2 {
-		return 0, 0, fmt.Errorf("invalid length of point, got %d, expected 2", len(point))
+		return "", 0, fmt.Errorf("invalid length of point, got %d, expected 2", len(point))
 	}
 
 	t, ok := point[0].(float64)
 	if !ok {
-		return 0, 0, fmt.Errorf("invalid type of point timestamp, got %T, expected number", point[0])
+		return "", 0, fmt.Errorf("invalid type of point timestamp, got %T, expected number", point[0])
 	}
 
 	v, ok := point[1].(string)
 	if !ok {
-		return 0, 0, fmt.Errorf("invalid type of value, got %T, expected string", point[1])
+		return "", 0, fmt.Errorf("invalid type of value, got %T, expected string", point[1])
 	}
 
 	decodedValue, err := strconv.ParseFloat(v, 64)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse value: %q", err)
+		return "", 0, fmt.Errorf("failed to parse value: %q", err)
 	}
 
-	return int64(t), decodedValue, nil
+	return strconv.FormatFloat(t, 'f', 3, 64), decodedValue, nil
 }
 
 func (m *PromqlMarshaler) NewDecoder(r io.Reader) runtime.Decoder {

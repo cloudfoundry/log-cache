@@ -3,8 +3,10 @@ package promql_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
+	"strconv"
 	"sync"
 	"time"
 
@@ -347,7 +349,7 @@ var _ = Describe("PromQL", func() {
 				context.Background(),
 				&logcache_v1.PromQL_InstantQueryRequest{
 					Query: `some_metric_time{source_id="some-id-1"} + some_metric_time{source_id="some-id-2"}`,
-					Time:  hourAgo.UnixNano(),
+					Time:  formatTimeWithDecimalMillis(hourAgo),
 				},
 			)
 			Expect(err).NotTo(HaveOccurred())
@@ -425,7 +427,7 @@ var _ = Describe("PromQL", func() {
 				context.Background(),
 				&logcache_v1.PromQL_InstantQueryRequest{
 					Query: `some_metric_value{source_id="some-id-1"} + some_metric_value{source_id="some-id-2"} + some_metric_value{source_id="some-id-3"}`,
-					Time:  now.UnixNano(),
+					Time:  formatTimeWithDecimalMillis(now),
 				},
 			)
 
@@ -441,7 +443,7 @@ var _ = Describe("PromQL", func() {
 			r, err := q.InstantQuery(context.Background(), &logcache_v1.PromQL_InstantQueryRequest{Query: `7*9`})
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(time.Unix(0, r.GetScalar().GetTime())).To(
+			Expect(parseTimeWithDecimalMillis(r.GetScalar().GetTime())).To(
 				BeTemporally("~", time.Now(), time.Second),
 			)
 
@@ -485,7 +487,7 @@ var _ = Describe("PromQL", func() {
 			r, err := q.InstantQuery(
 				context.Background(),
 				&logcache_v1.PromQL_InstantQueryRequest{
-					Time:  hourAgo.UnixNano(),
+					Time:  formatTimeWithDecimalMillis(hourAgo),
 					Query: `metric{source_id="some-id-1"} + metric{source_id="some-id-2"}`,
 				},
 			)
@@ -494,7 +496,7 @@ var _ = Describe("PromQL", func() {
 			Expect(r.GetVector().GetSamples()).To(HaveLen(1))
 
 			actualTime := r.GetVector().GetSamples()[0].Point.Time
-			Expect(time.Unix(0, actualTime)).To(BeTemporally("~", hourAgo, time.Second))
+			Expect(parseTimeWithDecimalMillis(actualTime)).To(BeTemporally("~", hourAgo, time.Second))
 
 			Expect(r.GetVector().GetSamples()).To(Equal([]*logcache_v1.PromQL_Sample{
 				{
@@ -513,7 +515,7 @@ var _ = Describe("PromQL", func() {
 				ConsistOf("some-id-1", "some-id-2"),
 			)
 
-			Expect(time.Unix(0, actualTime)).To(BeTemporally("~", spyDataReader.readEnds[0]))
+			Expect(parseTimeWithDecimalMillis(actualTime)).To(BeTemporally("~", spyDataReader.readEnds[0]))
 			Expect(
 				spyDataReader.readEnds[0].Sub(spyDataReader.readStarts[0]),
 			).To(Equal(time.Minute*5 + time.Second))
@@ -552,7 +554,7 @@ var _ = Describe("PromQL", func() {
 						"b": "tag-b",
 					},
 					Points: []*logcache_v1.PromQL_Point{{
-						Time:  now.Truncate(time.Second).UnixNano(),
+						Time:  formatTimeWithDecimalMillis(now.Truncate(time.Second)),
 						Value: 99,
 					}},
 				},
@@ -802,6 +804,14 @@ var _ = Describe("PromQL", func() {
 			Expect(err).To(HaveOccurred())
 		})
 
+		It("returns an error for an invalid time", func() {
+			_, err := q.InstantQuery(
+				context.Background(),
+				&logcache_v1.PromQL_InstantQueryRequest{Query: `metric{source_id="some-id-1"}`, Time: "409l"},
+			)
+			Expect(err).To(HaveOccurred())
+		})
+
 		It("returns an error if a metric does not have a source ID", func() {
 			_, err := q.InstantQuery(
 				context.Background(),
@@ -959,8 +969,8 @@ var _ = Describe("PromQL", func() {
 				context.Background(),
 				&logcache_v1.PromQL_RangeQueryRequest{
 					Query: `avg_over_time(metric{source_id="some-id-1"}[1m])`,
-					Start: lastHour.UnixNano(),
-					End:   lastHour.Add(5 * time.Minute).UnixNano(),
+					Start: formatTimeWithDecimalMillis(lastHour),
+					End:   formatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)),
 					Step:  "1m",
 				},
 			)
@@ -974,12 +984,12 @@ var _ = Describe("PromQL", func() {
 						"b": "tag-b",
 					},
 					Points: []*logcache_v1.PromQL_Point{
-						{Time: lastHour.UnixNano(), Value: 98},
-						{Time: lastHour.Add(time.Minute).UnixNano(), Value: 102},
-						{Time: lastHour.Add(2 * time.Minute).UnixNano(), Value: 106},
-						{Time: lastHour.Add(3 * time.Minute).UnixNano(), Value: 108},
-						{Time: lastHour.Add(4 * time.Minute).UnixNano(), Value: 110},
-						{Time: lastHour.Add(5 * time.Minute).UnixNano(), Value: 112},
+						{Time: formatTimeWithDecimalMillis(lastHour), Value: 98},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 102},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(2 * time.Minute)), Value: 106},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(3 * time.Minute)), Value: 108},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(4 * time.Minute)), Value: 110},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)), Value: 112},
 					},
 				},
 			}))
@@ -1075,8 +1085,8 @@ var _ = Describe("PromQL", func() {
 				context.Background(),
 				&logcache_v1.PromQL_RangeQueryRequest{
 					Query: `metric{source_id="some-id-1"}`,
-					Start: lastHour.UnixNano(),
-					End:   lastHour.Add(5 * time.Minute).UnixNano(),
+					Start: formatTimeWithDecimalMillis(lastHour),
+					End:   formatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)),
 					Step:  "1m",
 				},
 			)
@@ -1090,12 +1100,12 @@ var _ = Describe("PromQL", func() {
 						"b": "tag-b",
 					},
 					Points: []*logcache_v1.PromQL_Point{
-						{Time: lastHour.UnixNano(), Value: 97},
-						{Time: lastHour.Add(time.Minute).UnixNano(), Value: 103},
-						{Time: lastHour.Add(2 * time.Minute).UnixNano(), Value: 103},
-						{Time: lastHour.Add(3 * time.Minute).UnixNano(), Value: 105},
-						{Time: lastHour.Add(4 * time.Minute).UnixNano(), Value: 105},
-						{Time: lastHour.Add(5 * time.Minute).UnixNano(), Value: 111},
+						{Time: formatTimeWithDecimalMillis(lastHour), Value: 97},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 103},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(2 * time.Minute)), Value: 103},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(3 * time.Minute)), Value: 105},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(4 * time.Minute)), Value: 105},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)), Value: 111},
 					},
 				},
 			}))
@@ -1154,8 +1164,8 @@ var _ = Describe("PromQL", func() {
 				context.Background(),
 				&logcache_v1.PromQL_RangeQueryRequest{
 					Query: `metric{source_id="some-id-1"}`,
-					Start: lastHour.UnixNano(),
-					End:   lastHour.Add(5 * time.Minute).UnixNano(),
+					Start: formatTimeWithDecimalMillis(lastHour),
+					End:   formatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)),
 					Step:  "1m",
 				},
 			)
@@ -1166,22 +1176,22 @@ var _ = Describe("PromQL", func() {
 				{
 					Metric: map[string]string{"a": "tag-a", "b": "tag-b"},
 					Points: []*logcache_v1.PromQL_Point{
-						{Time: lastHour.UnixNano(), Value: 97},
-						{Time: lastHour.Add(time.Minute).UnixNano(), Value: 97},
-						{Time: lastHour.Add(2 * time.Minute).UnixNano(), Value: 113},
-						{Time: lastHour.Add(3 * time.Minute).UnixNano(), Value: 113},
-						{Time: lastHour.Add(4 * time.Minute).UnixNano(), Value: 113},
-						{Time: lastHour.Add(5 * time.Minute).UnixNano(), Value: 113},
+						{Time: formatTimeWithDecimalMillis(lastHour), Value: 97},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 97},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(2 * time.Minute)), Value: 113},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(3 * time.Minute)), Value: 113},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(4 * time.Minute)), Value: 113},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)), Value: 113},
 					},
 				},
 				{
 					Metric: map[string]string{"a": "tag-a", "c": "tag-c"},
 					Points: []*logcache_v1.PromQL_Point{
-						{Time: lastHour.Add(time.Minute).UnixNano(), Value: 101},
-						{Time: lastHour.Add(2 * time.Minute).UnixNano(), Value: 101},
-						{Time: lastHour.Add(3 * time.Minute).UnixNano(), Value: 101},
-						{Time: lastHour.Add(4 * time.Minute).UnixNano(), Value: 101},
-						{Time: lastHour.Add(5 * time.Minute).UnixNano(), Value: 101},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 101},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(2 * time.Minute)), Value: 101},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(3 * time.Minute)), Value: 101},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(4 * time.Minute)), Value: 101},
+						{Time: formatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)), Value: 101},
 					},
 				},
 			}))
@@ -1191,10 +1201,24 @@ var _ = Describe("PromQL", func() {
 			)
 		})
 
+		It("accepts RFC3339 start and end times", func() {
+			_, err := q.RangeQuery(
+				context.Background(),
+				&logcache_v1.PromQL_RangeQueryRequest{
+					Query: `metric{source_id="some-id-1"}`,
+					Start: "2099-01-01T01:23:45.678Z",
+					End:   "2099-01-01T01:24:45.678Z",
+					Step:  "1m",
+				},
+			)
+
+			Expect(err).ToNot(HaveOccurred())
+		})
+
 		It("captures the query time as a metric", func() {
 			_, err := q.RangeQuery(
 				context.Background(),
-				&logcache_v1.PromQL_RangeQueryRequest{Query: `metric{source_id="some-id-1"}`, Start: 1, End: 1, Step: "1m"},
+				&logcache_v1.PromQL_RangeQueryRequest{Query: `metric{source_id="some-id-1"}`, Start: "1", End: "1", Step: "1m"},
 			)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -1207,7 +1231,23 @@ var _ = Describe("PromQL", func() {
 		It("returns an error for an invalid query", func() {
 			_, err := q.RangeQuery(
 				context.Background(),
-				&logcache_v1.PromQL_RangeQueryRequest{Query: `invalid.query`, Start: 1, End: 2, Step: "1m"},
+				&logcache_v1.PromQL_RangeQueryRequest{Query: `invalid.query`, Start: "1", End: "2", Step: "1m"},
+			)
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("returns an error for an invalid start time", func() {
+			_, err := q.RangeQuery(
+				context.Background(),
+				&logcache_v1.PromQL_RangeQueryRequest{Query: `metric{source_id="some-id-1"}`, Start: "potato", End: "2", Step: "1m"},
+			)
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("returns an error for an invalid end time", func() {
+			_, err := q.RangeQuery(
+				context.Background(),
+				&logcache_v1.PromQL_RangeQueryRequest{Query: `metric{source_id="some-id-1"}`, Start: "1", End: "lemons", Step: "1m"},
 			)
 			Expect(err).To(HaveOccurred())
 		})
@@ -1215,7 +1255,7 @@ var _ = Describe("PromQL", func() {
 		It("returns an error if a metric does not have a source ID", func() {
 			_, err := q.RangeQuery(
 				context.Background(),
-				&logcache_v1.PromQL_RangeQueryRequest{Query: `metric{source_id="some-id-1"} + metric`, Start: 1, End: 2, Step: "1m"},
+				&logcache_v1.PromQL_RangeQueryRequest{Query: `metric{source_id="some-id-1"} + metric`, Start: "1", End: "2", Step: "1m"},
 			)
 			Expect(err).To(HaveOccurred())
 		})
@@ -1226,7 +1266,7 @@ var _ = Describe("PromQL", func() {
 
 			_, err := q.RangeQuery(
 				context.Background(),
-				&logcache_v1.PromQL_RangeQueryRequest{Query: `metric{source_id="some-id-1"}`, Start: 1, End: 2, Step: "1m"},
+				&logcache_v1.PromQL_RangeQueryRequest{Query: `metric{source_id="some-id-1"}`, Start: "1", End: "2", Step: "1m"},
 			)
 			Expect(err).To(HaveOccurred())
 
@@ -1239,7 +1279,7 @@ var _ = Describe("PromQL", func() {
 			cancel()
 			_, err := q.RangeQuery(
 				ctx,
-				&logcache_v1.PromQL_RangeQueryRequest{Query: `metric{source_id="some-id-1"}[5m]`, Start: 1, End: 2, Step: "1m"},
+				&logcache_v1.PromQL_RangeQueryRequest{Query: `metric{source_id="some-id-1"}[5m]`, Start: "1", End: "2", Step: "1m"},
 			)
 			Expect(err).To(HaveOccurred())
 		})
@@ -1349,4 +1389,14 @@ func (s *spyMetrics) NewGauge(name string) func(value float64) {
 	return func(value float64) {
 		s.gauges[name] = append(s.gauges[name], value)
 	}
+}
+
+func formatTimeWithDecimalMillis(t time.Time) string {
+	return fmt.Sprintf("%.3f", float64(t.UnixNano())/1e9)
+}
+
+func parseTimeWithDecimalMillis(t string) time.Time {
+	decimalTime, err := strconv.ParseFloat(t, 64)
+	Expect(err).ToNot(HaveOccurred())
+	return time.Unix(0, int64(decimalTime*1e9))
 }

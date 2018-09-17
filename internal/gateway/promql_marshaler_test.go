@@ -17,13 +17,13 @@ import (
 
 var _ = Describe("PromqlMarshaler", func() {
 	Context("Marshal()", func() {
-		It("marshals a scalar instant query result", func() {
+		It("handles a scalar instant query result", func() {
 			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
 
 			result, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
 				Result: &logcache_v1.PromQL_InstantQueryResult_Scalar{
 					Scalar: &logcache_v1.PromQL_Scalar{
-						Time:  1,
+						Time:  "1.234",
 						Value: 2.5,
 					},
 				},
@@ -33,12 +33,12 @@ var _ = Describe("PromqlMarshaler", func() {
 				"status": "success",
 				"data": {
 					"resultType": "scalar",
-					"result": [1, "2.5"]
+					"result": [1.234, "2.5"]
 				}
 			}`))
 		})
 
-		It("marshals a vector instant query result", func() {
+		It("handles a vector instant query result", func() {
 			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
 
 			result, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
@@ -51,7 +51,7 @@ var _ = Describe("PromqlMarshaler", func() {
 									"tag-name":   "tag-value",
 								},
 								Point: &logcache_v1.PromQL_Point{
-									Time:  1,
+									Time:  "1",
 									Value: 2.5,
 								},
 							},
@@ -61,7 +61,7 @@ var _ = Describe("PromqlMarshaler", func() {
 									"tag-name2":  "tag-value2",
 								},
 								Point: &logcache_v1.PromQL_Point{
-									Time:  2,
+									Time:  "2",
 									Value: 3.5,
 								},
 							},
@@ -81,21 +81,21 @@ var _ = Describe("PromqlMarshaler", func() {
 								"deployment": "cf",
 								"tag-name":   "tag-value"
 							},
-							"value": [ 1, "2.5" ]
+							"value": [ 1.000, "2.5" ]
 						},
 						{
 							"metric": {
 								"deployment": "cf",
 								"tag-name2":   "tag-value2"
 							},
-							"value": [ 2, "3.5" ]
+							"value": [ 2.000, "3.5" ]
 						}
 					]
 				}
 			}`))
 		})
 
-		It("marshals a matrix instant query result", func() {
+		It("handles a matrix instant query result", func() {
 			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
 
 			result, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
@@ -109,11 +109,11 @@ var _ = Describe("PromqlMarshaler", func() {
 								},
 								Points: []*logcache_v1.PromQL_Point{
 									{
-										Time:  1,
+										Time:  "1",
 										Value: 2.5,
 									},
 									{
-										Time:  2,
+										Time:  "2",
 										Value: 3.5,
 									},
 								},
@@ -125,11 +125,11 @@ var _ = Describe("PromqlMarshaler", func() {
 								},
 								Points: []*logcache_v1.PromQL_Point{
 									{
-										Time:  1,
+										Time:  "1",
 										Value: 4.5,
 									},
 									{
-										Time:  2,
+										Time:  "2",
 										Value: 6.5,
 									},
 								},
@@ -170,7 +170,7 @@ var _ = Describe("PromqlMarshaler", func() {
 			}`))
 		})
 
-		It("marshals a matrix range query result", func() {
+		It("handles a matrix range query result", func() {
 			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
 
 			result, err := marshaler.Marshal(&logcache_v1.PromQL_RangeQueryResult{
@@ -184,11 +184,11 @@ var _ = Describe("PromqlMarshaler", func() {
 								},
 								Points: []*logcache_v1.PromQL_Point{
 									{
-										Time:  1,
+										Time:  "1",
 										Value: 2.5,
 									},
 									{
-										Time:  2,
+										Time:  "2",
 										Value: 3.5,
 									},
 								},
@@ -200,11 +200,11 @@ var _ = Describe("PromqlMarshaler", func() {
 								},
 								Points: []*logcache_v1.PromQL_Point{
 									{
-										Time:  1,
+										Time:  "1",
 										Value: 4.5,
 									},
 									{
-										Time:  2,
+										Time:  "2",
 										Value: 6.5,
 									},
 								},
@@ -243,6 +243,20 @@ var _ = Describe("PromqlMarshaler", func() {
 					]
 				}
 			}`))
+		})
+
+		It("reports errors for invalid timestamps", func() {
+			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
+
+			_, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
+				Result: &logcache_v1.PromQL_InstantQueryResult_Scalar{
+					Scalar: &logcache_v1.PromQL_Scalar{
+						Time:  "potato",
+						Value: 2.5,
+					},
+				},
+			})
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("falls back to the fallback marshaler for non-PromQL replies", func() {
@@ -272,7 +286,7 @@ var _ = Describe("PromqlMarshaler", func() {
 			err := encoder.Encode(&logcache_v1.PromQL_InstantQueryResult{
 				Result: &logcache_v1.PromQL_InstantQueryResult_Scalar{
 					Scalar: &logcache_v1.PromQL_Scalar{
-						Time:  1,
+						Time:  "1",
 						Value: 2.5,
 					},
 				},
@@ -315,7 +329,7 @@ var _ = Describe("PromqlMarshaler", func() {
 	})
 
 	Context("Unmarshal()", func() {
-		It("unmarshals a scalar instant query result", func() {
+		It("handles a scalar instant query result", func() {
 			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
 
 			var result logcache_v1.PromQL_InstantQueryResult
@@ -323,7 +337,7 @@ var _ = Describe("PromqlMarshaler", func() {
 				"status": "success",
 				"data": {
 					"resultType": "scalar",
-					"result": [1, "2.5"]
+					"result": [1.777, "2.5"]
 				}
 			}`), &result)
 			Expect(err).ToNot(HaveOccurred())
@@ -331,14 +345,14 @@ var _ = Describe("PromqlMarshaler", func() {
 			Expect(result).To(Equal(logcache_v1.PromQL_InstantQueryResult{
 				Result: &logcache_v1.PromQL_InstantQueryResult_Scalar{
 					Scalar: &logcache_v1.PromQL_Scalar{
-						Time:  1.0,
+						Time:  "1.777",
 						Value: 2.5,
 					},
 				},
 			}))
 		})
 
-		It("marshals a vector instant query result", func() {
+		It("handles a vector instant query result", func() {
 			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
 
 			var result logcache_v1.PromQL_InstantQueryResult
@@ -352,7 +366,7 @@ var _ = Describe("PromqlMarshaler", func() {
 								"deployment": "cf",
 								"tag-name":   "tag-value"
 							},
-							"value": [ 1, "2.5" ]
+							"value": [ 1.456, "2.5" ]
 						},
 						{
 							"metric": {
@@ -376,7 +390,7 @@ var _ = Describe("PromqlMarshaler", func() {
 									"tag-name":   "tag-value",
 								},
 								Point: &logcache_v1.PromQL_Point{
-									Time:  1,
+									Time:  "1.456",
 									Value: 2.5,
 								},
 							},
@@ -386,7 +400,7 @@ var _ = Describe("PromqlMarshaler", func() {
 									"tag-name2":  "tag-value2",
 								},
 								Point: &logcache_v1.PromQL_Point{
-									Time:  2,
+									Time:  "2.000",
 									Value: 3.5,
 								},
 							},
@@ -396,7 +410,7 @@ var _ = Describe("PromqlMarshaler", func() {
 			}))
 		})
 
-		It("marshals a matrix instant query result", func() {
+		It("handles a matrix instant query result", func() {
 			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
 
 			var result logcache_v1.PromQL_InstantQueryResult
@@ -411,7 +425,7 @@ var _ = Describe("PromqlMarshaler", func() {
 								"tag-name":   "tag-value"
 							},
 							"values": [
-								[ 1, "2.5" ],
+								[ 1.987, "2.5" ],
 								[ 2, "3.5" ]
 							]
 						},
@@ -441,11 +455,11 @@ var _ = Describe("PromqlMarshaler", func() {
 								},
 								Points: []*logcache_v1.PromQL_Point{
 									{
-										Time:  1,
+										Time:  "1.987",
 										Value: 2.5,
 									},
 									{
-										Time:  2,
+										Time:  "2.000",
 										Value: 3.5,
 									},
 								},
@@ -457,11 +471,11 @@ var _ = Describe("PromqlMarshaler", func() {
 								},
 								Points: []*logcache_v1.PromQL_Point{
 									{
-										Time:  1,
+										Time:  "1.000",
 										Value: 4.5,
 									},
 									{
-										Time:  2,
+										Time:  "2.000",
 										Value: 6.5,
 									},
 								},
@@ -472,7 +486,7 @@ var _ = Describe("PromqlMarshaler", func() {
 			}))
 		})
 
-		It("marshals a matrix range query result", func() {
+		It("handles a matrix range query result", func() {
 			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
 
 			var result logcache_v1.PromQL_RangeQueryResult
@@ -487,7 +501,7 @@ var _ = Describe("PromqlMarshaler", func() {
 								"tag-name":   "tag-value"
 							},
 							"values": [
-								[ 1, "2.5" ],
+								[ 1.987, "2.5" ],
 								[ 2, "3.5" ]
 							]
 						},
@@ -517,11 +531,11 @@ var _ = Describe("PromqlMarshaler", func() {
 								},
 								Points: []*logcache_v1.PromQL_Point{
 									{
-										Time:  1,
+										Time:  "1.987",
 										Value: 2.5,
 									},
 									{
-										Time:  2,
+										Time:  "2.000",
 										Value: 3.5,
 									},
 								},
@@ -533,11 +547,11 @@ var _ = Describe("PromqlMarshaler", func() {
 								},
 								Points: []*logcache_v1.PromQL_Point{
 									{
-										Time:  1,
+										Time:  "1.000",
 										Value: 4.5,
 									},
 									{
-										Time:  2,
+										Time:  "2.000",
 										Value: 6.5,
 									},
 								},
@@ -574,7 +588,7 @@ var _ = Describe("PromqlMarshaler", func() {
 				"status": "success",
 				"data": {
 					"resultType": "scalar",
-					"result": [1, "2.5"]
+					"result": [1.123, "2.5"]
 				}
 			}`)
 			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
@@ -586,7 +600,7 @@ var _ = Describe("PromqlMarshaler", func() {
 			Expect(result).To(Equal(logcache_v1.PromQL_InstantQueryResult{
 				Result: &logcache_v1.PromQL_InstantQueryResult_Scalar{
 					Scalar: &logcache_v1.PromQL_Scalar{
-						Time:  1,
+						Time:  "1.123",
 						Value: 2.5,
 					},
 				},

@@ -5,10 +5,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"math"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 
@@ -166,7 +168,7 @@ var _ = Describe("LogCache", func() {
 		f := func() error {
 			resp, err := client.InstantQuery(context.Background(), &rpc.PromQL_InstantQueryRequest{
 				Query: `metric{source_id="source-0"}`,
-				Time:  now.UnixNano(),
+				Time:  formatTimeWithDecimalMillis(now),
 			})
 			if err != nil {
 				return err
@@ -207,8 +209,8 @@ var _ = Describe("LogCache", func() {
 		f := func() error {
 			resp, err := client.RangeQuery(context.Background(), &rpc.PromQL_RangeQueryRequest{
 				Query: `metric{source_id="source-0"}`,
-				Start: now.Add(-time.Minute).UnixNano(),
-				End:   now.UnixNano(),
+				Start: formatTimeWithDecimalMillis(now.Add(-time.Minute)),
+				End:   formatTimeWithDecimalMillis(now),
 				Step:  "1m",
 			})
 			if err != nil {
@@ -533,7 +535,7 @@ func (s *spyLogCache) InstantQuery(ctx context.Context, r *rpc.PromQL_InstantQue
 	return &rpc.PromQL_InstantQueryResult{
 		Result: &rpc.PromQL_InstantQueryResult_Scalar{
 			Scalar: &rpc.PromQL_Scalar{
-				Time:  99,
+				Time:  "99.000",
 				Value: s.value,
 			},
 		},
@@ -566,7 +568,7 @@ func (s *spyLogCache) RangeQuery(ctx context.Context, r *rpc.PromQL_RangeQueryRe
 						},
 						Points: []*rpc.PromQL_Point{
 							{
-								Time:  99,
+								Time:  "99.000",
 								Value: s.value,
 							},
 						},
@@ -612,4 +614,14 @@ func newTLSConfig(caPath, certPath, keyPath, cn string) (*tls.Config, error) {
 	tlsConfig.RootCAs = caCertPool
 
 	return tlsConfig, nil
+}
+
+func formatTimeWithDecimalMillis(t time.Time) string {
+	return fmt.Sprintf("%.3f", float64(t.UnixNano())/1e9)
+}
+
+func parseTimeWithDecimalMillis(t string) time.Time {
+	decimalTime, err := strconv.ParseFloat(t, 64)
+	Expect(err).ToNot(HaveOccurred())
+	return time.Unix(0, int64(decimalTime*1e9))
 }
