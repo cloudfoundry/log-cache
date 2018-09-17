@@ -123,7 +123,9 @@ func assembleScalarResultData(v *logcache_v1.PromQL_Scalar) (resultData, error) 
 }
 
 func assembleVectorResultData(v *logcache_v1.PromQL_Vector) (resultData, error) {
-	var samples []interface{}
+	// NOTE: This is required to make sure that JSON marshals an empty result
+	// set as `[]` and not `null`.
+	samples := make([]interface{}, 0)
 
 	for _, s := range v.GetSamples() {
 		p := s.GetPoint()
@@ -150,7 +152,9 @@ func assembleVectorResultData(v *logcache_v1.PromQL_Vector) (resultData, error) 
 }
 
 func assembleMatrixResultData(v *logcache_v1.PromQL_Matrix) (resultData, error) {
-	var result []interface{}
+	// NOTE: This is required to make sure that JSON marshals an empty result
+	// set as `[]` and not `null`.
+	result := make([]interface{}, 0)
 
 	for _, s := range v.GetSeries() {
 		var values [][]interface{}

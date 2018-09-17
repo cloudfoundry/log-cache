@@ -95,6 +95,27 @@ var _ = Describe("PromqlMarshaler", func() {
 			}`))
 		})
 
+		It("handles an empty vector instant query result", func() {
+			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
+
+			result, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
+				Result: &logcache_v1.PromQL_InstantQueryResult_Vector{
+					Vector: &logcache_v1.PromQL_Vector{
+						Samples: []*logcache_v1.PromQL_Sample{},
+					},
+				},
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(MatchJSON(`{
+				"status": "success",
+				"data": {
+					"resultType": "vector",
+					"result": []
+				}
+			}`))
+		})
+
 		It("handles a matrix instant query result", func() {
 			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
 
@@ -170,6 +191,27 @@ var _ = Describe("PromqlMarshaler", func() {
 			}`))
 		})
 
+		It("handles an empty matrix instant query result", func() {
+			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
+
+			result, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
+				Result: &logcache_v1.PromQL_InstantQueryResult_Matrix{
+					Matrix: &logcache_v1.PromQL_Matrix{
+						Series: []*logcache_v1.PromQL_Series{},
+					},
+				},
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(MatchJSON(`{
+				"status": "success",
+				"data": {
+					"resultType": "matrix",
+					"result": []
+				}
+			}`))
+		})
+
 		It("handles a matrix range query result", func() {
 			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
 
@@ -241,6 +283,27 @@ var _ = Describe("PromqlMarshaler", func() {
 							]
 						}
 					]
+				}
+			}`))
+		})
+
+		It("handles an empty matrix range query result", func() {
+			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
+
+			result, err := marshaler.Marshal(&logcache_v1.PromQL_RangeQueryResult{
+				Result: &logcache_v1.PromQL_RangeQueryResult_Matrix{
+					Matrix: &logcache_v1.PromQL_Matrix{
+						Series: []*logcache_v1.PromQL_Series{},
+					},
+				},
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(MatchJSON(`{
+				"status": "success",
+				"data": {
+					"resultType": "matrix",
+					"result": []
 				}
 			}`))
 		})
