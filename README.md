@@ -50,12 +50,12 @@ Query Parameters:
 - **limit** is the maximum number of envelopes to request. The max limit size
   is 1000 and defaults to 100.
 
-```
-curl "http://<log-cache-addr>:8080/v1/read/<source-id>?start_time=<start-time>&end_time=<end-time>"
+```shell
+$ curl "http://<log-cache-addr>:8081/v1/read/<source-id>?start_time=<start-time>&end_time=<end-time>"
 ```
 
 ##### Response Body
-```
+```javascript
 {
   "envelopes": {"batch": [...] }
 }
@@ -66,7 +66,7 @@ curl "http://<log-cache-addr>:8080/v1/read/<source-id>?start_time=<start-time>&e
 Lists the available source IDs that Log Cache has persisted.
 
 ##### Response Body
-```
+```javascript
 {
   "meta":{
     "source-id-0":{"count":"100000","expired":"129452","oldestTimestamp":"1524071322998223702","newestTimestamp":"1524081739994226961"},
@@ -81,30 +81,79 @@ Lists the available source IDs that Log Cache has persisted.
  - **oldestTimestamp** and **newestTimestamp** are the oldest and newest
    entries for the source, in nanoseconds since the Unix epoch.
 
-### **GET** `/api/v1/query`
 
-Issues a PromQL query against Log Cache data.
+## Prometheus-Compatible API
 
-```
-curl -G "http://<log-cache-addr>:8080/api/v1/query" --data-urlencode 'query=metrics{source_id="source-id-1"}'
-```
+### Notes on PromQL
+The ultimate goal of these endpoints is to create a fully-compliant,
+Prometheus-compatible interface. This should allow tools such as Grafana to
+work directly with Log Cache without any additional translation.
 
-##### Response Body
-```
-{
-  "status": "success",
-  "data": {
-    "resultType": "vector",
-    "result": [{ "metric": {...}, "point": [...] }]
-  }
-}
-```
-#### Notes on PromQL
+_There are still a few metadata endpoints that are unsupported. These should
+be coming to Log Cache in a future release._
+
 A valid PromQL metric name consists of the character [a-Z][0-9] and underscore. Names can begin with [a-Z] or underscore. Names cannot begin with [0-9].
 As a measure to work with existing metrics that do not comply with the above format a conversion process takes place when matching on metric names.
 Any character that is not in the set of valid characters is converted to an underscore.
 The metric is not changed in the cache.
-Eg to match on a metric name ``http.latency`` use the name ``http_latency`` as a search term
+
+e.g., to match on a metric name ``http.latency`` use the name ``http_latency`` as a search term.
+
+### **GET** `/api/v1/query`
+
+Issues a PromQL instant query against Log Cache data. You can read more
+detail in the Prometheus documentation [here](https://prometheus.io/docs/prometheus/latest/querying/api/#instant-queries).
+
+```shell
+$ curl -G "http://<log-cache-addr>:8081/api/v1/query" --data-urlencode 'query=metrics{source_id="source-id-1"}'
+```
+
+##### Response Body
+```javascript
+{
+  "status": "success",
+  "data": {
+    "resultType": "vector",
+    "result": [
+      { "metric": {...}, "value": [ <timestamp>, "<value>" ] },
+      ...
+    ]
+  }
+}
+```
+
+### **GET** `/api/v1/query_range`
+
+Issues a PromQL range query against Log Cache data. You can read more detail
+in the Prometheus documentation [here](https://prometheus.io/docs/prometheus/latest/querying/api/#range-queries).
+
+```shell
+$ curl -G "http://<log-cache-addr>:8081/api/v1/query_range" \
+    --data-urlencode 'query=metrics{source_id="source-id-1"}' \
+    --data-urlencode 'start=1537290750' \
+    --data-urlencode 'end=1537290760' \
+    --data-urlencode 'step=1'
+```
+
+##### Response Body
+```javascript
+{
+  "status": "success",
+  "data": {
+    "resultType": "matrix",
+    "result": [
+      {
+        "metric": {...},
+        "values": [
+          [ <timestamp>, "<value>" ],
+          ...
+        ]
+      },
+      ...
+    ]
+  }
+}
+```
 
 ## Cloud Foundry CLI Plugin
 
