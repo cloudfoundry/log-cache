@@ -2,15 +2,15 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/tls"
+	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	logcache "code.cloudfoundry.org/go-log-cache"
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	uuid "github.com/nu7hatch/gouuid"
-	datadog "github.com/zorkian/go-datadog-api"
 	"google.golang.org/grpc"
 )
 
@@ -22,132 +22,176 @@ func main() {
 		log.Fatalf("failed to load configuration: %s", err)
 	}
 
-	ddc := datadog.NewClient(cfg.DatadogAPIKey, "")
+	ingressClient := buildIngressClient(cfg)
+	go startEmittingTestMetrics(cfg, ingressClient)
 
-	t := time.NewTicker(cfg.Interval)
+	grpcEgressClient := buildGrpcEgressClient(cfg)
+
+	var httpEgressClient *logcache.Client
+
+	if cfg.CfBlackboxEnabled {
+		httpEgressClient = buildHttpEgressClient(cfg)
+	}
+
+	t := time.NewTicker(cfg.SampleInterval)
 	for range t.C {
-		log.Println("Emitting logs...")
-		emitCount := 10000
-		sourceID := newSourceID()
-		start, end := emitEnvelopes(cfg, emitCount, sourceID)
-		time.Sleep(10 * time.Second)
+		expectedEmissionCount := cfg.WindowInterval.Seconds() / cfg.EmissionInterval.Seconds()
 
-		log.Println("Counting emitted logs...")
-		receivedCount := countEnvelopes(cfg, start, end, sourceID, emitCount)
-		sendToDatadog(cfg, ddc, emitCount, receivedCount)
-	}
-}
+		// TODO - this will get pretty noisy if we do it every minute
+		log.Println("Counting emitted metrics...")
 
-func newSourceID() string {
-	id, err := uuid.NewV4()
-	if err != nil {
-		log.Fatalf("couldn't generate a UUID for source id: %s", err)
-	}
+		reliabilityMetrics := make(map[string]float64)
 
-	return id.String()
-}
+		grpcReceivedCount := countMetricPoints(cfg, grpcEgressClient, cfg.SourceID)
+		reliabilityMetrics["blackbox.grpc_reliability"] = float64(grpcReceivedCount) / expectedEmissionCount
 
-func emitEnvelopes(cfg *Config, emitCount int, sourceID string) (time.Time, time.Time) {
-	conn, err := grpc.Dial(
-		cfg.LogCacheAddr,
-		grpc.WithTransportCredentials(
-			cfg.TLS.Credentials("log-cache"),
-		),
-	)
-	if err != nil {
-		log.Fatalf("failed to dial %s: %s", cfg.LogCacheAddr, err)
-	}
-
-	client := rpc.NewIngressClient(conn)
-
-	start := time.Now()
-	for n := 0; n < emitCount; n++ {
-		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-		_, err = client.Send(ctx, &rpc.SendRequest{
-			Envelopes: &loggregator_v2.EnvelopeBatch{
-				Batch: []*loggregator_v2.Envelope{
-					{
-						Timestamp: time.Now().UnixNano(),
-						SourceId:  sourceID,
-					},
-				},
-			},
-		})
-		if err != nil {
-			log.Printf("Error writing envelope to log cache: %s", err)
+		if cfg.CfBlackboxEnabled {
+			httpReceivedCount := countMetricPoints(cfg, httpEgressClient, cfg.SourceID)
+			reliabilityMetrics["blackbox.http_reliability"] = float64(httpReceivedCount) / expectedEmissionCount
 		}
 
-		time.Sleep(time.Millisecond)
+		log.Println("Emitting measured metrics...")
+		emitMeasuredMetrics(cfg, ingressClient, reliabilityMetrics)
 	}
-
-	return start, time.Now()
 }
 
-func countEnvelopes(cfg *Config, start, end time.Time, sourceID string, emitCount int) int {
-	client := logcache.NewClient(
-		cfg.LogCacheAddr,
+func buildIngressClient(cfg *Config) logcache_v1.IngressClient {
+	conn, err := grpc.Dial(cfg.DataSourceGrpcAddr, grpc.WithTransportCredentials(
+		cfg.TLS.Credentials("log-cache"),
+	))
+
+	if err != nil {
+		log.Fatalf("failed to dial %s: %s", cfg.DataSourceGrpcAddr, err)
+	}
+
+	return logcache_v1.NewIngressClient(conn)
+}
+
+func buildGrpcEgressClient(cfg *Config) *logcache.Client {
+	return logcache.NewClient(
+		cfg.DataSourceGrpcAddr,
 		logcache.WithViaGRPC(
 			grpc.WithTransportCredentials(
 				cfg.TLS.Credentials("log-cache"),
 			),
 		),
 	)
+}
 
-	var receivedCount int
-	logcache.Walk(
-		context.Background(),
-		sourceID,
-		func(envelopes []*loggregator_v2.Envelope) bool {
-			receivedCount += len(envelopes)
-			return receivedCount < emitCount
-		},
-		client.Read,
-		logcache.WithWalkStartTime(start),
-		logcache.WithWalkEndTime(end),
-		logcache.WithWalkBackoff(logcache.NewRetryBackoff(50*time.Millisecond, 100)),
+func buildHttpEgressClient(cfg *Config) *logcache.Client {
+	return logcache.NewClient(
+		cfg.DataSourceHttpAddr,
+		logcache.WithHTTPClient(
+			logcache.NewOauth2HTTPClient(
+				cfg.UaaAddr,
+				cfg.ClientID,
+				cfg.ClientSecret,
+				logcache.WithOauth2HTTPClient(buildHttpClient(cfg)),
+			),
+		),
 	)
-
-	return receivedCount
 }
 
-func sendToDatadog(cfg *Config, ddc *datadog.Client, emitCount, receivedCount int) {
-	var metrics []datadog.Metric
-	mType := "gauge"
-	nameSent := "log_cache_grpc_blackbox.logs_sent"
+func buildHttpClient(cfg *Config) *http.Client {
+	client := http.DefaultClient
+	client.Timeout = 10 * time.Second
 
-	timestamp := time.Now().UnixNano()
-	metrics = append(metrics, datadog.Metric{
-		Metric: &nameSent,
-		Points: toDataPoint(timestamp, float64(emitCount)),
-		Type:   &mType,
-		Host:   &cfg.DatadogOriginHost,
-		Tags:   cfg.DatadogTags,
+	if cfg.SkipTLSVerify {
+		client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		}
+	}
+
+	return client
+}
+
+func startEmittingTestMetrics(cfg *Config, ingressClient logcache_v1.IngressClient) {
+	for range time.NewTicker(cfg.EmissionInterval).C {
+		emitTestMetrics(cfg, ingressClient)
+	}
+}
+
+func emitTestMetrics(cfg *Config, client logcache_v1.IngressClient) {
+	batch := []*loggregator_v2.Envelope{
+		{
+			Timestamp: time.Now().UnixNano(),
+			SourceId:  cfg.SourceID,
+			Message: &loggregator_v2.Envelope_Gauge{
+				Gauge: &loggregator_v2.Gauge{
+					Metrics: map[string]*loggregator_v2.GaugeValue{
+						"blackbox.test_metric": &loggregator_v2.GaugeValue{
+							Value: 10.0,
+							Unit:  "ms",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	_, err := client.Send(ctx, &logcache_v1.SendRequest{
+		Envelopes: &loggregator_v2.EnvelopeBatch{
+			Batch: batch,
+		},
 	})
 
-	nameReceived := "log_cache_grpc_blackbox.logs_received"
-	metrics = append(metrics, datadog.Metric{
-		Metric: &nameReceived,
-		Points: toDataPoint(timestamp, float64(receivedCount)),
-		Type:   &mType,
-		Host:   &cfg.DatadogOriginHost,
-		Tags:   cfg.DatadogTags,
-	})
-
-	err := ddc.PostMetrics(metrics)
 	if err != nil {
-		log.Printf("failed to write metrics to DataDog: %s", err)
+		log.Printf("failed to write test metric envelope: %s\n", err)
 	}
-
-	log.Printf("posted %d metrics:", len(metrics))
-	b, _ := json.MarshalIndent(metrics, "", "  ")
-	log.Println(string(b))
-
 }
 
-func toDataPoint(x int64, y float64) []datadog.DataPoint {
-	t := time.Unix(0, x)
-	tf := float64(t.Unix())
-	return []datadog.DataPoint{
-		[2]*float64{&tf, &y},
+func emitMeasuredMetrics(cfg *Config, client logcache_v1.IngressClient, metrics map[string]float64) {
+	envelopeMetrics := make(map[string]*loggregator_v2.GaugeValue)
+
+	for metricName, value := range metrics {
+		envelopeMetrics[metricName] = &loggregator_v2.GaugeValue{
+			Value: value,
+			Unit:  "%",
+		}
 	}
+
+	batch := []*loggregator_v2.Envelope{
+		{
+			Timestamp: time.Now().UnixNano(),
+			SourceId:  cfg.SourceID,
+			Message: &loggregator_v2.Envelope_Gauge{
+				Gauge: &loggregator_v2.Gauge{
+					Metrics: envelopeMetrics,
+				},
+			},
+		},
+	}
+
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	_, err := client.Send(ctx, &logcache_v1.SendRequest{
+		Envelopes: &loggregator_v2.EnvelopeBatch{
+			Batch: batch,
+		},
+	})
+
+	if err != nil {
+		log.Printf("failed to write measured metrics envelope: %s\n", err)
+	}
+}
+
+func countMetricPoints(cfg *Config, client *logcache.Client, sourceID string) uint64 {
+	queryString := fmt.Sprintf(`count_over_time(blackbox.test_metric{source_id="%s"}[%.0fs])`, sourceID, cfg.WindowInterval.Seconds())
+
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	queryResult, err := client.PromQL(ctx, queryString)
+	if err != nil {
+		log.Printf("failed to count test metrics: %s\n", err)
+		return 0
+	}
+
+	samples := queryResult.GetVector().GetSamples()
+
+	if len(samples) < 1 {
+		return 0
+	}
+
+	return uint64(samples[0].GetPoint().GetValue())
 }

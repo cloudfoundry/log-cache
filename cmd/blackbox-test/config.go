@@ -8,24 +8,32 @@ import (
 )
 
 type Config struct {
-	Interval time.Duration `env:"RUN_INTERVAL, report"`
+	EmissionInterval time.Duration `env:"EMISSION_INTERVAL, required, report"`
+	SampleInterval   time.Duration `env:"SAMPLE_INTERVAL, required, report"`
+	WindowInterval   time.Duration `env:"WINDOW_INTERVAL, required, report"`
+	SourceID         string        `env:"SOURCE_ID, required, report"`
 
-	LogCacheAddr string `env:"LOG_CACHE_ADDR, required, report"`
-	TLS          tls.TLS
+	CfBlackboxEnabled  bool   `env:"CF_BLACKBOX_ENABLED, report"`
+	DataSourceHttpAddr string `env:"DATA_SOURCE_HTTP_ADDR, report"`
+	UaaAddr            string `env:"UAA_ADDR, report"`
+	ClientID           string `env:"CLIENT_ID, report"`
+	ClientSecret       string `env:"CLIENT_SECRET"`
+	SkipTLSVerify      bool   `env:"SKIP_TLS_VERIFY, report"`
 
-	DatadogAPIKey     string   `env:"DATADOG_API_KEY"`
-	DatadogTags       []string `env:"DATADOG_TAGS, report"`
-	DatadogOriginHost string   `env:"DATADOG_ORIGIN_HOST, report"`
+	DataSourceGrpcAddr string `env:"DATA_SOURCE_GRPC_ADDR, report"`
+	TLS                tls.TLS
 }
 
 func LoadConfig() (*Config, error) {
 	c := Config{
-		LogCacheAddr: "localhost:8080",
+		DataSourceGrpcAddr: "localhost:8080",
 	}
 
 	if err := envstruct.Load(&c); err != nil {
 		return nil, err
 	}
+
+	envstruct.WriteReport(&c)
 
 	return &c, nil
 }
