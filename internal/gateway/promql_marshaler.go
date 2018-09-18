@@ -134,8 +134,13 @@ func assembleVectorResultData(v *logcache_v1.PromQL_Vector) (resultData, error) 
 			return resultData{}, err
 		}
 
+		metric := s.GetMetric()
+		if metric == nil {
+			metric = make(map[string]string, 0)
+		}
+
 		samples = append(samples, sample{
-			Metric: s.GetMetric(),
+			Metric: metric,
 			Value:  point,
 		})
 	}
@@ -166,8 +171,14 @@ func assembleMatrixResultData(v *logcache_v1.PromQL_Matrix) (resultData, error) 
 
 			values = append(values, point)
 		}
+
+		metric := s.GetMetric()
+		if metric == nil {
+			metric = make(map[string]string, 0)
+		}
+
 		result = append(result, series{
-			Metric: s.GetMetric(),
+			Metric: metric,
 			Values: values,
 		})
 	}

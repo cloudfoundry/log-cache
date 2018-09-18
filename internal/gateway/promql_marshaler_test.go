@@ -116,6 +116,39 @@ var _ = Describe("PromqlMarshaler", func() {
 			}`))
 		})
 
+		It("handles a vector instant query result with no tags", func() {
+			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
+
+			result, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
+				Result: &logcache_v1.PromQL_InstantQueryResult_Vector{
+					Vector: &logcache_v1.PromQL_Vector{
+						Samples: []*logcache_v1.PromQL_Sample{
+							{
+								Point: &logcache_v1.PromQL_Point{
+									Time:  "1",
+									Value: 2.5,
+								},
+							},
+						},
+					},
+				},
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(MatchJSON(`{
+				"status": "success",
+				"data": {
+					"resultType": "vector",
+					"result": [
+						{
+							"metric": {},
+							"value": [ 1.000, "2.5" ]
+						}
+					]
+				}
+			}`))
+		})
+
 		It("handles a matrix instant query result", func() {
 			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
 
@@ -212,6 +245,48 @@ var _ = Describe("PromqlMarshaler", func() {
 			}`))
 		})
 
+		It("handles a matrix instant query result with no tags", func() {
+			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
+
+			result, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
+				Result: &logcache_v1.PromQL_InstantQueryResult_Matrix{
+					Matrix: &logcache_v1.PromQL_Matrix{
+						Series: []*logcache_v1.PromQL_Series{
+							{
+								Points: []*logcache_v1.PromQL_Point{
+									{
+										Time:  "1",
+										Value: 2.5,
+									},
+									{
+										Time:  "2",
+										Value: 3.5,
+									},
+								},
+							},
+						},
+					},
+				},
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(MatchJSON(`{
+				"status": "success",
+				"data": {
+					"resultType": "matrix",
+					"result": [
+						{
+							"metric": {},
+							"values": [
+								[ 1, "2.5" ],
+								[ 2, "3.5" ]
+							]
+						}
+					]
+				}
+			}`))
+		})
+
 		It("handles a matrix range query result", func() {
 			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
 
@@ -304,6 +379,48 @@ var _ = Describe("PromqlMarshaler", func() {
 				"data": {
 					"resultType": "matrix",
 					"result": []
+				}
+			}`))
+		})
+
+		It("handles a matrix range query result with no tags", func() {
+			marshaler := gateway.NewPromqlMarshaler(&mockMarshaler{})
+
+			result, err := marshaler.Marshal(&logcache_v1.PromQL_RangeQueryResult{
+				Result: &logcache_v1.PromQL_RangeQueryResult_Matrix{
+					Matrix: &logcache_v1.PromQL_Matrix{
+						Series: []*logcache_v1.PromQL_Series{
+							{
+								Points: []*logcache_v1.PromQL_Point{
+									{
+										Time:  "1",
+										Value: 2.5,
+									},
+									{
+										Time:  "2",
+										Value: 3.5,
+									},
+								},
+							},
+						},
+					},
+				},
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(MatchJSON(`{
+				"status": "success",
+				"data": {
+					"resultType": "matrix",
+					"result": [
+						{
+							"metric": {},
+							"values": [
+								[ 1, "2.5" ],
+								[ 2, "3.5" ]
+							]
+						}
+					]
 				}
 			}`))
 		})
