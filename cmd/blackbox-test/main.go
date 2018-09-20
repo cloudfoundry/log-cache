@@ -178,7 +178,7 @@ func emitMeasuredMetrics(cfg *Config, client logcache_v1.IngressClient, metrics 
 }
 
 func countMetricPoints(cfg *Config, client *logcache.Client, sourceID string) uint64 {
-	queryString := fmt.Sprintf(`count_over_time(blackbox.test_metric{source_id="%s"}[%.0fs])`, sourceID, cfg.WindowInterval.Seconds())
+	queryString := fmt.Sprintf(`count_over_time(blackbox_test_metric{source_id="%s"}[%.0fs])`, sourceID, cfg.WindowInterval.Seconds())
 
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	queryResult, err := client.PromQL(ctx, queryString)
