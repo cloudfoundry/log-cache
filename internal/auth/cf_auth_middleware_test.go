@@ -256,7 +256,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 
 		It("expands queries to include all related source IDs if user is an admin", func() {
 			tc := setup(`/api/v1/query?query=metric{source_id="some-id"}`)
-			tc.spyAppNameTranslator.relatedIds = map[string][]string{"some-id": []string{"app-guid-1"}}
+			tc.spyAppNameTranslator.relatedIds = map[string][]string{"some-id": {"app-guid-1"}}
 			tc.spyOauth2ClientReader.isAdminResult = true
 
 			tc.invokeAuthHandler()
@@ -274,7 +274,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 			tc := setup(`/api/v1/query?query=metric{source_id="some-id"}`)
 			tc.spyLogAuthorizer.unauthorizedSourceIds["some-id"] = struct{}{}
 			tc.spyLogAuthorizer.unauthorizedSourceIds["unauthorized-app-guid-2"] = struct{}{}
-			tc.spyAppNameTranslator.relatedIds = map[string][]string{"some-id": []string{"app-guid-1", "unauthorized-app-guid-2"}}
+			tc.spyAppNameTranslator.relatedIds = map[string][]string{"some-id": {"app-guid-1", "unauthorized-app-guid-2"}}
 
 			tc.invokeAuthHandler()
 

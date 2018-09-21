@@ -121,7 +121,7 @@ func emitTestMetrics(cfg *Config, client logcache_v1.IngressClient) {
 			Message: &loggregator_v2.Envelope_Gauge{
 				Gauge: &loggregator_v2.Gauge{
 					Metrics: map[string]*loggregator_v2.GaugeValue{
-						"blackbox.test_metric": &loggregator_v2.GaugeValue{
+						"blackbox.test_metric": {
 							Value: 10.0,
 							Unit:  "ms",
 						},

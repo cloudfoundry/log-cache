@@ -833,12 +833,12 @@ func (s *stubGrpcLogCache) RangeQuery(c context.Context, r *rpc.PromQL_RangeQuer
 		Result: &rpc.PromQL_RangeQueryResult_Matrix{
 			Matrix: &rpc.PromQL_Matrix{
 				Series: []*rpc.PromQL_Series{
-					&rpc.PromQL_Series{
+					{
 						Metric: map[string]string{
 							"__name__": "test",
 						},
 						Points: []*rpc.PromQL_Point{
-							&rpc.PromQL_Point{
+							{
 								Time:  "99.000",
 								Value: 101,
 							},

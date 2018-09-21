@@ -320,7 +320,7 @@ func (l *LogCacheQuerier) Select(params *storage.SelectParams, ll ...*labels.Mat
 
 	builder := newSeriesBuilder()
 
-	for sourceID, _ := range sourceIDs {
+	for sourceID := range sourceIDs {
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 		envelopeBatch, err := l.dataReader.Read(ctx, &logcache_v1.ReadRequest{
 			SourceId:  sourceID,
@@ -586,7 +586,7 @@ func ExtractSourceIds(query string) ([]string, error) {
 
 	var sourceIDs []string
 
-	for sourceID, _ := range visitor.sourceIDs {
+	for sourceID := range visitor.sourceIDs {
 		sourceIDs = append(sourceIDs, sourceID)
 	}
 

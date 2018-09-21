@@ -43,7 +43,7 @@ func Window(ctx context.Context, v Visitor, w Walker, opts ...WindowOption) {
 }
 
 // Walker walks a reader. It makes several calls to get all the data between
-// a boundry of time.
+// a boundary of time.
 type Walker func(
 	ctx context.Context,
 	start time.Time,

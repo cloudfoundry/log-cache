@@ -13,8 +13,8 @@ import (
 	"crypto/x509"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
-	gologcache "code.cloudfoundry.org/log-cache/client"
 	"code.cloudfoundry.org/log-cache"
+	gologcache "code.cloudfoundry.org/log-cache/client"
 	"code.cloudfoundry.org/log-cache/internal/auth"
 	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"code.cloudfoundry.org/log-cache/internal/promql"

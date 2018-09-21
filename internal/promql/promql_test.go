@@ -108,7 +108,7 @@ var _ = Describe("PromQL", func() {
 		It("returns queries unmodified when no expansions match", func() {
 			query := `metric{source_id="a"} + avg_over_time(gauge_example{source_id="b"}[10m])`
 			modifiedQuery, err := promql.ReplaceSourceIdSets(query, map[string][]string{
-				"expanded": []string{"expansion-1", "expansion-2"},
+				"expanded": {"expansion-1", "expansion-2"},
 			})
 
 			Expect(err).ToNot(HaveOccurred())
@@ -118,7 +118,7 @@ var _ = Describe("PromQL", func() {
 		It("returns appropriate queries when the original sourceId is elided", func() {
 			query := `metric{source_id="a"} + avg_over_time(gauge_example{source_id="expanded"}[10m])`
 			modifiedQuery, err := promql.ReplaceSourceIdSets(query, map[string][]string{
-				"expanded": []string{"expansion-1", "expansion-2"},
+				"expanded": {"expansion-1", "expansion-2"},
 			})
 
 			Expect(err).ToNot(HaveOccurred())
@@ -130,7 +130,7 @@ var _ = Describe("PromQL", func() {
 		It("returns queries using the equality matcher when replacing a single sourceId", func() {
 			query := `metric{source_id="to-be-replaced"}`
 			modifiedQuery, err := promql.ReplaceSourceIdSets(query, map[string][]string{
-				"to-be-replaced": []string{"replacement"},
+				"to-be-replaced": {"replacement"},
 			})
 
 			Expect(err).ToNot(HaveOccurred())
@@ -142,8 +142,8 @@ var _ = Describe("PromQL", func() {
 		It("returns queries using the equality matcher when replacing multiple sourceIds with a single sourceId", func() {
 			query := `metric{source_id=~"to-be-replaced-1|to-be-replaced-2"}`
 			modifiedQuery, err := promql.ReplaceSourceIdSets(query, map[string][]string{
-				"to-be-replaced-1": []string{"replacement"},
-				"to-be-replaced-2": []string{},
+				"to-be-replaced-1": {"replacement"},
+				"to-be-replaced-2": {},
 			})
 
 			Expect(err).ToNot(HaveOccurred())
