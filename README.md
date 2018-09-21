@@ -31,7 +31,7 @@ if the provided token has the appropriate app access.
 
 Log Cache implements a restful interface for getting data.
 
-### **GET** `/v1/read/<source-id>`
+### **GET** `/api/v1/read/<source-id>`
 
 Get data from Log Cache for the given `source-id`.
 
@@ -51,7 +51,7 @@ Query Parameters:
   is 1000 and defaults to 100.
 
 ```shell
-$ curl "http://<log-cache-addr>:8081/v1/read/<source-id>?start_time=<start-time>&end_time=<end-time>"
+$ curl "http://<log-cache-addr>:8081/api/v1/read/<source-id>?start_time=<start-time>&end_time=<end-time>"
 ```
 
 ##### Response Body
@@ -61,7 +61,7 @@ $ curl "http://<log-cache-addr>:8081/v1/read/<source-id>?start_time=<start-time>
 }
 ```
 
-### **GET** `/v1/meta`
+### **GET** `/api/v1/meta`
 
 Lists the available source IDs that Log Cache has persisted.
 

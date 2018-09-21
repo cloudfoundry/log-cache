@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 )
 
 // Orchestrator manages the Log Cache node's routes.

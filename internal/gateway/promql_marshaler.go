@@ -6,7 +6,7 @@ import (
 	"io"
 	"strconv"
 
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	"code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 )
 

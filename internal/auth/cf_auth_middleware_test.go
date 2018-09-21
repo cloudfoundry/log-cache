@@ -10,7 +10,7 @@ import (
 
 	"context"
 
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 	"github.com/Benjamintf1/unmarshalledmatchers"
 	"github.com/golang/protobuf/jsonpb"
 	. "github.com/onsi/ginkgo"
@@ -78,9 +78,9 @@ func (tc *testContext) invokeAuthHandler() {
 }
 
 var _ = Describe("CfAuthMiddleware", func() {
-	Describe("/v1/read", func() {
+	Describe("/api/v1/read", func() {
 		It("forwards the request to the handler if user is an admin", func() {
-			tc := setup("/v1/read/12345")
+			tc := setup("/api/v1/read/12345")
 
 			tc.spyOauth2ClientReader.isAdminResult = true
 
@@ -95,7 +95,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 		DescribeTable("forwards the request to the handler if non-admin user has log access", func(sourceID string) {
 			// request path set this way to preserve URL encoding
 			tc := setup("/")
-			tc.request.URL.Path = fmt.Sprintf("/v1/read/%s", sourceID)
+			tc.request.URL.Path = fmt.Sprintf("/api/v1/read/%s", sourceID)
 
 			tc.invokeAuthHandler()
 
@@ -112,7 +112,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 		)
 
 		It("returns 404 Not Found if there's no authorization header present", func() {
-			tc := setup("/v1/read/12345")
+			tc := setup("/api/v1/read/12345")
 			tc.request.Header.Del("Authorization")
 
 			tc.invokeAuthHandler()
@@ -132,7 +132,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 		})
 
 		It("returns 404 Not Found if user is not authorized", func() {
-			tc := setup("/v1/read/12345")
+			tc := setup("/api/v1/read/12345")
 			tc.spyLogAuthorizer.unauthorizedSourceIds["12345"] = struct{}{}
 
 			tc.invokeAuthHandler()
@@ -142,9 +142,9 @@ var _ = Describe("CfAuthMiddleware", func() {
 		})
 	})
 
-	Describe("/v1/meta", func() {
+	Describe("/api/v1/meta", func() {
 		It("returns all source IDs from MetaFetcher for an admin", func() {
-			tc := setup("/v1/meta")
+			tc := setup("/api/v1/meta")
 			tc.spyMetaFetcher.result = map[string]*rpc.MetaInfo{
 				"source-0": {},
 				"source-1": {},
@@ -165,7 +165,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 		})
 
 		It("returns only source IDs that are available for a non-admin token", func() {
-			tc := setup("/v1/meta")
+			tc := setup("/api/v1/meta")
 			tc.spyMetaFetcher.result = map[string]*rpc.MetaInfo{
 				"source-0": {},
 				"source-1": {},
@@ -188,7 +188,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 		})
 
 		It("respects the request's context", func() {
-			tc := setup("/v1/meta")
+			tc := setup("/api/v1/meta")
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 			tc.request = tc.request.WithContext(ctx)
@@ -200,7 +200,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 		})
 
 		It("returns 502 Bad Gateway if MetaFetcher fails", func() {
-			tc := setup("/v1/meta")
+			tc := setup("/api/v1/meta")
 			tc.spyMetaFetcher.err = errors.New("expected")
 
 			tc.invokeAuthHandler()
@@ -209,7 +209,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 		})
 
 		It("returns 404 Not Found if Oauth2ClientReader returns an error", func() {
-			tc := setup("/v1/meta")
+			tc := setup("/api/v1/meta")
 			tc.spyOauth2ClientReader.err = errors.New("some-error")
 
 			tc.invokeAuthHandler()
@@ -219,7 +219,7 @@ var _ = Describe("CfAuthMiddleware", func() {
 		})
 
 		It("returns 404 Not Found if Oauth2ClientReader returns an error", func() {
-			tc := setup("/v1/meta")
+			tc := setup("/api/v1/meta")
 			tc.request.Header.Del("Authorization")
 
 			tc.invokeAuthHandler()

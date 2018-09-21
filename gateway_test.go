@@ -6,8 +6,8 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/log-cache"
+	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
@@ -45,7 +45,7 @@ var _ = Describe("Gateway", func() {
 	})
 
 	DescribeTable("upgrades HTTP requests for LogCache into gRPC requests", func(pathSourceID, expectedSourceID string) {
-		path := fmt.Sprintf("v1/read/%s?start_time=99&end_time=101&limit=103&envelope_types=LOG&envelope_types=GAUGE", pathSourceID)
+		path := fmt.Sprintf("api/v1/read/%s?start_time=99&end_time=101&limit=103&envelope_types=LOG&envelope_types=GAUGE", pathSourceID)
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 		resp, err := http.Get(URL)
 		Expect(err).ToNot(HaveOccurred())

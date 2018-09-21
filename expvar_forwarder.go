@@ -13,8 +13,8 @@ import (
 
 	"golang.org/x/net/context"
 
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
+	"code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 
 	"github.com/blang/semver"
 	"google.golang.org/grpc"

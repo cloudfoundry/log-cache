@@ -9,7 +9,7 @@ import (
 
 	"context"
 
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/gorilla/mux"
 
@@ -74,7 +74,7 @@ type promqlErrorBody struct {
 func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 	router := mux.NewRouter()
 
-	router.HandleFunc("/v1/read/{sourceID:.*}", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/api/v1/read/{sourceID:.*}", func(w http.ResponseWriter, r *http.Request) {
 		sourceID, ok := mux.Vars(r)["sourceID"]
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
@@ -176,7 +176,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		h.ServeHTTP(w, r)
 	})
 
-	router.HandleFunc("/v1/meta", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/api/v1/meta", func(w http.ResponseWriter, r *http.Request) {
 		authToken := r.Header.Get("Authorization")
 		if authToken == "" {
 			w.WriteHeader(http.StatusNotFound)

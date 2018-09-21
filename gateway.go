@@ -11,8 +11,8 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/log-cache/internal/gateway"
+	"code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 )
 
 // Gateway provides a RESTful API into LogCache's gRPC API.

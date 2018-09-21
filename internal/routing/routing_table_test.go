@@ -3,8 +3,8 @@ package routing_test
 import (
 	"context"
 
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/log-cache/internal/routing"
+	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

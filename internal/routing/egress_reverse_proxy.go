@@ -9,7 +9,7 @@ import (
 	"time"
 	"unsafe"
 
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 )

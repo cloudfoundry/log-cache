@@ -11,11 +11,11 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	logcache "code.cloudfoundry.org/go-log-cache"
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	logcache "code.cloudfoundry.org/log-cache/client"
 	"code.cloudfoundry.org/log-cache/internal/promql"
 	"code.cloudfoundry.org/log-cache/internal/routing"
 	"code.cloudfoundry.org/log-cache/internal/store"
+	"code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 )
 
 // LogCache is a in memory cache for Loggregator envelopes.

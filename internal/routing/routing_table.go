@@ -5,7 +5,7 @@ import (
 	"sort"
 	"sync"
 
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
+	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 )
 
 // RoutingTable makes decisions for where a item should be routed.

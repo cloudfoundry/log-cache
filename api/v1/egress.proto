@@ -9,12 +9,12 @@ import "google/api/annotations.proto";
 service Egress {
     rpc Read(ReadRequest) returns (ReadResponse) {
         option (google.api.http) = {
-            get: "/v1/read/{source_id=**}"
+            get: "/api/v1/read/{source_id=**}"
         };
     }
     rpc Meta(MetaRequest) returns (MetaResponse){
         option (google.api.http) = {
-            get: "/v1/meta"
+            get: "/api/v1/meta"
         };
     }
 }

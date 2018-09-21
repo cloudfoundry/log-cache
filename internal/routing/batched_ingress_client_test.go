@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/routing"
+	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 	"golang.org/x/net/context"
 
 	. "github.com/onsi/ginkgo"

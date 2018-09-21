@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/log-cache"
+	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"

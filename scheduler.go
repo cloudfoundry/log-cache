@@ -9,8 +9,8 @@ import (
 
 	"expvar"
 
-	rpc "code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	orchestrator "code.cloudfoundry.org/go-orchestrator"
+	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )

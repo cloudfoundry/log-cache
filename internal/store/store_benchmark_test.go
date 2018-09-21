@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"code.cloudfoundry.org/go-log-cache/rpc/logcache_v1"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/store"
+	"code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 )
 
 const (
