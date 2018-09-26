@@ -19,9 +19,11 @@ import (
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache"
+	logtls "code.cloudfoundry.org/log-cache/internal/tls"
 	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 )
 
@@ -37,7 +39,7 @@ var _ = Describe("LogCache", func() {
 
 	BeforeEach(func() {
 		var err error
-		tlsConfig, err = newTLSConfig(
+		tlsConfig, err = logtls.NewTLSConfig(
 			Cert("log-cache-ca.crt"),
 			Cert("log-cache.crt"),
 			Cert("log-cache.key"),
@@ -94,6 +96,85 @@ var _ = Describe("LogCache", func() {
 
 	AfterEach(func() {
 		cache.Close()
+	})
+
+	Describe("TLS security", func() {
+		DescribeTable("allows only supported TLS versions", func(clientTLSVersion int, serverAllows bool) {
+			clientTlsConfig := tlsConfig.Clone()
+			clientTlsConfig.MaxVersion = uint16(clientTLSVersion)
+			clientTlsConfig.CipherSuites = []uint16{tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384}
+
+			insecureConn, err := grpc.Dial(
+				cache.Addr(),
+				grpc.WithTransportCredentials(
+					credentials.NewTLS(clientTlsConfig),
+				),
+			)
+			Expect(err).NotTo(HaveOccurred())
+
+			insecureClient := rpc.NewEgressClient(insecureConn)
+			_, err = insecureClient.Meta(context.Background(), &rpc.MetaRequest{})
+
+			if serverAllows {
+				Expect(err).NotTo(HaveOccurred())
+			} else {
+				Expect(err).To(HaveOccurred())
+			}
+		},
+
+			Entry("unsupported SSL 3.0", tls.VersionSSL30, false),
+			Entry("unsupported TLS 1.0", tls.VersionTLS10, false),
+			Entry("unsupported TLS 1.1", tls.VersionTLS11, false),
+			Entry("supported TLS 1.2", tls.VersionTLS12, true),
+		)
+
+		DescribeTable("allows only supported cipher suites", func(clientCipherSuite uint16, serverAllows bool) {
+			clientTlsConfig := tlsConfig.Clone()
+			clientTlsConfig.MaxVersion = tls.VersionTLS12
+			clientTlsConfig.CipherSuites = []uint16{clientCipherSuite}
+
+			insecureConn, err := grpc.Dial(
+				cache.Addr(),
+				grpc.WithTransportCredentials(
+					credentials.NewTLS(clientTlsConfig),
+				),
+			)
+			Expect(err).NotTo(HaveOccurred())
+
+			insecureClient := rpc.NewEgressClient(insecureConn)
+			_, err = insecureClient.Meta(context.Background(), &rpc.MetaRequest{})
+
+			if serverAllows {
+				Expect(err).NotTo(HaveOccurred())
+			} else {
+				Expect(err).To(HaveOccurred())
+			}
+		},
+
+			Entry("unsupported cipher RSA_WITH_3DES_EDE_CBC_SHA", tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA, false),
+			Entry("unsupported cipher ECDHE_RSA_WITH_3DES_EDE_CBC_SHA", tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA, false),
+			Entry("unsupported cipher RSA_WITH_RC4_128_SHA", tls.TLS_RSA_WITH_RC4_128_SHA, false),
+			Entry("unsupported cipher RSA_WITH_AES_128_CBC_SHA256", tls.TLS_RSA_WITH_AES_128_CBC_SHA256, false),
+			Entry("unsupported cipher ECDHE_ECDSA_WITH_CHACHA20_POLY1305", tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305, false),
+			Entry("unsupported cipher ECDHE_ECDSA_WITH_RC4_128_SHA", tls.TLS_ECDHE_ECDSA_WITH_RC4_128_SHA, false),
+			Entry("unsupported cipher ECDHE_ECDSA_WITH_AES_128_CBC_SHA", tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA, false),
+			Entry("unsupported cipher ECDHE_ECDSA_WITH_AES_256_CBC_SHA", tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA, false),
+			Entry("unsupported cipher ECDHE_ECDSA_WITH_AES_128_CBC_SHA256", tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256, false),
+			Entry("unsupported cipher ECDHE_ECDSA_WITH_AES_128_GCM_SHA256", tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, false),
+			Entry("unsupported cipher ECDHE_ECDSA_WITH_AES_256_GCM_SHA384", tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384, false),
+			Entry("unsupported cipher ECDHE_RSA_WITH_RC4_128_SHA", tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA, false),
+			Entry("unsupported cipher ECDHE_RSA_WITH_AES_128_CBC_SHA256", tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256, false),
+			Entry("unsupported cipher ECDHE_RSA_WITH_AES_128_CBC_SHA", tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA, false),
+			Entry("unsupported cipher ECDHE_RSA_WITH_AES_256_CBC_SHA", tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA, false),
+			Entry("unsupported cipher ECDHE_RSA_WITH_CHACHA20_POLY1305", tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305, false),
+			Entry("unsupported cipher RSA_WITH_AES_128_CBC_SHA", tls.TLS_RSA_WITH_AES_128_CBC_SHA, false),
+			Entry("unsupported cipher RSA_WITH_AES_128_GCM_SHA256", tls.TLS_RSA_WITH_AES_128_GCM_SHA256, false),
+			Entry("unsupported cipher RSA_WITH_AES_256_CBC_SHA", tls.TLS_RSA_WITH_AES_256_CBC_SHA, false),
+			Entry("unsupported cipher RSA_WITH_AES_256_GCM_SHA384", tls.TLS_RSA_WITH_AES_256_GCM_SHA384, false),
+
+			Entry("supported cipher ECDHE_RSA_WITH_AES_128_GCM_SHA256", tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, true),
+			Entry("supported cipher ECDHE_RSA_WITH_AES_256_GCM_SHA384", tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384, true),
+		)
 	})
 
 	It("returns tail of data filtered by source ID", func() {
