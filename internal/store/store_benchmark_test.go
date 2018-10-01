@@ -13,7 +13,8 @@ import (
 )
 
 const (
-	StoreSize = 1000000
+	MaxPerSource        = 1000000
+	MinStoreSizeToPrune = 1000000
 )
 
 var (
@@ -26,7 +27,7 @@ var (
 )
 
 func BenchmarkStoreWrite(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(MaxPerSource, MinStoreSizeToPrune, &staticPruner{}, nopMetrics{})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -36,7 +37,7 @@ func BenchmarkStoreWrite(b *testing.B) {
 }
 
 func BenchmarkStoreTruncationOnWrite(b *testing.B) {
-	s := store.NewStore(100, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(100, MinStoreSizeToPrune, &staticPruner{}, nopMetrics{})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -46,7 +47,7 @@ func BenchmarkStoreTruncationOnWrite(b *testing.B) {
 }
 
 func BenchmarkStoreWriteParallel(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(MaxPerSource, MinStoreSizeToPrune, &staticPruner{}, nopMetrics{})
 
 	b.ResetTimer()
 
@@ -59,9 +60,9 @@ func BenchmarkStoreWriteParallel(b *testing.B) {
 }
 
 func BenchmarkStoreGetTime5MinRange(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(MaxPerSource, MinStoreSizeToPrune, &staticPruner{}, nopMetrics{})
 
-	for i := 0; i < StoreSize/10; i++ {
+	for i := 0; i < MaxPerSource/10; i++ {
 		e := gen()
 		s.Put(e, e.GetSourceId())
 	}
@@ -75,9 +76,9 @@ func BenchmarkStoreGetTime5MinRange(b *testing.B) {
 }
 
 func BenchmarkStoreGetLogType(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(MaxPerSource, MinStoreSizeToPrune, &staticPruner{}, nopMetrics{})
 
-	for i := 0; i < StoreSize/10; i++ {
+	for i := 0; i < MaxPerSource/10; i++ {
 		e := gen()
 		s.Put(e, e.GetSourceId())
 	}
@@ -91,7 +92,7 @@ func BenchmarkStoreGetLogType(b *testing.B) {
 }
 
 func BenchmarkMeta(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(MaxPerSource, MinStoreSizeToPrune, &staticPruner{}, nopMetrics{})
 
 	for i := 0; i < b.N; i++ {
 		e := gen()
@@ -105,7 +106,7 @@ func BenchmarkMeta(b *testing.B) {
 }
 
 func BenchmarkMetaWhileWriting(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(MaxPerSource, MinStoreSizeToPrune, &staticPruner{}, nopMetrics{})
 
 	ready := make(chan struct{}, 1)
 	go func() {
@@ -124,7 +125,7 @@ func BenchmarkMetaWhileWriting(b *testing.B) {
 }
 
 func BenchmarkMetaWhileReading(b *testing.B) {
-	s := store.NewStore(StoreSize, StoreSize, &staticPruner{}, nopMetrics{})
+	s := store.NewStore(MaxPerSource, MinStoreSizeToPrune, &staticPruner{}, nopMetrics{})
 
 	for i := 0; i < b.N; i++ {
 		e := gen()
@@ -200,8 +201,8 @@ type staticPruner struct {
 
 func (s *staticPruner) GetQuantityToPrune(int64) int {
 	s.size++
-	if s.size > StoreSize {
-		return s.size - StoreSize
+	if s.size > MinStoreSizeToPrune {
+		return s.size - MinStoreSizeToPrune
 	}
 
 	return 0
