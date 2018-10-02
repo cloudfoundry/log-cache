@@ -67,7 +67,13 @@ func (q *PromQL) InstantQuery(ctx context.Context, req *logcache_v1.PromQL_Insta
 		// manually.
 		errf: func(e error) { closureErr = e },
 	}
-	queryable := promql.NewEngine(nil, nil, 10, 10*time.Second)
+
+	engineOpts := promql.EngineOpts{
+		MaxConcurrent: 10,
+		MaxSamples:    1e6,
+		Timeout:       10 * time.Second,
+	}
+	queryable := promql.NewEngine(engineOpts)
 
 	var requestTime time.Time
 	var err error
@@ -186,7 +192,12 @@ func (q *PromQL) RangeQuery(ctx context.Context, req *logcache_v1.PromQL_RangeQu
 		// manually.
 		errf: func(e error) { closureErr = e },
 	}
-	queryable := promql.NewEngine(nil, nil, 10, 10*time.Second)
+	engineOpts := promql.EngineOpts{
+		MaxConcurrent: 10,
+		MaxSamples:    1e6,
+		Timeout:       10 * time.Second,
+	}
+	queryable := promql.NewEngine(engineOpts)
 
 	step, err := ParseStep(req.Step)
 	if err != nil {
