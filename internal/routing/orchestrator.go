@@ -45,7 +45,7 @@ func (o *Orchestrator) RemoveRange(ctx context.Context, req *rpc.RemoveRangeRequ
 	defer o.mu.Unlock()
 
 	for i, r := range o.ranges {
-		if *r == *req.Range {
+		if r.Start == req.Range.Start && r.End == req.Range.End {
 			o.ranges = append(o.ranges[:i], o.ranges[i+1:]...)
 			break
 		}

@@ -1,6 +1,7 @@
 package logcache
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"strconv"
@@ -139,6 +140,11 @@ func WithSchedulerLeadership(isLeader func() bool) SchedulerOption {
 	}
 }
 
+type SchedulerRange struct {
+	Start uint64
+	End   uint64
+}
+
 // Start starts the scheduler. It does not block.
 func (s *Scheduler) Start() {
 	for _, lc := range s.logCacheClients {
@@ -150,20 +156,36 @@ func (s *Scheduler) Start() {
 	var start uint64
 
 	for i := 0; i < s.count-1; i++ {
-		s.logCacheOrch.AddTask(rpc.Range{
+		// r := rpc.Range{
+		// 	Start: start,
+		// 	End:   start + x,
+		// }
+
+		sr := SchedulerRange{
 			Start: start,
 			End:   start + x,
-		},
+		}
+
+		s.logCacheOrch.AddTask(
+			sr,
 			orchestrator.WithTaskInstances(s.replicationFactor),
 		)
 
 		start += x + 1
 	}
 
-	s.logCacheOrch.AddTask(rpc.Range{
+	// r := rpc.Range{
+	// 	Start: start,
+	// 	End:   maxHash,
+	// }
+	sr := SchedulerRange{
 		Start: start,
 		End:   maxHash,
-	},
+		// r:     r,
+	}
+
+	s.logCacheOrch.AddTask(
+		sr,
 		orchestrator.WithTaskInstances(s.replicationFactor),
 	)
 
@@ -281,6 +303,9 @@ func (c *comm) List(ctx context.Context, worker interface{}) ([]interface{}, err
 		results = append(results, *r)
 	}
 
+	fmt.Printf("LIST: %+v\n", results)
+	// HERE: for future work, this is returning rpc.Range but might need
+	// logcahe.SchedulerRange, as this seems to feed Remove
 	return results, nil
 }
 
@@ -294,7 +319,11 @@ func (c *comm) Add(ctx context.Context, worker interface{}, task interface{}) er
 	defer c.mu.Unlock()
 
 	lc := worker.(clientInfo)
-	r := task.(rpc.Range)
+	sr := task.(SchedulerRange)
+	r := rpc.Range{
+		Start: sr.Start,
+		End:   sr.End,
+	}
 	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
 
 	_, err := lc.l.AddRange(ctx, &rpc.AddRangeRequest{
@@ -309,7 +338,7 @@ func (c *comm) Add(ctx context.Context, worker interface{}, task interface{}) er
 	return nil
 }
 
-// Remvoe implements orchestrator.Communicator.
+// Remove implements orchestrator.Communicator.
 func (c *comm) Remove(ctx context.Context, worker interface{}, task interface{}) error {
 	if !c.isLeader() {
 		return nil
@@ -319,7 +348,12 @@ func (c *comm) Remove(ctx context.Context, worker interface{}, task interface{})
 	defer c.mu.Unlock()
 
 	lc := worker.(clientInfo)
-	r := task.(rpc.Range)
+	// r := task.(rpc.Range)
+	sr := task.(SchedulerRange)
+	r := rpc.Range{
+		Start: sr.Start,
+		End:   sr.End,
+	}
 	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
 
 	_, err := lc.l.RemoveRange(ctx, &rpc.RemoveRangeRequest{

@@ -1,6 +1,7 @@
 package logcache_test
 
 import (
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -54,7 +55,7 @@ var _ = Describe("Scheduler", func() {
 		// alone.
 		for i := 0; i < count; i++ {
 			if i == count-1 {
-				spy1.listRanges = append(spy1.listRanges, &rpc.Range{
+				spy1.listRanges = append(spy1.listRanges, &logcache.SchedulerRange{
 					Start: start,
 					End:   maxHash,
 				})
@@ -62,7 +63,7 @@ var _ = Describe("Scheduler", func() {
 				break
 			}
 
-			spy1.listRanges = append(spy1.listRanges, &rpc.Range{
+			spy1.listRanges = append(spy1.listRanges, &logcache.SchedulerRange{
 				Start: start,
 				End:   start + x,
 			})
@@ -73,26 +74,20 @@ var _ = Describe("Scheduler", func() {
 		s.Start()
 		Eventually(spy2.reqCount, 5).Should(BeNumerically(">=", 50))
 
-		m := make(map[rpc.Range]int)
+		m := make(map[string]int)
 
 		for _, r := range spy2.addReqs() {
-			m[*r]++
+			m[fmt.Sprintf("%d:%d", r.Start, r.End)]++
 		}
 
 		start = 0
 		for i := 0; i < count; i++ {
 			if i == count-1 {
-				Expect(m).To(HaveKey(rpc.Range{
-					Start: start,
-					End:   maxHash,
-				}))
+				Expect(m).To(HaveKey(fmt.Sprintf("%d:%d", start, maxHash)))
 				break
 			}
 
-			Expect(m).To(HaveKey(rpc.Range{
-				Start: start,
-				End:   start + x,
-			}))
+			Expect(m).To(HaveKey(fmt.Sprintf("%d:%d", start, start+x)))
 
 			start += x + 1
 		}
@@ -129,7 +124,7 @@ var _ = Describe("Scheduler", func() {
 
 			for i := 0; i < count; i++ {
 				if i == count-1 {
-					logCacheSpy1.listRanges = append(logCacheSpy1.listRanges, &rpc.Range{
+					logCacheSpy1.listRanges = append(logCacheSpy1.listRanges, &logcache.SchedulerRange{
 						Start: start,
 						End:   maxHash,
 					})
@@ -137,7 +132,7 @@ var _ = Describe("Scheduler", func() {
 					break
 				}
 
-				logCacheSpy1.listRanges = append(logCacheSpy1.listRanges, &rpc.Range{
+				logCacheSpy1.listRanges = append(logCacheSpy1.listRanges, &logcache.SchedulerRange{
 					Start: start,
 					End:   start + x,
 				})
@@ -193,14 +188,14 @@ var _ = Describe("Scheduler", func() {
 type spyOrchestration struct {
 	mu       sync.Mutex
 	lis      net.Listener
-	addReqs_ []*rpc.Range
+	addReqs_ []*logcache.SchedulerRange
 	addErr   error
 
-	removeReqs_ []*rpc.Range
+	removeReqs_ []*logcache.SchedulerRange
 	removeErr   error
 
 	listReqs   []*rpc.ListRangesRequest
-	listRanges []*rpc.Range
+	listRanges []*logcache.SchedulerRange
 	listErr    error
 
 	setReqs_ []*rpc.SetRangesRequest
@@ -231,7 +226,11 @@ func (s *spyOrchestration) AddRange(ctx context.Context, r *rpc.AddRangeRequest)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.addReqs_ = append(s.addReqs_, r.Range)
+	sr := &logcache.SchedulerRange{
+		Start: r.Range.Start,
+		End:   r.Range.End,
+	}
+	s.addReqs_ = append(s.addReqs_, sr)
 	return &rpc.AddRangeResponse{}, s.addErr
 }
 
@@ -239,7 +238,11 @@ func (s *spyOrchestration) RemoveRange(ctx context.Context, r *rpc.RemoveRangeRe
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.removeReqs_ = append(s.removeReqs_, r.Range)
+	sr := &logcache.SchedulerRange{
+		Start: r.Range.Start,
+		End:   r.Range.End,
+	}
+	s.removeReqs_ = append(s.removeReqs_, sr)
 
 	return &rpc.RemoveRangeResponse{}, s.removeErr
 }
@@ -249,8 +252,15 @@ func (s *spyOrchestration) ListRanges(ctx context.Context, r *rpc.ListRangesRequ
 	defer s.mu.Unlock()
 
 	s.listReqs = append(s.listReqs, r)
+	var ranges []*rpc.Range
+	for _, r := range s.listRanges {
+		ranges = append(ranges, &rpc.Range{
+			Start: r.Start,
+			End:   r.End,
+		})
+	}
 	return &rpc.ListRangesResponse{
-		Ranges: s.listRanges,
+		Ranges: ranges,
 	}, s.listErr
 }
 
@@ -262,11 +272,11 @@ func (s *spyOrchestration) SetRanges(ctx context.Context, r *rpc.SetRangesReques
 	return &rpc.SetRangesResponse{}, nil
 }
 
-func (s *spyOrchestration) addReqs() []*rpc.Range {
+func (s *spyOrchestration) addReqs() []*logcache.SchedulerRange {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	addReqs := make([]*rpc.Range, len(s.addReqs_))
+	addReqs := make([]*logcache.SchedulerRange, len(s.addReqs_))
 	copy(addReqs, s.addReqs_)
 	return addReqs
 }
@@ -275,11 +285,11 @@ func (s *spyOrchestration) reqCount() int {
 	return len(s.addReqs())
 }
 
-func (s *spyOrchestration) removeReqs() []*rpc.Range {
+func (s *spyOrchestration) removeReqs() []*logcache.SchedulerRange {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	removeReqs := make([]*rpc.Range, len(s.removeReqs_))
+	removeReqs := make([]*logcache.SchedulerRange, len(s.removeReqs_))
 	copy(removeReqs, s.removeReqs_)
 
 	return removeReqs
