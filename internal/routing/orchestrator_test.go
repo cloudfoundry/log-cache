@@ -11,15 +11,15 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Orchestrator", func() {
+var _ = Describe("OrchestratorAgent", func() {
 	var (
 		spyRangeSetter *spyRangeSetter
-		o              *routing.Orchestrator
+		o              *routing.OrchestratorAgent
 	)
 
 	BeforeEach(func() {
 		spyRangeSetter = newSpyRangeSetter()
-		o = routing.NewOrchestrator(spyRangeSetter)
+		o = routing.NewOrchestratorAgent(spyRangeSetter)
 	})
 
 	It("keeps track of the ranges", func() {
@@ -71,17 +71,17 @@ var _ = Describe("Orchestrator", func() {
 		))
 	})
 
-	It("survives race the detector", func() {
+	It("survives the race detector", func() {
 		var wg sync.WaitGroup
 		wg.Add(2)
-		go func(o *routing.Orchestrator) {
+		go func(o *routing.OrchestratorAgent) {
 			wg.Done()
 			for i := 0; i < 100; i++ {
 				o.ListRanges(context.Background(), &rpc.ListRangesRequest{})
 			}
 		}(o)
 
-		go func(o *routing.Orchestrator) {
+		go func(o *routing.OrchestratorAgent) {
 			wg.Done()
 			for i := 0; i < 100; i++ {
 				o.RemoveRange(context.Background(), &rpc.RemoveRangeRequest{

@@ -106,6 +106,7 @@ func (t *RoutingTable) findRange(h uint64, rs []rangeInfo) int {
 }
 
 type rangeInfo struct {
+	// TODO - change to SchedulerRange
 	r   rpc.Range
 	idx int
 }

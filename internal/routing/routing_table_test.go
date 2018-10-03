@@ -23,7 +23,7 @@ var _ = Describe("RoutingTable", func() {
 
 	It("returns the correct index for the node", func() {
 		r.SetRanges(context.Background(), &rpc.SetRangesRequest{
-			map[string]*rpc.Ranges{
+			Ranges: map[string]*rpc.Ranges{
 				"a": {
 					Ranges: []*rpc.Range{
 						{Start: 0, End: 100},
@@ -56,7 +56,7 @@ var _ = Describe("RoutingTable", func() {
 
 	It("returns the correct index for the node", func() {
 		r.SetRanges(context.Background(), &rpc.SetRangesRequest{
-			map[string]*rpc.Ranges{
+			Ranges: map[string]*rpc.Ranges{
 				"a": {
 					Ranges: []*rpc.Range{
 						{Start: 0, End: 100},

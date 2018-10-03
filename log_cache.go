@@ -208,7 +208,7 @@ func (c *LogCache) setupRouting(s *store.Store) {
 	}
 
 	lookup := routing.NewRoutingTable(c.nodeAddrs, hasher)
-	orch := routing.NewOrchestrator(lookup)
+	orchestratorAgent := routing.NewOrchestratorAgent(lookup)
 
 	var (
 		ingressClients []logcache_v1.IngressClient
@@ -267,7 +267,7 @@ func (c *LogCache) setupRouting(s *store.Store) {
 	go func() {
 		logcache_v1.RegisterIngressServer(c.server, ingressReverseProxy)
 		logcache_v1.RegisterEgressServer(c.server, egressReverseProxy)
-		logcache_v1.RegisterOrchestrationServer(c.server, orch)
+		logcache_v1.RegisterOrchestrationServer(c.server, orchestratorAgent)
 		logcache_v1.RegisterPromQLQuerierServer(c.server, promQL)
 		if err := c.server.Serve(lis); err != nil && atomic.LoadInt64(&c.closing) == 0 {
 			c.log.Fatalf("failed to serve gRPC ingress server: %s %#v", err, err)

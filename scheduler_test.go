@@ -73,23 +73,25 @@ var _ = Describe("Scheduler", func() {
 		s.Start()
 		Eventually(spy2.reqCount, 5).Should(BeNumerically(">=", 50))
 
-		m := make(map[rpc.Range]int)
+		m := make(map[logcache.SchedulerRange]int)
 
 		for _, r := range spy2.addReqs() {
-			m[*r]++
+			var sr logcache.SchedulerRange
+			sr.CloneRpcRange(r)
+			m[sr]++
 		}
 
 		start = 0
 		for i := 0; i < count; i++ {
 			if i == count-1 {
-				Expect(m).To(HaveKey(rpc.Range{
+				Expect(m).To(HaveKey(logcache.SchedulerRange{
 					Start: start,
 					End:   maxHash,
 				}))
 				break
 			}
 
-			Expect(m).To(HaveKey(rpc.Range{
+			Expect(m).To(HaveKey(logcache.SchedulerRange{
 				Start: start,
 				End:   start + x,
 			}))
