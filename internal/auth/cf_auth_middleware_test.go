@@ -199,6 +199,17 @@ var _ = Describe("CfAuthMiddleware", func() {
 			Expect(tc.spyMetaFetcher.ctx.Done()).To(BeClosed())
 		})
 
+		It("appends a newline to the response", func() {
+			tc := setup("/api/v1/meta")
+			tc.spyMetaFetcher.result = map[string]*rpc.MetaInfo{}
+			tc.spyOauth2ClientReader.isAdminResult = true
+
+			tc.invokeAuthHandler()
+
+			Expect(tc.recorder.Code).To(Equal(http.StatusOK))
+			Expect(tc.recorder.Body.String()).To(MatchRegexp(`\n$`))
+		})
+
 		It("returns 502 Bad Gateway if MetaFetcher fails", func() {
 			tc := setup("/api/v1/meta")
 			tc.spyMetaFetcher.err = errors.New("expected")

@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 
@@ -201,6 +200,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		_ = m.marshaller.Marshal(w, &rpc.MetaResponse{
 			Meta: m.onlyAuthorized(authToken, meta, c),
 		})
+		w.Write([]byte("\n"))
 	})
 
 	return router
@@ -232,25 +232,4 @@ func (m CFAuthMiddlewareProvider) onlyAuthorized(authToken string, meta map[stri
 	}
 
 	return intersection
-}
-
-type interceptingResponseWriter struct {
-	http.ResponseWriter
-	statusCode int
-	search     []byte
-	replace    []byte
-}
-
-func (w *interceptingResponseWriter) WriteHeader(n int) {
-	w.statusCode = n
-
-	w.ResponseWriter.WriteHeader(n)
-}
-
-func (w *interceptingResponseWriter) Write(b []byte) (int, error) {
-	if w.statusCode >= 400 {
-		return w.ResponseWriter.Write(bytes.Replace(b, w.search, w.replace, -1))
-	}
-
-	return w.ResponseWriter.Write(b)
 }
