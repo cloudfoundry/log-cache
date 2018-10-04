@@ -36,6 +36,7 @@ var _ = Describe("PromqlMarshaler", func() {
 					"result": [1.234, "2.5"]
 				}
 			}`))
+			Expect(string(result)).To(MatchRegexp(`\n$`))
 		})
 
 		It("handles a vector instant query result", func() {
@@ -93,6 +94,7 @@ var _ = Describe("PromqlMarshaler", func() {
 					]
 				}
 			}`))
+			Expect(string(result)).To(MatchRegexp(`\n$`))
 		})
 
 		It("handles an empty vector instant query result", func() {
@@ -222,6 +224,7 @@ var _ = Describe("PromqlMarshaler", func() {
 					]
 				}
 			}`))
+			Expect(string(result)).To(MatchRegexp(`\n$`))
 		})
 
 		It("handles an empty matrix instant query result", func() {
@@ -444,7 +447,7 @@ var _ = Describe("PromqlMarshaler", func() {
 
 			result, err := marshaler.Marshal(nil)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(result).To(Equal([]byte("mock marshaled result")))
+			Expect(result).To(Equal([]byte("mock marshaled result\n")))
 		})
 
 		It("passes through errors from the fallback marshaler", func() {

@@ -28,17 +28,21 @@ func (m *PromqlMarshaler) Marshal(v interface{}) ([]byte, error) {
 			return nil, err
 		}
 
-		return json.Marshal(result)
+		return appendNewLine(json.Marshal(result))
 	case *logcache_v1.PromQL_RangeQueryResult:
 		result, err := m.assembleRangeQueryResult(q)
 		if err != nil {
 			return nil, err
 		}
 
-		return json.Marshal(result)
+		return appendNewLine(json.Marshal(result))
 	default:
-		return m.fallback.Marshal(v)
+		return appendNewLine(m.fallback.Marshal(v))
 	}
+}
+
+func appendNewLine(bytes []byte, err error) ([]byte, error) {
+	return append(bytes, byte('\n')), err
 }
 
 type queryResult struct {

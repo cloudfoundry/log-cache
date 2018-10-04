@@ -4,12 +4,13 @@
 package logcache_v1
 
 import (
-	loggregator_v2 "code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	fmt "fmt"
+	math "math"
+
+	loggregator_v2 "code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	proto "github.com/golang/protobuf/proto"
 	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
-	math "math"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.

@@ -64,6 +64,18 @@ var _ = Describe("Gateway", func() {
 		Entry("with dash", "some-source-id", "some-source-id"),
 	)
 
+	It("adds newlines to the end of HTTP responses", func() {
+		path := `api/v1/meta`
+		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
+		req, _ := http.NewRequest("GET", URL, nil)
+		resp, err := http.DefaultClient.Do(req)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+		respBytes, err := ioutil.ReadAll(resp.Body)
+		Expect(string(respBytes)).To(MatchRegexp(`\n$`))
+	})
+
 	It("upgrades HTTP requests for instant queries via PromQLQuerier GETs into gRPC requests", func() {
 		path := `api/v1/query?query=metric{source_id="some-id"}&time=1234.000`
 		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
