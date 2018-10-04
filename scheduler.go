@@ -10,27 +10,11 @@ import (
 	"expvar"
 
 	orchestrator "code.cloudfoundry.org/go-orchestrator"
+	"code.cloudfoundry.org/log-cache/internal/routing"
 	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
-
-type SchedulerRange struct {
-	Start uint64
-	End   uint64
-}
-
-func (sr *SchedulerRange) CloneRpcRange(r *rpc.Range) {
-	sr.Start = r.Start
-	sr.End = r.End
-}
-
-func (sr *SchedulerRange) ToRpcRange() *rpc.Range {
-	return &rpc.Range{
-		Start: sr.Start,
-		End:   sr.End,
-	}
-}
 
 // Scheduler manages the routes of the Log Cache nodes.
 type Scheduler struct {
@@ -167,7 +151,7 @@ func (s *Scheduler) Start() {
 	var start uint64
 
 	for i := 0; i < s.count-1; i++ {
-		s.logCacheOrch.AddTask(SchedulerRange{
+		s.logCacheOrch.AddTask(routing.Range{
 			Start: start,
 			End:   start + x,
 		},
@@ -177,7 +161,7 @@ func (s *Scheduler) Start() {
 		start += x + 1
 	}
 
-	s.logCacheOrch.AddTask(SchedulerRange{
+	s.logCacheOrch.AddTask(routing.Range{
 		Start: start,
 		End:   maxHash,
 	},
@@ -256,7 +240,7 @@ func (s *Scheduler) convertWorkerState(ws []orchestrator.WorkerState) map[string
 	for _, w := range ws {
 		var ranges []*rpc.Range
 		for _, t := range w.Tasks {
-			sr := t.(SchedulerRange)
+			sr := t.(routing.Range)
 			ranges = append(ranges, sr.ToRpcRange())
 		}
 
@@ -295,7 +279,7 @@ func (c *comm) List(ctx context.Context, worker interface{}) ([]interface{}, err
 
 	var results []interface{}
 	for _, r := range resp.Ranges {
-		var sr SchedulerRange
+		var sr routing.Range
 		sr.CloneRpcRange(r)
 		results = append(results, sr)
 	}
@@ -313,7 +297,7 @@ func (c *comm) Add(ctx context.Context, worker interface{}, task interface{}) er
 	defer c.mu.Unlock()
 
 	lc := worker.(clientInfo)
-	sr := task.(SchedulerRange)
+	sr := task.(routing.Range)
 	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
 
 	_, err := lc.l.AddRange(ctx, &rpc.AddRangeRequest{
@@ -338,7 +322,7 @@ func (c *comm) Remove(ctx context.Context, worker interface{}, task interface{})
 	defer c.mu.Unlock()
 
 	lc := worker.(clientInfo)
-	sr := task.(SchedulerRange)
+	sr := task.(routing.Range)
 	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
 
 	_, err := lc.l.RemoveRange(ctx, &rpc.RemoveRangeRequest{

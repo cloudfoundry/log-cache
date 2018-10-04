@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/log-cache"
+	"code.cloudfoundry.org/log-cache/internal/routing"
 	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
@@ -73,10 +74,10 @@ var _ = Describe("Scheduler", func() {
 		s.Start()
 		Eventually(spy2.reqCount, 5).Should(BeNumerically(">=", 50))
 
-		m := make(map[logcache.SchedulerRange]int)
+		m := make(map[routing.Range]int)
 
 		for _, r := range spy2.addReqs() {
-			var sr logcache.SchedulerRange
+			var sr routing.Range
 			sr.CloneRpcRange(r)
 			m[sr]++
 		}
@@ -84,14 +85,14 @@ var _ = Describe("Scheduler", func() {
 		start = 0
 		for i := 0; i < count; i++ {
 			if i == count-1 {
-				Expect(m).To(HaveKey(logcache.SchedulerRange{
+				Expect(m).To(HaveKey(routing.Range{
 					Start: start,
 					End:   maxHash,
 				}))
 				break
 			}
 
-			Expect(m).To(HaveKey(logcache.SchedulerRange{
+			Expect(m).To(HaveKey(routing.Range{
 				Start: start,
 				End:   start + x,
 			}))

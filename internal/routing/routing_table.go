@@ -81,9 +81,12 @@ func (t *RoutingTable) SetRanges(ctx context.Context, in *rpc.SetRangesRequest) 
 	t.table = nil
 	for addr, ranges := range in.Ranges {
 		for _, r := range ranges.Ranges {
+			var sr Range
+			sr.CloneRpcRange(r)
+
 			t.table = append(t.table, rangeInfo{
 				idx: t.addrs[addr],
-				r:   *r,
+				r:   sr,
 			})
 		}
 	}
@@ -105,9 +108,25 @@ func (t *RoutingTable) findRange(h uint64, rs []rangeInfo) int {
 	return -1
 }
 
+type Range struct {
+	Start uint64
+	End   uint64
+}
+
+func (sr *Range) CloneRpcRange(r *rpc.Range) {
+	sr.Start = r.Start
+	sr.End = r.End
+}
+
+func (sr *Range) ToRpcRange() *rpc.Range {
+	return &rpc.Range{
+		Start: sr.Start,
+		End:   sr.End,
+	}
+}
+
 type rangeInfo struct {
-	// TODO - change to SchedulerRange
-	r   rpc.Range
+	r   Range
 	idx int
 }
 
