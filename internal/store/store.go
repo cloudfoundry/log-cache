@@ -336,12 +336,33 @@ func (s *Store) treeAscTraverse(
 			return true
 		}
 
-		if (t >= end || f(e)) && (t == n.Key.(int64)) {
+		if (t >= end || f(e)) && !isNodeAFudgeSequenceMember(n, 1) {
 			return true
 		}
 	}
 
 	return s.treeAscTraverse(n.Children[1], start, end, f)
+}
+
+func isNodeAFudgeSequenceMember(node *avltree.Node, nextChildIndex int) bool {
+	e := node.Value.(*loggregator_v2.Envelope)
+	timestamp := e.GetTimestamp()
+
+	// check if node is internal to a fudge sequence
+	if timestamp != node.Key.(int64) {
+		return true
+	}
+
+	// node is not internal, but could initiate a fudge sequence
+	// check for children
+	nextChild := node.Children[nextChildIndex]
+	if nextChild == nil {
+		return false
+	}
+
+	// check child for fudge sequence membership
+	nextEnvelope := nextChild.Value.(*loggregator_v2.Envelope)
+	return (nextEnvelope.GetTimestamp() != nextChild.Key.(int64))
 }
 
 func (s *Store) treeDescTraverse(
@@ -362,7 +383,7 @@ func (s *Store) treeDescTraverse(
 			return true
 		}
 
-		if (t < start || f(e)) && (t == n.Key.(int64)) {
+		if (t < start || f(e)) && !isNodeAFudgeSequenceMember(n, 0) {
 			return true
 		}
 	}
