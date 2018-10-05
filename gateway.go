@@ -1,6 +1,7 @@
 package logcache
 
 import (
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -19,7 +20,8 @@ import (
 type Gateway struct {
 	log *log.Logger
 
-	logCacheAddr string
+	logCacheAddr    string
+	logCacheVersion string
 
 	gatewayAddr      string
 	lis              net.Listener
@@ -69,6 +71,14 @@ func WithGatewayBlock() GatewayOption {
 func WithGatewayLogCacheDialOpts(opts ...grpc.DialOption) GatewayOption {
 	return func(g *Gateway) {
 		g.logCacheDialOpts = opts
+	}
+}
+
+// WithGatewayLogCacheDialOpts returns a GatewayOption that the log-cache
+// version returned by the info endpoint.
+func WithGatewayVersion(version string) GatewayOption {
+	return func(g *Gateway) {
+		g.logCacheVersion = version
 	}
 }
 
@@ -128,10 +138,18 @@ func (g *Gateway) listenAndServe() {
 		g.log.Fatalf("failed to register PromQLQuerier handler: %s", err)
 	}
 
-	server := &http.Server{Handler: mux}
+	topLevelMux := http.NewServeMux()
+	topLevelMux.HandleFunc("/api/v1/info", g.handleInfoEndpoint)
+	topLevelMux.Handle("/", mux)
+
+	server := &http.Server{Handler: topLevelMux}
 	if err := server.Serve(g.lis); err != nil {
 		g.log.Fatalf("failed to serve HTTP endpoint: %s", err)
 	}
+}
+
+func (g *Gateway) handleInfoEndpoint(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte(fmt.Sprintf(`{"version":"%s"}`, g.logCacheVersion)))
 }
 
 type errorBody struct {

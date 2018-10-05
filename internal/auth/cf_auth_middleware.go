@@ -203,6 +203,8 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		w.Write([]byte("\n"))
 	})
 
+	router.HandleFunc("/api/v1/info", h.ServeHTTP)
+
 	return router
 }
 

@@ -40,6 +40,7 @@ var _ = Describe("Gateway", func() {
 			logcache.WithGatewayLogCacheDialOpts(
 				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 			),
+			logcache.WithGatewayVersion("1.2.3"),
 		)
 		gw.Start()
 	})
@@ -118,6 +119,19 @@ var _ = Describe("Gateway", func() {
 
 		body, _ := ioutil.ReadAll(resp.Body)
 		Expect(body).To(MatchJSON(`{"status":"success","data":{"resultType":"scalar","result":[99,"0"]}}`))
+	})
+
+	It("returns version information from an info endpoint", func() {
+		path := `api/v1/info`
+		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
+		req, _ := http.NewRequest("GET", URL, nil)
+		resp, err := http.DefaultClient.Do(req)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+		respBytes, err := ioutil.ReadAll(resp.Body)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(respBytes).To(MatchJSON(`{"version":"1.2.3"}`))
 	})
 
 	Context("errors", func() {

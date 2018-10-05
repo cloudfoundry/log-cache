@@ -30,6 +30,7 @@ func main() {
 		logcache.WithGatewayLogCacheDialOpts(
 			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
 		),
+		logcache.WithGatewayVersion(cfg.Version),
 	)
 
 	gateway.Start()

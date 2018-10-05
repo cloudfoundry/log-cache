@@ -364,6 +364,19 @@ var _ = Describe("CfAuthMiddleware", func() {
 			Expect(tc.spyPromQLParser.query).To(Equal(`metric{source_id="some-id"}`))
 		})
 	})
+
+	Describe("/api/v1/info", func() {
+		It("forwards the request to the handler without requiring authentication", func() {
+			tc := setup(`/api/v1/info`)
+			tc.request.Header.Del("Authorization")
+			tc.spyOauth2ClientReader.isAdminResult = false
+
+			tc.invokeAuthHandler()
+
+			Expect(tc.recorder.Code).To(Equal(http.StatusOK))
+			Expect(tc.baseHandlerCalled).To(BeTrue())
+		})
+	})
 })
 
 type spyOauth2ClientReader struct {
