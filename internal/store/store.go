@@ -353,14 +353,16 @@ func isNodeAFudgeSequenceMember(node *avltree.Node, nextChildIndex int) bool {
 		return true
 	}
 
-	// node is not internal, but could initiate a fudge sequence
-	// check for children
+	// node is not internal, but could initiate a fudge sequence, so
+	// check next child
 	nextChild := node.Children[nextChildIndex]
 	if nextChild == nil {
 		return false
 	}
 
-	// check child for fudge sequence membership
+	// if next child exists, check it for fudge sequence membership.
+	// if the child's timestamps don't match, then the parent is the first
+	// member of a fudge sequence.
 	nextEnvelope := nextChild.Value.(*loggregator_v2.Envelope)
 	return (nextEnvelope.GetTimestamp() != nextChild.Key.(int64))
 }

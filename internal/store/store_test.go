@@ -109,44 +109,19 @@ var _ = Describe("Store", func() {
 
 			e0 := buildEnvelope(0, "a")
 			e1 := buildEnvelope(1, "a")
-			e2 := buildEnvelope(2, "a")
-			e3 := buildEnvelope(20, "a")
-			e4 := buildEnvelope(30, "a")
 
 			s.Put(e0, e0.GetSourceId())
-			s.Put(e0, e0.GetSourceId())
-			s.Put(e0, e0.GetSourceId())
-
+			s.Put(e1, e1.GetSourceId())
 			s.Put(e1, e1.GetSourceId())
 
-			s.Put(e2, e2.GetSourceId())
-			s.Put(e2, e2.GetSourceId())
-			s.Put(e2, e2.GetSourceId())
-
-			s.Put(e3, e3.GetSourceId())
-			s.Put(e3, e3.GetSourceId())
-			s.Put(e3, e3.GetSourceId())
-			s.Put(e3, e3.GetSourceId())
-
-			s.Put(e4, e4.GetSourceId())
-
 			start := time.Unix(0, 0)
-			end := time.Unix(0, 21)
-			envelopes := s.Get("a", start, end, nil, 8, false)
-			Expect(envelopes).To(HaveLen(11))
+			end := time.Unix(0, 2)
+			envelopes := s.Get("a", start, end, nil, 2, false)
+			Expect(envelopes).To(HaveLen(3))
 			Expect(envelopes[0].GetTimestamp()).To(Equal(int64(0)))
-			Expect(envelopes[1].GetTimestamp()).To(Equal(int64(0)))
-			Expect(envelopes[2].GetTimestamp()).To(Equal(int64(0)))
-			Expect(envelopes[3].GetTimestamp()).To(Equal(int64(1)))
-			Expect(envelopes[4].GetTimestamp()).To(Equal(int64(2)))
-			Expect(envelopes[5].GetTimestamp()).To(Equal(int64(2)))
-			Expect(envelopes[6].GetTimestamp()).To(Equal(int64(2)))
-			Expect(envelopes[7].GetTimestamp()).To(Equal(int64(20)))
-			Expect(envelopes[8].GetTimestamp()).To(Equal(int64(20)))
-			Expect(envelopes[9].GetTimestamp()).To(Equal(int64(20)))
-			Expect(envelopes[10].GetTimestamp()).To(Equal(int64(20)))
+			Expect(envelopes[1].GetTimestamp()).To(Equal(int64(1)))
+			Expect(envelopes[2].GetTimestamp()).To(Equal(int64(1)))
 		})
-
 	})
 
 	Context("in descending order", func() {
@@ -188,38 +163,18 @@ var _ = Describe("Store", func() {
 
 			e0 := buildEnvelope(0, "a")
 			e1 := buildEnvelope(1, "a")
-			e2 := buildEnvelope(10, "a")
-			e3 := buildEnvelope(20, "a")
-			e4 := buildEnvelope(30, "a")
 
 			s.Put(e0, e0.GetSourceId())
-
+			s.Put(e0, e0.GetSourceId())
 			s.Put(e1, e1.GetSourceId())
-			s.Put(e1, e1.GetSourceId())
 
-			s.Put(e2, e2.GetSourceId())
-			s.Put(e2, e2.GetSourceId())
-			s.Put(e2, e2.GetSourceId())
-
-			s.Put(e3, e3.GetSourceId())
-			s.Put(e3, e3.GetSourceId())
-			s.Put(e3, e3.GetSourceId())
-			s.Put(e3, e3.GetSourceId())
-
-			s.Put(e4, e4.GetSourceId())
-
-			start := time.Unix(0, 10)
-			end := time.Unix(0, 31)
-			envelopes := s.Get("a", start, end, nil, 6, true)
-			Expect(envelopes).To(HaveLen(8))
-			Expect(envelopes[0].GetTimestamp()).To(Equal(int64(30)))
-			Expect(envelopes[1].GetTimestamp()).To(Equal(int64(20)))
-			Expect(envelopes[2].GetTimestamp()).To(Equal(int64(20)))
-			Expect(envelopes[3].GetTimestamp()).To(Equal(int64(20)))
-			Expect(envelopes[4].GetTimestamp()).To(Equal(int64(20)))
-			Expect(envelopes[5].GetTimestamp()).To(Equal(int64(10)))
-			Expect(envelopes[6].GetTimestamp()).To(Equal(int64(10)))
-			Expect(envelopes[7].GetTimestamp()).To(Equal(int64(10)))
+			start := time.Unix(0, 0)
+			end := time.Unix(0, 2)
+			envelopes := s.Get("a", start, end, nil, 2, true)
+			Expect(envelopes).To(HaveLen(3))
+			Expect(envelopes[0].GetTimestamp()).To(Equal(int64(1)))
+			Expect(envelopes[1].GetTimestamp()).To(Equal(int64(0)))
+			Expect(envelopes[2].GetTimestamp()).To(Equal(int64(0)))
 		})
 	})
 
