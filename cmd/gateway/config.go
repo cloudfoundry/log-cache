@@ -12,7 +12,7 @@ type Config struct {
 	Addr         string `env:"ADDR, required, report"`
 	LogCacheAddr string `env:"LOG_CACHE_ADDR, required, report"`
 	HealthAddr   string `env:"HEALTH_ADDR, report"`
-	Version      string
+	Version      string `env:"-, report"`
 
 	TLS tls.TLS
 }
@@ -29,9 +29,9 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
-	if buildVersion != "" {
-		c.Version = buildVersion
-	}
+	c.Version = buildVersion
+
+	envstruct.WriteReport(&c)
 
 	return &c, nil
 }

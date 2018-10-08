@@ -149,7 +149,7 @@ func (g *Gateway) listenAndServe() {
 }
 
 func (g *Gateway) handleInfoEndpoint(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte(fmt.Sprintf(`{"version":"%s"}`, g.logCacheVersion)))
+	w.Write([]byte(fmt.Sprintf(`{"version":"%s"}`+"\n", g.logCacheVersion)))
 }
 
 type errorBody struct {

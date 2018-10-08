@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 
 	"code.cloudfoundry.org/log-cache"
 	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
@@ -132,6 +133,7 @@ var _ = Describe("Gateway", func() {
 		respBytes, err := ioutil.ReadAll(resp.Body)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(respBytes).To(MatchJSON(`{"version":"1.2.3"}`))
+		Expect(strings.HasSuffix(string(respBytes), "\n")).To(BeTrue())
 	})
 
 	Context("errors", func() {
