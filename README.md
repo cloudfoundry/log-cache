@@ -13,27 +13,63 @@ This repository should be imported as:
 
 ## Source IDs
 
-Log Cache indexes everything by the `source_id` field on the [Loggregator Envelope][loggregator_v2].
-The source ID should distinguish the cluster from other clusters. It should not distinguish a specific instance.
+Log Cache indexes data by the `source_id` field on the [Loggregator Envelope][loggregator_v2].
+Source IDs should be unique across applications, but not across instances.
 
 ### Cloud Foundry
 
-In Cloud Foundry terms, the source ID can either represent an application
-guid (e.g. `cf app <app-name> --guid`), or a component name (e.g. `doppler`).
+In Cloud Foundry terms, the source ID can represent an app guid (e.g. `cf app
+<app-name> --guid`), an app name, and/or a component name (e.g. `doppler`).
+All results matching one of these three mechanisms and permitted by
+authorization are returned.
 
-Each request must have the `Authorization` header set with a UAA provided token.
-If the token contains the `doppler.firehose` scope, the request will be able
-to read data from any source ID.
-If the source ID is an app guid, the Cloud Controller is consulted to verify
-if the provided token has the appropriate app access.
+## APIs
 
-## Restful API via Gateway
+Log Cache's API implements two sets of endpoints - `read` and `meta` are
+`source_id` oriented, whereas `query` and `query_range` are `metric` oriented,
+and fulfill the Prometheus API. Either API can be reached via mTLS-authenticated
+gRPC or CF-token-authenticated HTTPS. An info endpoint is also provided for
+service version discoverability.
 
-Log Cache implements a restful interface for getting data.
+### Authentication / Authorization
+
+When querying the API via HTTPS, each request must have the `Authorization`
+header set with a UAA provided token.
+
+The scopes `doppler.firehose` and `logs.admin` are authorized as `admin`, and
+return data for all relevant source IDs. This authorization is required to
+retrieve component logs.
+
+For more limited scopes, Cloud Controller is consulted to establish app
+permissions.
+
+When querying the API via gRPC, authorization for all app and component data
+is granted.
+
+### **GET** `/api/v1/info`
+
+Retrieve JSON representation of deployed Log Cache version.
+
+##### Request
+
+```shell
+$ curl "https://<log-cache-addr>/api/v1/info"
+```
+
+##### Response Body
+
+```json
+{
+  "version": "X.Y.Z"
+}
+```
+
+###
 
 ### **GET** `/api/v1/read/<source-id>`
 
-Get data from Log Cache for the given `source-id`.
+Retrieve data by `source-id`. Returns loggregator-domain `envelopes`,
+potentially containing logs and/or metrics.
 
 ##### Request
 
@@ -51,11 +87,12 @@ Query Parameters:
   is 1000 and defaults to 100.
 
 ```shell
-$ curl "http://<log-cache-addr>:8081/api/v1/read/<source-id>?start_time=<start-time>&end_time=<end-time>"
+$ curl "https://<log-cache-addr>/api/v1/read/<source-id>?start_time=<start-time>&end_time=<end-time>"
 ```
 
 ##### Response Body
-```javascript
+
+```json
 {
   "envelopes": {"batch": [...] }
 }
@@ -66,7 +103,7 @@ $ curl "http://<log-cache-addr>:8081/api/v1/read/<source-id>?start_time=<start-t
 Lists the available source IDs that Log Cache has persisted.
 
 ##### Response Body
-```javascript
+```json
 {
   "meta":{
     "source-id-0":{"count":"100000","expired":"129452","oldestTimestamp":"1524071322998223702","newestTimestamp":"1524081739994226961"},
@@ -82,7 +119,7 @@ Lists the available source IDs that Log Cache has persisted.
    entries for the source, in nanoseconds since the Unix epoch.
 
 
-## Prometheus-Compatible API
+## Prometheus-Compatible Endpoints
 
 ### Notes on PromQL
 The ultimate goal of these endpoints is to create a fully-compliant,
@@ -105,11 +142,11 @@ Issues a PromQL instant query against Log Cache data. You can read more
 detail in the Prometheus documentation [here](https://prometheus.io/docs/prometheus/latest/querying/api/#instant-queries).
 
 ```shell
-$ curl -G "http://<log-cache-addr>:8081/api/v1/query" --data-urlencode 'query=metrics{source_id="source-id-1"}'
+$ curl -G "https://<log-cache-addr>/api/v1/query" --data-urlencode 'query=metrics{source_id="source-id-1"}'
 ```
 
 ##### Response Body
-```javascript
+```json
 {
   "status": "success",
   "data": {
@@ -128,7 +165,7 @@ Issues a PromQL range query against Log Cache data. You can read more detail
 in the Prometheus documentation [here](https://prometheus.io/docs/prometheus/latest/querying/api/#range-queries).
 
 ```shell
-$ curl -G "http://<log-cache-addr>:8081/api/v1/query_range" \
+$ curl -G "https://<log-cache-addr>/api/v1/query_range" \
     --data-urlencode 'query=metrics{source_id="source-id-1"}' \
     --data-urlencode 'start=1537290750' \
     --data-urlencode 'end=1537290760' \
@@ -136,7 +173,7 @@ $ curl -G "http://<log-cache-addr>:8081/api/v1/query_range" \
 ```
 
 ##### Response Body
-```javascript
+```json
 {
   "status": "success",
   "data": {
