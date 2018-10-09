@@ -321,8 +321,8 @@ func TestWalkPassesOpts(t *testing.T) {
 	}
 	u.RawQuery = q.Encode()
 
-	assertQueryParam(t, u, "limit", "99")
-	assertQueryParam(t, u, "envelope_types", "LOG", "GAUGE")
+	assertQueryParam(u, "limit", "99")
+	assertQueryParam(u, "envelope_types", "LOG", "GAUGE")
 }
 
 type stubBackoff struct {

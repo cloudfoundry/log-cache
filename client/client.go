@@ -2,6 +2,7 @@ package logcache
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/rpc/logcache_v1"
+	"github.com/blang/semver"
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"google.golang.org/grpc"
@@ -19,7 +21,8 @@ import (
 
 // Client reads from LogCache via the RESTful or gRPC API.
 type Client struct {
-	addr string
+	addr        string
+	baseApiPath string
 
 	httpClient       HTTPClient
 	grpcClient       logcache_v1.EgressClient
@@ -107,7 +110,13 @@ func (c *Client) Read(
 	if err != nil {
 		return nil, err
 	}
-	u.Path = "/api/v1/read/" + sourceID
+
+	baseApiPath, err := c.getBaseApiPath(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	u.Path = fmt.Sprintf("%s/read/%s", baseApiPath, sourceID)
 	q := u.Query()
 	q.Set("start_time", strconv.FormatInt(start.UnixNano(), 10))
 
@@ -229,8 +238,12 @@ func (c *Client) Meta(ctx context.Context) (map[string]*logcache_v1.MetaInfo, er
 		return nil, err
 	}
 
-	u.Path = "/api/v1/meta"
+	baseApiPath, err := c.getBaseApiPath(ctx)
+	if err != nil {
+		return nil, err
+	}
 
+	u.Path = fmt.Sprintf("%s/meta", baseApiPath)
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
 		return nil, err
@@ -262,6 +275,63 @@ func (c *Client) grpcMeta(ctx context.Context) (map[string]*logcache_v1.MetaInfo
 	}
 
 	return resp.Meta, nil
+}
+
+func (c *Client) getBaseApiPath(ctx context.Context) (string, error) {
+	if c.baseApiPath != "" {
+		return c.baseApiPath, nil
+	}
+
+	logCacheVersion, err := c.logCacheVersion(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	if logCacheVersion.GTE(FIRST_LOG_CACHE_VERSION_AFTER_API_MOVE) {
+		return "/api/v1", nil
+	}
+
+	return "/v1", nil
+}
+
+func (c *Client) logCacheVersion(ctx context.Context) (semver.Version, error) {
+	u, err := url.Parse(c.addr)
+	if err != nil {
+		return semver.Version{}, err
+	}
+
+	u.Path = "/api/v1/info"
+
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return semver.Version{}, err
+	}
+	req = req.WithContext(ctx)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return semver.Version{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return LAST_LOG_CACHE_VERSION_WITHOUT_INFO, nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return semver.Version{}, fmt.Errorf("unexpected status code %d", resp.StatusCode)
+	}
+
+	var info struct {
+		Version string `json:"version"`
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&info)
+	if err != nil {
+		return semver.Version{}, err
+	}
+
+	return semver.Parse(info.Version)
 }
 
 // PromQLOption configures the URL that is used to submit the query. The
@@ -450,3 +520,16 @@ func (c *Client) grpcPromQL(ctx context.Context, query string, opts []PromQLOpti
 	}
 	return resp, nil
 }
+
+var (
+	LAST_LOG_CACHE_VERSION_WITHOUT_INFO = semver.Version{
+		Major: 1,
+		Minor: 4,
+		Patch: 6,
+	}
+	FIRST_LOG_CACHE_VERSION_AFTER_API_MOVE = semver.Version{
+		Major: 2,
+		Minor: 0,
+		Patch: 0,
+	}
+)
