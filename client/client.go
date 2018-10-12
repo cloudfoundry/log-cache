@@ -525,11 +525,11 @@ var (
 	LAST_LOG_CACHE_VERSION_WITHOUT_INFO = semver.Version{
 		Major: 1,
 		Minor: 4,
-		Patch: 6,
+		Patch: 7,
 	}
 	FIRST_LOG_CACHE_VERSION_AFTER_API_MOVE = semver.Version{
-		Major: 1,
-		Minor: 4,
-		Patch: 7,
+		Major: 2,
+		Minor: 0,
+		Patch: 0,
 	}
 )
