@@ -528,8 +528,8 @@ var (
 		Patch: 6,
 	}
 	FIRST_LOG_CACHE_VERSION_AFTER_API_MOVE = semver.Version{
-		Major: 2,
-		Minor: 0,
-		Patch: 0,
+		Major: 1,
+		Minor: 4,
+		Patch: 7,
 	}
 )
