@@ -62,11 +62,6 @@ func NewScheduler(logCacheAddrs []string, opts ...SchedulerOption) *Scheduler {
 		o(s)
 	}
 
-	s.logCacheOrch = orchestrator.New(&comm{
-		log:      s.log,
-		isLeader: s.isLeader,
-	})
-
 	for _, addr := range logCacheAddrs {
 		conn, err := grpc.Dial(addr, s.dialOpts...)
 		if err != nil {
@@ -142,6 +137,11 @@ func WithSchedulerLeadership(isLeader func() bool) SchedulerOption {
 
 // Start starts the scheduler. It does not block.
 func (s *Scheduler) Start() {
+	s.logCacheOrch = orchestrator.New(&comm{
+		log:      s.log,
+		isLeader: s.isLeader,
+	}, orchestrator.WithLogger(s.log))
+
 	for _, lc := range s.logCacheClients {
 		s.logCacheOrch.AddWorker(lc)
 	}
