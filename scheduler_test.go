@@ -161,11 +161,11 @@ var _ = Describe("Scheduler", func() {
 
 			Eventually(func() int {
 				return len(logCacheSpy1.removeReqs())
-			}, 5).Should(BeNumerically(">=", 3))
+			}).Should(BeNumerically(">=", 3))
 
 			Eventually(func() int {
 				return len(logCacheSpy2.addReqs())
-			}, 5).Should(BeNumerically(">=", 3))
+			}).Should(BeNumerically(">=", 3))
 		})
 	})
 
@@ -184,8 +184,8 @@ var _ = Describe("Scheduler", func() {
 			Consistently(logCacheSpy2.removeReqs).Should(BeEmpty())
 
 			leadershipSpy.setResult(true)
-			Eventually(logCacheSpy1.setCount, 5).ShouldNot(BeZero())
-			Eventually(logCacheSpy2.setCount, 5).ShouldNot(BeZero())
+			Eventually(logCacheSpy1.setCount).ShouldNot(BeZero())
+			Eventually(logCacheSpy2.setCount).ShouldNot(BeZero())
 
 			Consistently(logCacheSpy1.addReqs).ShouldNot(BeEmpty())
 			Consistently(logCacheSpy2.addReqs).ShouldNot(BeEmpty())
