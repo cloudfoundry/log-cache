@@ -169,7 +169,9 @@ func (s *Scheduler) Start() {
 	)
 
 	go func() {
-		for range time.Tick(s.interval) {
+		// Waits until after the first run of the loop to read from t
+		// https://groups.google.com/forum/m/#!topic/golang-nuts/H_55uzPp98s
+		for t := time.Tick(s.interval); ; <-t {
 
 			// Apply changes
 			s.logCacheOrch.NextTerm(context.Background())

@@ -105,6 +105,24 @@ var _ = Describe("Scheduler", func() {
 		Expect(logCacheSpy1.removeReqs()).To(BeEmpty())
 	})
 
+	It("schedules on startup", func() {
+		startupLogCacheSpy := startSpyOrchestration()
+		startupLeadershipSpy := newSpyLeadership(true)
+
+		s = logcache.NewScheduler(
+			[]string{
+				startupLogCacheSpy.lis.Addr().String(),
+			},
+			logcache.WithSchedulerInterval(time.Hour),
+			logcache.WithSchedulerCount(7),
+			logcache.WithSchedulerReplicationFactor(1),
+			logcache.WithSchedulerLeadership(startupLeadershipSpy.IsLeader),
+		)
+		s.Start()
+
+		Eventually(startupLogCacheSpy.reqCount).Should(BeNumerically(">=", 7))
+	})
+
 	Describe("Log Cache Ranges", func() {
 		It("sets the range table after listing all the nodes", func() {
 			s.Start()
