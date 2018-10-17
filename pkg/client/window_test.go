@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"code.cloudfoundry.org/log-cache/client"
+	"code.cloudfoundry.org/log-cache/pkg/client"
 )
 
 func TestWindowAdvancesStartTime(t *testing.T) {

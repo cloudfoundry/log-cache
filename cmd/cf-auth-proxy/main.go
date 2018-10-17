@@ -14,11 +14,11 @@ import (
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
 	"code.cloudfoundry.org/log-cache"
-	gologcache "code.cloudfoundry.org/log-cache/client"
 	"code.cloudfoundry.org/log-cache/internal/pkg/auth"
 	"code.cloudfoundry.org/log-cache/internal/pkg/metrics"
 	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
 	logtls "code.cloudfoundry.org/log-cache/internal/pkg/tls"
+	gologcache "code.cloudfoundry.org/log-cache/pkg/client"
 )
 
 func main() {

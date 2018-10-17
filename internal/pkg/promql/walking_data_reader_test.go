@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	logcache "code.cloudfoundry.org/log-cache/client"
 	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
+	logcache "code.cloudfoundry.org/log-cache/pkg/client"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 
 	. "github.com/onsi/ginkgo"

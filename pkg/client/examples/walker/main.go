@@ -10,7 +10,7 @@ import (
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	logcache "code.cloudfoundry.org/log-cache/client"
+	logcache "code.cloudfoundry.org/log-cache/pkg/client"
 )
 
 func main() {

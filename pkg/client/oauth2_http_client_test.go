@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"code.cloudfoundry.org/log-cache/client"
+	"code.cloudfoundry.org/log-cache/pkg/client"
 )
 
 var _ logcache.HTTPClient = &logcache.Oauth2HTTPClient{}

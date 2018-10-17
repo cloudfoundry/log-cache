@@ -8,12 +8,12 @@ This is a golang client library for [Log-Cache][log-cache].
 
 This repository should be imported as:
 
-`import logcache "code.cloudfoundry.org/log-cache/client"`
+`import logcache "code.cloudfoundry.org/log-cache/pkg/client"`
 
 **NOTE**: This client library is compatible with `log-cache` versions 1.5.x and
 above. For versions 1.4.x and below, please use [`go-log-cache`][go-log-cache].
 
-Also, the master branch of `log-cache/client` reflects current (potentially
+Also, the master branch of `log-cache/pkg/client` reflects current (potentially
 development) state of `log-cache-release`. Branches are provided for
 compatibility with released versions of `log-cache`.
 

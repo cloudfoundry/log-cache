@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	logcache "code.cloudfoundry.org/log-cache/client"
+	logcache "code.cloudfoundry.org/log-cache/pkg/client"
 )
 
 func main() {
