@@ -1,7 +1,7 @@
 package routing_test
 
 import (
-	"code.cloudfoundry.org/log-cache/internal/routing"
+	"code.cloudfoundry.org/log-cache/internal/pkg/routing"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

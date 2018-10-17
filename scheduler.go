@@ -10,7 +10,7 @@ import (
 	"expvar"
 
 	orchestrator "code.cloudfoundry.org/go-orchestrator"
-	"code.cloudfoundry.org/log-cache/internal/routing"
+	"code.cloudfoundry.org/log-cache/internal/pkg/routing"
 	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"

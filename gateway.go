@@ -12,7 +12,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"code.cloudfoundry.org/log-cache/internal/gateway"
+	"code.cloudfoundry.org/log-cache/internal/pkg/gateway"
 	"code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 )
 

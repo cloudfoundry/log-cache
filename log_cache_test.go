@@ -19,7 +19,7 @@ import (
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache"
-	logtls "code.cloudfoundry.org/log-cache/internal/tls"
+	logtls "code.cloudfoundry.org/log-cache/internal/pkg/tls"
 	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 
 	. "github.com/onsi/ginkgo"

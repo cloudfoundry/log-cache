@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"code.cloudfoundry.org/log-cache/internal/routing"
+	"code.cloudfoundry.org/log-cache/internal/pkg/routing"
 	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 
 	. "github.com/onsi/ginkgo"

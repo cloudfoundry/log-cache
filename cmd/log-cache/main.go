@@ -9,7 +9,7 @@ import (
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
 	logcache "code.cloudfoundry.org/log-cache"
-	"code.cloudfoundry.org/log-cache/internal/metrics"
+	"code.cloudfoundry.org/log-cache/internal/pkg/metrics"
 	"google.golang.org/grpc"
 )
 

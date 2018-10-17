@@ -12,9 +12,9 @@ import (
 	"google.golang.org/grpc"
 
 	logcache "code.cloudfoundry.org/log-cache/client"
-	"code.cloudfoundry.org/log-cache/internal/promql"
-	"code.cloudfoundry.org/log-cache/internal/routing"
-	"code.cloudfoundry.org/log-cache/internal/store"
+	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
+	"code.cloudfoundry.org/log-cache/internal/pkg/routing"
+	"code.cloudfoundry.org/log-cache/internal/pkg/store"
 	"code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 )
 

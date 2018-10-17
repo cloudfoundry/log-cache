@@ -6,7 +6,7 @@ import (
 	"log"
 	"sync"
 
-	"code.cloudfoundry.org/log-cache/internal/auth"
+	"code.cloudfoundry.org/log-cache/internal/pkg/auth"
 
 	"errors"
 	"net/http"

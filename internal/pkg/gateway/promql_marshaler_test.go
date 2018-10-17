@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"code.cloudfoundry.org/log-cache/internal/gateway"
+	"code.cloudfoundry.org/log-cache/internal/pkg/gateway"
 	"code.cloudfoundry.org/log-cache/rpc/logcache_v1"
 
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"

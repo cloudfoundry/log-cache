@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"code.cloudfoundry.org/log-cache/internal/promql"
+	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"

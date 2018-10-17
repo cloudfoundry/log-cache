@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"code.cloudfoundry.org/log-cache/internal/auth"
+	"code.cloudfoundry.org/log-cache/internal/pkg/auth"
 
 	"context"
 

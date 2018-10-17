@@ -3,7 +3,7 @@ package metrics_test
 import (
 	"expvar"
 
-	"code.cloudfoundry.org/log-cache/internal/metrics"
+	"code.cloudfoundry.org/log-cache/internal/pkg/metrics"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

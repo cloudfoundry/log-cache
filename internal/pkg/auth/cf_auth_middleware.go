@@ -12,7 +12,7 @@ import (
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/gorilla/mux"
 
-	"code.cloudfoundry.org/log-cache/internal/promql"
+	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
 )
 
 type CFAuthMiddlewareProvider struct {

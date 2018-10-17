@@ -5,7 +5,7 @@ import (
 	"time"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
-	"code.cloudfoundry.org/log-cache/internal/tls"
+	"code.cloudfoundry.org/log-cache/internal/pkg/tls"
 )
 
 var (

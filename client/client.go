@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"code.cloudfoundry.org/log-cache/internal/gateway"
+	"code.cloudfoundry.org/log-cache/internal/pkg/gateway"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/rpc/logcache_v1"
