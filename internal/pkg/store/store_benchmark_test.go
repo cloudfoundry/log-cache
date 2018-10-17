@@ -9,7 +9,7 @@ import (
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/pkg/store"
-	"code.cloudfoundry.org/log-cache/rpc/logcache_v1"
+	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 )
 
 const (

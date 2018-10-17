@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"code.cloudfoundry.org/log-cache"
-	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
+	rpc "code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 

@@ -8,7 +8,7 @@ import (
 
 	"context"
 
-	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
+	rpc "code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/gorilla/mux"
 

@@ -7,7 +7,7 @@ import (
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	logcache "code.cloudfoundry.org/log-cache/client"
 	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
-	"code.cloudfoundry.org/log-cache/rpc/logcache_v1"
+	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

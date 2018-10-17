@@ -7,7 +7,7 @@ import (
 
 	"code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/pkg/routing"
-	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
+	rpc "code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"golang.org/x/net/context"

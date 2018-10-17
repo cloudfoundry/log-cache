@@ -10,7 +10,7 @@ import (
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/client"
-	rpc "code.cloudfoundry.org/log-cache/rpc/logcache_v1"
+	rpc "code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 )
 
 // Ensure logcache.Reader is fulfilled by Client.Read
