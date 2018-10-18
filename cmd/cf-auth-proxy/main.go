@@ -18,7 +18,7 @@ import (
 	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
 	. "code.cloudfoundry.org/log-cache/internal/pkg/proxy"
 	logtls "code.cloudfoundry.org/log-cache/internal/pkg/tls"
-	client "code.cloudfoundry.org/log-cache/pkg/client"
+	"code.cloudfoundry.org/log-cache/pkg/client"
 )
 
 func main() {

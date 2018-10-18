@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	logcache "code.cloudfoundry.org/log-cache/pkg/client"
+	"code.cloudfoundry.org/log-cache/pkg/client"
 )
 
 func main() {
@@ -41,8 +41,8 @@ func main() {
 		panic(fmt.Sprintf("missing required environment variables: %s", strings.Join(missing, ", ")))
 	}
 
-	c := logcache.NewOauth2HTTPClient(uaaAddr, uaaClient, uaaClientSecret,
-		logcache.WithOauth2HTTPUser(username, password),
+	c := client.NewOauth2HTTPClient(uaaAddr, uaaClient, uaaClientSecret,
+		client.WithOauth2HTTPUser(username, password),
 	)
 
 	req, err := http.NewRequest(http.MethodGet, logCacheAddr+"/api/v1/meta", nil)

@@ -16,7 +16,7 @@ import (
 	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
 	"code.cloudfoundry.org/log-cache/internal/pkg/promql/data_reader"
 	"code.cloudfoundry.org/log-cache/internal/pkg/routing"
-	logcache "code.cloudfoundry.org/log-cache/pkg/client"
+	"code.cloudfoundry.org/log-cache/pkg/client"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 )
 
@@ -239,7 +239,7 @@ func (c *LogCache) setupRouting(s *store.Store) {
 
 	promQL := promql.New(
 		data_reader.NewWalkingDataReader(
-			logcache.NewClient(c.Addr(), logcache.WithViaGRPC(c.dialOpts...)).Read,
+			client.NewClient(c.Addr(), client.WithViaGRPC(c.dialOpts...)).Read,
 		),
 		c.metrics,
 		c.log,

@@ -1,4 +1,4 @@
-package logcache_test
+package client_test
 
 import (
 	"bytes"
@@ -12,18 +12,18 @@ import (
 	"code.cloudfoundry.org/log-cache/pkg/client"
 )
 
-var _ logcache.HTTPClient = &logcache.Oauth2HTTPClient{}
+var _ client.HTTPClient = &client.Oauth2HTTPClient{}
 
 func TestOauth2HTTPClient(t *testing.T) {
 	t.Parallel()
 
 	stubClient := newStubHTTPClient()
 
-	c := logcache.NewOauth2HTTPClient(
+	c := client.NewOauth2HTTPClient(
 		"http://oauth2.something.com",
 		"my-user",
 		"my-password",
-		logcache.WithOauth2HTTPClient(stubClient),
+		client.WithOauth2HTTPClient(stubClient),
 	)
 	req, err := http.NewRequest("GET", "http://some-target.com", nil)
 	if err != nil {
@@ -124,12 +124,12 @@ func TestOauth2HTTPClientWithPasswordGrant(t *testing.T) {
 
 	stubClient := newStubHTTPClient()
 
-	c := logcache.NewOauth2HTTPClient(
+	c := client.NewOauth2HTTPClient(
 		"http://oauth2.something.com",
 		"client",
 		"client-secret",
-		logcache.WithOauth2HTTPClient(stubClient),
-		logcache.WithOauth2HTTPUser("user", "user-password"),
+		client.WithOauth2HTTPClient(stubClient),
+		client.WithOauth2HTTPUser("user", "user-password"),
 	)
 
 	req, err := http.NewRequest("GET", "http://some-target.com", nil)
@@ -212,11 +212,11 @@ func TestOauth2HTTPReturnsErrorForNon200(t *testing.T) {
 	})
 	stubClient.errs = append(stubClient.errs, nil)
 
-	c := logcache.NewOauth2HTTPClient(
+	c := client.NewOauth2HTTPClient(
 		"http://oauth2.something.com",
 		"my-user",
 		"my-password",
-		logcache.WithOauth2HTTPClient(stubClient),
+		client.WithOauth2HTTPClient(stubClient),
 	)
 	req, err := http.NewRequest("GET", "http://some-target.com", nil)
 	if err != nil {
@@ -234,11 +234,11 @@ func TestOauth2HTTPClientReusesToken(t *testing.T) {
 
 	stubClient := newStubHTTPClient()
 
-	c := logcache.NewOauth2HTTPClient(
+	c := client.NewOauth2HTTPClient(
 		"http://oauth2.something.com",
 		"my-user",
 		"my-password",
-		logcache.WithOauth2HTTPClient(stubClient),
+		client.WithOauth2HTTPClient(stubClient),
 	)
 	req, err := http.NewRequest("GET", "http://some-target.com", nil)
 	if err != nil {
@@ -265,11 +265,11 @@ func TestOauth2HTTPClientClearsTokenOnNonSuccessfulStatusCode(t *testing.T) {
 	stubClient.resps = append(stubClient.resps, tokenResp(), &http.Response{StatusCode: 404}, &http.Response{StatusCode: 199})
 	stubClient.errs = append(stubClient.errs, nil, nil, nil)
 
-	c := logcache.NewOauth2HTTPClient(
+	c := client.NewOauth2HTTPClient(
 		"http://oauth2.something.com",
 		"my-user",
 		"my-password",
-		logcache.WithOauth2HTTPClient(stubClient),
+		client.WithOauth2HTTPClient(stubClient),
 	)
 	req, err := http.NewRequest("GET", "http://some-target.com", nil)
 	if err != nil {
@@ -303,11 +303,11 @@ func TestOauth2HTTPClientDoesNothingIfHeaderExists(t *testing.T) {
 
 	stubClient := newStubHTTPClient()
 
-	c := logcache.NewOauth2HTTPClient(
+	c := client.NewOauth2HTTPClient(
 		"http://oauth2.something.com",
 		"my-user",
 		"my-password",
-		logcache.WithOauth2HTTPClient(stubClient),
+		client.WithOauth2HTTPClient(stubClient),
 	)
 	req, err := http.NewRequest("GET", "http://some-target.com", nil)
 	if err != nil {
@@ -330,11 +330,11 @@ func TestOauth2HTTPClientSurvivesRaceDetector(t *testing.T) {
 
 	stubClient := newStubHTTPClient()
 
-	c := logcache.NewOauth2HTTPClient(
+	c := client.NewOauth2HTTPClient(
 		"http://oauth2.something.com",
 		"my-user",
 		"my-password",
-		logcache.WithOauth2HTTPClient(stubClient),
+		client.WithOauth2HTTPClient(stubClient),
 	)
 
 	var wg sync.WaitGroup

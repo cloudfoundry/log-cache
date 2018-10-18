@@ -1,4 +1,4 @@
-package logcache
+package client
 
 import (
 	"context"

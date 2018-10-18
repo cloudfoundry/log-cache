@@ -1,4 +1,4 @@
-package logcache_test
+package client_test
 
 import (
 	"context"
@@ -15,7 +15,7 @@ func TestWindowAdvancesStartTime(t *testing.T) {
 	w := windowSetup(t)
 	w.v.result = []bool{true, false}
 
-	logcache.Window(w.ctx, w.v.visit, w.w.walk, logcache.WithWindowInterval(time.Nanosecond))
+	client.Window(w.ctx, w.v.visit, w.w.walk, client.WithWindowInterval(time.Nanosecond))
 
 	if len(w.w.starts) != 2 {
 		t.Fatalf("expected walk to have 2 starts: %d", len(w.w.starts))
@@ -50,7 +50,7 @@ func TestWindowQueriesOverARange(t *testing.T) {
 	w := windowSetup(t)
 
 	w.cancel()
-	logcache.Window(w.ctx, w.v.visit, w.w.walk, logcache.WithWindowInterval(time.Nanosecond))
+	client.Window(w.ctx, w.v.visit, w.w.walk, client.WithWindowInterval(time.Nanosecond))
 
 	if len(w.w.starts) != 1 {
 		t.Fatalf("expected walk to have 1 start: %d", len(w.w.starts))
@@ -69,9 +69,9 @@ func TestWindowUsesGivenStartTime(t *testing.T) {
 	w := windowSetup(t)
 
 	w.cancel()
-	logcache.Window(w.ctx, w.v.visit, w.w.walk,
-		logcache.WithWindowStartTime(time.Unix(1, 0)),
-		logcache.WithWindowInterval(time.Nanosecond),
+	client.Window(w.ctx, w.v.visit, w.w.walk,
+		client.WithWindowStartTime(time.Unix(1, 0)),
+		client.WithWindowInterval(time.Nanosecond),
 	)
 
 	if len(w.w.starts) != 1 {
@@ -91,10 +91,10 @@ func TestWindowUsesGivenWidth(t *testing.T) {
 	w := windowSetup(t)
 
 	w.cancel()
-	logcache.Window(w.ctx, w.v.visit, w.w.walk,
-		logcache.WithWindowStartTime(time.Unix(1, 0)),
-		logcache.WithWindowWidth(time.Minute),
-		logcache.WithWindowInterval(time.Nanosecond),
+	client.Window(w.ctx, w.v.visit, w.w.walk,
+		client.WithWindowStartTime(time.Unix(1, 0)),
+		client.WithWindowWidth(time.Minute),
+		client.WithWindowInterval(time.Nanosecond),
 	)
 
 	if len(w.w.starts) != 1 {
@@ -113,9 +113,9 @@ func TestWindowUsesGivenWidth(t *testing.T) {
 func TestWindowUsesGivenWidthWithoutStartSet(t *testing.T) {
 	w := windowSetup(t)
 
-	logcache.Window(w.ctx, w.v.visit, w.w.walk,
-		logcache.WithWindowWidth(time.Minute),
-		logcache.WithWindowInterval(time.Nanosecond),
+	client.Window(w.ctx, w.v.visit, w.w.walk,
+		client.WithWindowWidth(time.Minute),
+		client.WithWindowInterval(time.Nanosecond),
 	)
 
 	if len(w.w.starts) != 1 {
@@ -137,11 +137,11 @@ func TestWindowCreatesWalkContextWithTimeoutAsInterval(t *testing.T) {
 	now := time.Now()
 	interval := 100 * time.Millisecond
 
-	logcache.Window(
+	client.Window(
 		w.ctx,
 		w.v.visit,
 		w.w.walk,
-		logcache.WithWindowInterval(interval),
+		client.WithWindowInterval(interval),
 	)
 
 	if len(w.w.ctxs) != 1 {
@@ -178,7 +178,7 @@ func TestBuildWalker(t *testing.T) {
 
 	w.r.errs = append(w.r.errs, nil, nil)
 
-	ww := logcache.BuildWalker("some-id", w.r.read)
+	ww := client.BuildWalker("some-id", w.r.read)
 
 	es := ww(w.ctx, time.Unix(0, 100), time.Unix(0, 200))
 
@@ -223,7 +223,7 @@ func TestWalkerStopsReadingAfterError(t *testing.T) {
 
 	w.r.errs = append(w.r.errs, nil, errors.New("some-error"), nil)
 
-	ww := logcache.BuildWalker("some-id", w.r.read)
+	ww := client.BuildWalker("some-id", w.r.read)
 
 	es := ww(w.ctx, time.Unix(0, 100), time.Unix(0, 200))
 

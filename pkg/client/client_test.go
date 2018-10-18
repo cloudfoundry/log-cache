@@ -1,4 +1,4 @@
-package logcache_test
+package client_test
 
 import (
 	"bytes"
@@ -22,17 +22,17 @@ import (
 	. "github.com/onsi/gomega/gstruct"
 )
 
-// Assert that logcache.Reader is fulfilled by Client.Read
-var _ logcache.Reader = logcache.Reader(logcache.NewClient("").Read)
+// Assert that client.Reader is fulfilled by Client.Read
+var _ client.Reader = client.Reader(client.NewClient("").Read)
 
 var _ = Describe("Log Cache Client", func() {
 	Context("HTTP client", func() {
 		Describe("Read", func() {
 			It("reads envelopes", func() {
 				logCache := newStubLogCache()
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
-				envelopes, err := client.Read(context.Background(), "some-id", time.Unix(0, 99))
+				envelopes, err := logcache_client.Read(context.Background(), "some-id", time.Unix(0, 99))
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(envelopes).To(HaveLen(2))
@@ -51,9 +51,9 @@ var _ = Describe("Log Cache Client", func() {
 
 			It("falls back to pre-1.4.7 endpoint", func() {
 				logCache := newStubOldLogCache()
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
-				envelopes, err := client.Read(context.Background(), "some-id", time.Unix(0, 99))
+				envelopes, err := logcache_client.Read(context.Background(), "some-id", time.Unix(0, 99))
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(envelopes).To(HaveLen(2))
@@ -72,16 +72,16 @@ var _ = Describe("Log Cache Client", func() {
 
 			It("respects options", func() {
 				logCache := newStubLogCache()
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
-				_, err := client.Read(
+				_, err := logcache_client.Read(
 					context.Background(),
 					"some-id",
 					time.Unix(0, 99),
-					logcache.WithEndTime(time.Unix(0, 101)),
-					logcache.WithLimit(103),
-					logcache.WithEnvelopeTypes(rpc.EnvelopeType_LOG, rpc.EnvelopeType_GAUGE),
-					logcache.WithDescending(),
+					client.WithEndTime(time.Unix(0, 101)),
+					client.WithLimit(103),
+					client.WithEnvelopeTypes(rpc.EnvelopeType_LOG, rpc.EnvelopeType_GAUGE),
+					client.WithDescending(),
 				)
 
 				Expect(err).ToNot(HaveOccurred())
@@ -100,8 +100,8 @@ var _ = Describe("Log Cache Client", func() {
 
 			It("closes the body", func() {
 				spyHTTPClient := newSpyHTTPClient()
-				client := logcache.NewClient("", logcache.WithHTTPClient(spyHTTPClient))
-				client.Read(context.Background(), "some-name", time.Now())
+				logcache_client := client.NewClient("", client.WithHTTPClient(spyHTTPClient))
+				logcache_client.Read(context.Background(), "some-name", time.Now())
 
 				Expect(spyHTTPClient.body.closed).To(BeTrue())
 			})
@@ -109,51 +109,51 @@ var _ = Describe("Log Cache Client", func() {
 			It("returns an error on a non-200 status", func() {
 				logCache := newStubLogCache()
 				logCache.statusCode = 500
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
-				_, err := client.Read(context.Background(), "some-id", time.Unix(0, 99))
+				_, err := logcache_client.Read(context.Background(), "some-id", time.Unix(0, 99))
 				Expect(err).To(HaveOccurred())
 			})
 
 			It("returns an error on invalid JSON", func() {
 				logCache := newStubLogCache()
 				logCache.result["GET/api/v1/read/some-id"] = []byte("invalid")
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
-				_, err := client.Read(context.Background(), "some-id", time.Unix(0, 99))
+				_, err := logcache_client.Read(context.Background(), "some-id", time.Unix(0, 99))
 				Expect(err).To(HaveOccurred())
 			})
 
 			It("returns an error on empty JSON", func() {
 				logCache := newStubLogCache()
 				logCache.result["GET/api/v1/read/some-id"] = []byte("{}")
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
-				_, err := client.Read(context.Background(), "some-id", time.Unix(0, 99))
+				_, err := logcache_client.Read(context.Background(), "some-id", time.Unix(0, 99))
 				Expect(err).ToNot(HaveOccurred())
 			})
 
 			It("returns an error on an invalid URL", func() {
-				client := logcache.NewClient("http://invalid.url")
+				logcache_client := client.NewClient("http://invalid.url")
 
-				_, err := client.Read(context.Background(), "some-id", time.Unix(0, 99))
+				_, err := logcache_client.Read(context.Background(), "some-id", time.Unix(0, 99))
 				Expect(err).To(HaveOccurred())
 
-				client = logcache.NewClient("-:-invalid")
+				logcache_client = client.NewClient("-:-invalid")
 
-				_, err = client.Read(context.Background(), "some-id", time.Unix(0, 99))
+				_, err = logcache_client.Read(context.Background(), "some-id", time.Unix(0, 99))
 				Expect(err).To(HaveOccurred())
 			})
 
 			It("returns an error when the read is cancelled", func() {
 				logCache := newStubLogCache()
 				logCache.block = true
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
 
-				_, err := client.Read(ctx, "some-id", time.Unix(0, 99))
+				_, err := logcache_client.Read(ctx, "some-id", time.Unix(0, 99))
 				Expect(err).To(HaveOccurred())
 			})
 		})
@@ -161,9 +161,9 @@ var _ = Describe("Log Cache Client", func() {
 		Describe("Meta", func() {
 			It("retrieves meta information", func() {
 				logCache := newStubLogCache()
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
-				meta, err := client.Meta(context.Background())
+				meta, err := logcache_client.Meta(context.Background())
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(meta).To(HaveLen(2))
@@ -173,9 +173,9 @@ var _ = Describe("Log Cache Client", func() {
 
 			It("falls back to the pre-1.4.7 endpoint", func() {
 				logCache := newStubOldLogCache()
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
-				_, err := client.Meta(context.Background())
+				_, err := logcache_client.Meta(context.Background())
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(logCache.reqs).To(HaveLen(2))
@@ -185,45 +185,45 @@ var _ = Describe("Log Cache Client", func() {
 
 			It("closes the body", func() {
 				spyHTTPClient := newSpyHTTPClient()
-				client := logcache.NewClient("", logcache.WithHTTPClient(spyHTTPClient))
-				client.Meta(context.Background())
+				logcache_client := client.NewClient("", client.WithHTTPClient(spyHTTPClient))
+				logcache_client.Meta(context.Background())
 
 				Expect(spyHTTPClient.body.closed).To(BeTrue())
 			})
 
 			It("returns an error when the request fails", func() {
-				client := logcache.NewClient("https://some-bad-addr")
-				_, err := client.Meta(context.Background())
+				logcache_client := client.NewClient("https://some-bad-addr")
+				_, err := logcache_client.Meta(context.Background())
 				Expect(err).To(HaveOccurred())
 			})
 
 			It("returns an error on a non-200 status", func() {
 				logCache := newStubLogCache()
 				logCache.statusCode = http.StatusNotFound
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
-				_, err := client.Meta(context.Background())
+				_, err := logcache_client.Meta(context.Background())
 				Expect(err).To(HaveOccurred())
 			})
 
 			It("returns an error on invalid JSON", func() {
 				logCache := newStubLogCache()
 				logCache.result["GET/api/v1/meta"] = []byte("not-real-result")
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
-				_, err := client.Meta(context.Background())
+				_, err := logcache_client.Meta(context.Background())
 				Expect(err).To(HaveOccurred())
 			})
 
 			It("returns an error when the context is cancelled", func() {
 				logCache := newStubLogCache()
 				logCache.block = true
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
 
-				_, err := client.Meta(ctx)
+				_, err := logcache_client.Meta(ctx)
 				Expect(err).To(HaveOccurred())
 			})
 		})
@@ -231,9 +231,9 @@ var _ = Describe("Log Cache Client", func() {
 		Describe("PromQL", func() {
 			It("reads points", func() {
 				logCache := newStubLogCache()
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
-				result, err := client.PromQL(context.Background(), `some-query`)
+				result, err := logcache_client.PromQL(context.Background(), `some-query`)
 				Expect(err).ToNot(HaveOccurred())
 
 				samples := result.GetVector().GetSamples()
@@ -253,12 +253,12 @@ var _ = Describe("Log Cache Client", func() {
 
 			It("respects options", func() {
 				logCache := newStubLogCache()
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
-				_, err := client.PromQL(
+				_, err := logcache_client.PromQL(
 					context.Background(),
 					"some-query",
-					logcache.WithPromQLTime(time.Unix(101, 455700000)),
+					client.WithPromQLTime(time.Unix(101, 455700000)),
 				)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -271,8 +271,8 @@ var _ = Describe("Log Cache Client", func() {
 
 			It("closes the body", func() {
 				spyHTTPClient := newSpyHTTPClient()
-				client := logcache.NewClient("", logcache.WithHTTPClient(spyHTTPClient))
-				client.PromQL(context.Background(), "some-query")
+				logcache_client := client.NewClient("", client.WithHTTPClient(spyHTTPClient))
+				logcache_client.PromQL(context.Background(), "some-query")
 
 				Expect(spyHTTPClient.body.closed).To(BeTrue())
 			})
@@ -280,44 +280,44 @@ var _ = Describe("Log Cache Client", func() {
 			It("returns an error on a non-200 status", func() {
 				logCache := newStubLogCache()
 				logCache.statusCode = 500
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
-				_, err := client.PromQL(context.Background(), "some-query")
+				_, err := logcache_client.PromQL(context.Background(), "some-query")
 				Expect(err).To(HaveOccurred())
 			})
 
 			It("returns an error on invalid JSON", func() {
 				logCache := newStubLogCache()
 				logCache.result["GET/api/v1/query"] = []byte("invalid")
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
-				_, err := client.PromQL(context.Background(), "some-query")
+				_, err := logcache_client.PromQL(context.Background(), "some-query")
 				Expect(err).To(HaveOccurred())
 			})
 
 			It("returns an error on unreachable URL", func() {
-				client := logcache.NewClient("http://invalid.url")
+				logcache_client := client.NewClient("http://invalid.url")
 
-				_, err := client.PromQL(context.Background(), "some-query")
+				_, err := logcache_client.PromQL(context.Background(), "some-query")
 				Expect(err).To(HaveOccurred())
 			})
 
 			It("returns an error on an invalid URL", func() {
-				client := logcache.NewClient("-:-invalid")
+				logcache_client := client.NewClient("-:-invalid")
 
-				_, err := client.PromQL(context.Background(), "some-query")
+				_, err := logcache_client.PromQL(context.Background(), "some-query")
 				Expect(err).To(HaveOccurred())
 			})
 
 			It("returns an error on an invalid URL", func() {
 				logCache := newStubLogCache()
 				logCache.block = true
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
 
-				_, err := client.PromQL(ctx, "some-query")
+				_, err := logcache_client.PromQL(ctx, "some-query")
 				Expect(err).To(HaveOccurred())
 			})
 		})
@@ -325,16 +325,16 @@ var _ = Describe("Log Cache Client", func() {
 		Describe("PromQLRange", func() {
 			It("retrieves points", func() {
 				logCache := newStubLogCache()
-				client := logcache.NewClient(logCache.addr())
+				logcache_client := client.NewClient(logCache.addr())
 				start := time.Unix(time.Now().Unix(), 123000000)
 				end := start.Add(time.Minute)
 
-				result, err := client.PromQLRange(
+				result, err := logcache_client.PromQLRange(
 					context.Background(),
 					`some-query`,
-					logcache.WithPromQLStart(start),
-					logcache.WithPromQLEnd(end),
-					logcache.WithPromQLStep("5m"),
+					client.WithPromQLStart(start),
+					client.WithPromQLEnd(end),
+					client.WithPromQLStep("5m"),
 				)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -364,15 +364,15 @@ var _ = Describe("Log Cache Client", func() {
 		Describe("Read", func() {
 			It("reads envelopes", func() {
 				logCache := newStubGrpcLogCache()
-				client := logcache.NewClient(logCache.addr(), logcache.WithViaGRPC(grpc.WithInsecure()))
+				logcache_client := client.NewClient(logCache.addr(), client.WithViaGRPC(grpc.WithInsecure()))
 
 				endTime := time.Now()
 
-				envelopes, err := client.Read(context.Background(), "some-id", time.Unix(0, 99),
-					logcache.WithLimit(10),
-					logcache.WithEndTime(endTime),
-					logcache.WithEnvelopeTypes(rpc.EnvelopeType_LOG, rpc.EnvelopeType_GAUGE),
-					logcache.WithDescending(),
+				envelopes, err := logcache_client.Read(context.Background(), "some-id", time.Unix(0, 99),
+					client.WithLimit(10),
+					client.WithEndTime(endTime),
+					client.WithEnvelopeTypes(rpc.EnvelopeType_LOG, rpc.EnvelopeType_GAUGE),
+					client.WithDescending(),
 				)
 
 				Expect(err).ToNot(HaveOccurred())
@@ -402,18 +402,18 @@ var _ = Describe("Log Cache Client", func() {
 			It("returns an error when the context is cancelled", func() {
 				logCache := newStubGrpcLogCache()
 				logCache.block = true
-				client := logcache.NewClient(logCache.addr(), logcache.WithViaGRPC(grpc.WithInsecure()))
+				logcache_client := client.NewClient(logCache.addr(), client.WithViaGRPC(grpc.WithInsecure()))
 
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
 
-				_, err := client.Read(
+				_, err := logcache_client.Read(
 					ctx,
 					"some-id",
 					time.Unix(0, 99),
-					logcache.WithEndTime(time.Unix(0, 101)),
-					logcache.WithLimit(103),
-					logcache.WithEnvelopeTypes(rpc.EnvelopeType_LOG),
+					client.WithEndTime(time.Unix(0, 101)),
+					client.WithLimit(103),
+					client.WithEnvelopeTypes(rpc.EnvelopeType_LOG),
 				)
 				Expect(err).To(HaveOccurred())
 			})
@@ -422,9 +422,9 @@ var _ = Describe("Log Cache Client", func() {
 		Describe("Meta", func() {
 			It("retrieves meta information", func() {
 				logCache := newStubGrpcLogCache()
-				client := logcache.NewClient(logCache.addr(), logcache.WithViaGRPC(grpc.WithInsecure()))
+				logcache_client := client.NewClient(logCache.addr(), client.WithViaGRPC(grpc.WithInsecure()))
 
-				meta, err := client.Meta(context.Background())
+				meta, err := logcache_client.Meta(context.Background())
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(meta).To(HaveLen(2))
@@ -434,12 +434,12 @@ var _ = Describe("Log Cache Client", func() {
 
 			It("returns an error when the context is cancelled", func() {
 				logCache := newStubGrpcLogCache()
-				client := logcache.NewClient(logCache.addr(), logcache.WithViaGRPC(grpc.WithInsecure()))
+				logcache_client := client.NewClient(logCache.addr(), client.WithViaGRPC(grpc.WithInsecure()))
 
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
 
-				_, err := client.Meta(ctx)
+				_, err := logcache_client.Meta(ctx)
 				Expect(err).To(HaveOccurred())
 			})
 		})
@@ -447,10 +447,10 @@ var _ = Describe("Log Cache Client", func() {
 		Describe("PromQL", func() {
 			It("retrieves points", func() {
 				logCache := newStubGrpcLogCache()
-				client := logcache.NewClient(logCache.addr(), logcache.WithViaGRPC(grpc.WithInsecure()))
+				logcache_client := client.NewClient(logCache.addr(), client.WithViaGRPC(grpc.WithInsecure()))
 
-				result, err := client.PromQL(context.Background(), "some-query",
-					logcache.WithPromQLTime(time.Unix(99, 0)),
+				result, err := logcache_client.PromQL(context.Background(), "some-query",
+					client.WithPromQLTime(time.Unix(99, 0)),
 				)
 
 				Expect(err).ToNot(HaveOccurred())
@@ -472,12 +472,12 @@ var _ = Describe("Log Cache Client", func() {
 			It("returns an error when the context is cancelled", func() {
 				logCache := newStubGrpcLogCache()
 				logCache.block = true
-				client := logcache.NewClient(logCache.addr(), logcache.WithViaGRPC(grpc.WithInsecure()))
+				logcache_client := client.NewClient(logCache.addr(), client.WithViaGRPC(grpc.WithInsecure()))
 
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
 
-				_, err := client.PromQL(
+				_, err := logcache_client.PromQL(
 					ctx,
 					"some-query",
 				)

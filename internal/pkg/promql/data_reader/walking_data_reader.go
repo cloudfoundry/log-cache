@@ -5,15 +5,15 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	logcache "code.cloudfoundry.org/log-cache/pkg/client"
+	"code.cloudfoundry.org/log-cache/pkg/client"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 )
 
 type WalkingDataReader struct {
-	r logcache.Reader
+	r client.Reader
 }
 
-func NewWalkingDataReader(reader logcache.Reader) *WalkingDataReader {
+func NewWalkingDataReader(reader client.Reader) *WalkingDataReader {
 	return &WalkingDataReader{
 		r: reader,
 	}
@@ -26,15 +26,15 @@ func (r *WalkingDataReader) Read(
 
 	var result []*loggregator_v2.Envelope
 
-	logcache.Walk(ctx, in.GetSourceId(), func(es []*loggregator_v2.Envelope) bool {
+	client.Walk(ctx, in.GetSourceId(), func(es []*loggregator_v2.Envelope) bool {
 		result = append(result, es...)
 		return true
 	}, r.r,
-		logcache.WithWalkStartTime(time.Unix(0, in.GetStartTime())),
-		logcache.WithWalkEndTime(time.Unix(0, in.GetEndTime())),
-		logcache.WithWalkLimit(int(in.GetLimit())),
-		logcache.WithWalkEnvelopeTypes(in.GetEnvelopeTypes()...),
-		logcache.WithWalkBackoff(logcache.NewRetryBackoffOnErr(time.Second, 5)),
+		client.WithWalkStartTime(time.Unix(0, in.GetStartTime())),
+		client.WithWalkEndTime(time.Unix(0, in.GetEndTime())),
+		client.WithWalkLimit(int(in.GetLimit())),
+		client.WithWalkEnvelopeTypes(in.GetEnvelopeTypes()...),
+		client.WithWalkBackoff(client.NewRetryBackoffOnErr(time.Second, 5)),
 	)
 
 	if err := ctx.Err(); err != nil {
