@@ -1,7 +1,7 @@
 package store_test
 
 import (
-	"code.cloudfoundry.org/log-cache/internal/pkg/store"
+	"code.cloudfoundry.org/log-cache/internal/pkg/cache/store"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

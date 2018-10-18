@@ -1,11 +1,11 @@
-package promql_test
+package data_reader_test
 
 import (
 	"context"
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
+	"code.cloudfoundry.org/log-cache/internal/pkg/promql/data_reader"
 	logcache "code.cloudfoundry.org/log-cache/pkg/client"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 
@@ -16,12 +16,12 @@ import (
 var _ = Describe("WalkingDataReader", func() {
 	var (
 		spyLogCache *spyLogCache
-		r           *promql.WalkingDataReader
+		r           *data_reader.WalkingDataReader
 	)
 
 	BeforeEach(func() {
 		spyLogCache = newSpyLogCache()
-		r = promql.NewWalkingDataReader(spyLogCache.Read)
+		r = data_reader.NewWalkingDataReader(spyLogCache.Read)
 	})
 
 	It("returns the error from the context", func() {

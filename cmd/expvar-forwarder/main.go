@@ -5,7 +5,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 
-	logcache "code.cloudfoundry.org/log-cache"
+	. "code.cloudfoundry.org/log-cache/internal/pkg/expvar"
 	"google.golang.org/grpc"
 )
 
@@ -20,23 +20,23 @@ func main() {
 		log.Fatalf("invalid configuration: %s", err)
 	}
 
-	opts := []logcache.ExpvarForwarderOption{
-		logcache.WithExpvarLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		logcache.WithExpvarDialOpts(grpc.WithTransportCredentials(cfg.LogCacheTLS.Credentials("log-cache"))),
-		logcache.WithExpvarGlobalTag("host", cfg.MetricHost),
-		logcache.WithExpvarGlobalTag("addr", cfg.InstanceAddr),
-		logcache.WithExpvarGlobalTag("id", cfg.InstanceId),
-		logcache.WithExpvarGlobalTag("instance-id", cfg.InstanceCid),
-		logcache.WithExpvarDefaultSourceId(cfg.DefaultSourceId),
-		logcache.WithExpvarVersion(cfg.Version),
+	opts := []ExpvarForwarderOption{
+		WithExpvarLogger(log.New(os.Stderr, "", log.LstdFlags)),
+		WithExpvarDialOpts(grpc.WithTransportCredentials(cfg.LogCacheTLS.Credentials("log-cache"))),
+		WithExpvarGlobalTag("host", cfg.MetricHost),
+		WithExpvarGlobalTag("addr", cfg.InstanceAddr),
+		WithExpvarGlobalTag("id", cfg.InstanceId),
+		WithExpvarGlobalTag("instance-id", cfg.InstanceCid),
+		WithExpvarDefaultSourceId(cfg.DefaultSourceId),
+		WithExpvarVersion(cfg.Version),
 	}
 
 	if cfg.StructuredLogging {
-		opts = append(opts, logcache.WithExpvarStructuredLogger(log.New(os.Stdout, "", 0)))
+		opts = append(opts, WithExpvarStructuredLogger(log.New(os.Stdout, "", 0)))
 	}
 
 	for _, c := range cfg.Counters.Descriptions {
-		opts = append(opts, logcache.AddExpvarCounterTemplate(
+		opts = append(opts, AddExpvarCounterTemplate(
 			c.Addr,
 			c.Name,
 			c.SourceId,
@@ -46,7 +46,7 @@ func main() {
 	}
 
 	for _, g := range cfg.Gauges.Descriptions {
-		opts = append(opts, logcache.AddExpvarGaugeTemplate(
+		opts = append(opts, AddExpvarGaugeTemplate(
 			g.Addr,
 			g.Name,
 			g.Unit,
@@ -57,7 +57,7 @@ func main() {
 	}
 
 	for _, m := range cfg.Maps.Descriptions {
-		opts = append(opts, logcache.AddExpvarMapTemplate(
+		opts = append(opts, AddExpvarMapTemplate(
 			m.Addr,
 			m.Name,
 			m.SourceId,
@@ -66,7 +66,7 @@ func main() {
 		))
 	}
 
-	forwarder := logcache.NewExpvarForwarder(
+	forwarder := NewExpvarForwarder(
 		cfg.LogCacheAddr,
 		opts...,
 	)

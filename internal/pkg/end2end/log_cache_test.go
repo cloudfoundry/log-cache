@@ -7,58 +7,59 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	logcache "code.cloudfoundry.org/log-cache"
-	gologcache "code.cloudfoundry.org/log-cache/pkg/client"
+	"code.cloudfoundry.org/log-cache/internal/pkg/cache"
+	"code.cloudfoundry.org/log-cache/internal/pkg/scheduler"
+	client "code.cloudfoundry.org/log-cache/pkg/client"
 	rpc "code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
+	"google.golang.org/grpc"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"google.golang.org/grpc"
 )
 
 var _ = Describe("LogCache", func() {
 	var (
-		addrs     []string
-		node1     *logcache.LogCache
-		node2     *logcache.LogCache
-		scheduler *logcache.Scheduler
+		lc_addrs     []string
+		node1        *cache.LogCache
+		node2        *cache.LogCache
+		lc_scheduler *scheduler.Scheduler
+		lc_client    *client.Client
 
-		client *gologcache.Client
-
-		// Run is incremented for each spec. It is used to set the port
-		// numbers.
+		// run is used to set varying port numbers
+		// it is incremented for each spec
 		run      int
 		runIncBy = 3
 	)
 
 	BeforeEach(func() {
 		run++
-		addrs = []string{
+		lc_addrs = []string{
 			fmt.Sprintf("127.0.0.1:%d", 9999+(run*runIncBy)),
 			fmt.Sprintf("127.0.0.1:%d", 10000+(run*runIncBy)),
 		}
 
-		node1 = logcache.New(
-			logcache.WithAddr(addrs[0]),
-			logcache.WithClustered(0, addrs, grpc.WithInsecure()),
-			logcache.WithLogger(log.New(GinkgoWriter, "", 0)),
+		node1 = cache.New(
+			cache.WithAddr(lc_addrs[0]),
+			cache.WithClustered(0, lc_addrs, grpc.WithInsecure()),
+			cache.WithLogger(log.New(GinkgoWriter, "", 0)),
 		)
 
-		node2 = logcache.New(
-			logcache.WithAddr(addrs[1]),
-			logcache.WithClustered(1, addrs, grpc.WithInsecure()),
-			logcache.WithLogger(log.New(GinkgoWriter, "", 0)),
+		node2 = cache.New(
+			cache.WithAddr(lc_addrs[1]),
+			cache.WithClustered(1, lc_addrs, grpc.WithInsecure()),
+			cache.WithLogger(log.New(GinkgoWriter, "", 0)),
 		)
 
-		scheduler = logcache.NewScheduler(
-			addrs, // Log Cache addrs
-			logcache.WithSchedulerInterval(50*time.Millisecond),
+		lc_scheduler = scheduler.NewScheduler(
+			lc_addrs,
+			scheduler.WithSchedulerInterval(50*time.Millisecond),
 		)
 
 		node1.Start()
 		node2.Start()
-		scheduler.Start()
+		lc_scheduler.Start()
 
-		client = gologcache.NewClient(addrs[0], gologcache.WithViaGRPC(grpc.WithInsecure()))
+		lc_client = client.NewClient(lc_addrs[0], client.WithViaGRPC(grpc.WithInsecure()))
 	})
 
 	AfterEach(func() {
@@ -102,7 +103,7 @@ var _ = Describe("LogCache", func() {
 			})
 
 			Expect(err).ToNot(HaveOccurred())
-			es, err := client.Read(context.Background(), "a", time.Unix(0, 0), gologcache.WithLimit(500))
+			es, err := lc_client.Read(context.Background(), "a", time.Unix(0, 0), client.WithLimit(500))
 			if err != nil {
 				return nil
 			}

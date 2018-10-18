@@ -1,27 +1,21 @@
-package logcache_test
+package cache_test
 
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
-	"fmt"
-	"io/ioutil"
-	"log"
 	"math"
-	"net"
-	"strconv"
-	"sync"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"code.cloudfoundry.org/log-cache"
+	. "code.cloudfoundry.org/log-cache/internal/pkg/cache"
 	logtls "code.cloudfoundry.org/log-cache/internal/pkg/tls"
 	rpc "code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 
+	"code.cloudfoundry.org/log-cache/internal/pkg/testing"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
@@ -30,34 +24,34 @@ import (
 var _ = Describe("LogCache", func() {
 	var (
 		tlsConfig *tls.Config
-		peer      *spyLogCache
-		cache     *logcache.LogCache
+		peer      *testing.SpyLogCache
+		cache     *LogCache
 		oc        rpc.OrchestrationClient
 
-		spyMetrics *spyMetrics
+		spyMetrics *testing.SpyMetrics
 	)
 
 	BeforeEach(func() {
 		var err error
 		tlsConfig, err = logtls.NewTLSConfig(
-			Cert("log-cache-ca.crt"),
-			Cert("log-cache.crt"),
-			Cert("log-cache.key"),
+			testing.Cert("log-cache-ca.crt"),
+			testing.Cert("log-cache.crt"),
+			testing.Cert("log-cache.key"),
 			"log-cache",
 		)
 		Expect(err).ToNot(HaveOccurred())
 
-		peer = newSpyLogCache(tlsConfig)
-		peerAddr := peer.start()
-		spyMetrics = newSpyMetrics()
+		peer = testing.NewSpyLogCache(tlsConfig)
+		peerAddr := peer.Start()
+		spyMetrics = testing.NewSpyMetrics()
 
-		cache = logcache.New(
-			logcache.WithAddr("127.0.0.1:0"),
-			logcache.WithClustered(0, []string{"my-addr", peerAddr},
+		cache = New(
+			WithAddr("127.0.0.1:0"),
+			WithClustered(0, []string{"my-addr", peerAddr},
 				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 			),
-			logcache.WithMetrics(spyMetrics),
-			logcache.WithServerOpts(
+			WithMetrics(spyMetrics),
+			WithServerOpts(
 				grpc.Creds(credentials.NewTLS(tlsConfig)),
 			),
 		)
@@ -219,8 +213,8 @@ var _ = Describe("LogCache", func() {
 		Expect(es[1].Timestamp).To(Equal(int64(3)))
 		Expect(es[1].SourceId).To(Equal("source-0"))
 
-		Eventually(spyMetrics.getter("Ingress")).Should(Equal(uint64(3)))
-		Eventually(spyMetrics.getter("Egress")).Should(Equal(uint64(2)))
+		Eventually(spyMetrics.Getter("Ingress")).Should(Equal(uint64(3)))
+		Eventually(spyMetrics.Getter("Egress")).Should(Equal(uint64(2)))
 	})
 
 	It("queries data via PromQL Instant Queries", func() {
@@ -249,7 +243,7 @@ var _ = Describe("LogCache", func() {
 		f := func() error {
 			resp, err := client.InstantQuery(context.Background(), &rpc.PromQL_InstantQueryRequest{
 				Query: `metric{source_id="source-0"}`,
-				Time:  formatTimeWithDecimalMillis(now),
+				Time:  testing.FormatTimeWithDecimalMillis(now),
 			})
 			if err != nil {
 				return err
@@ -290,8 +284,8 @@ var _ = Describe("LogCache", func() {
 		f := func() error {
 			resp, err := client.RangeQuery(context.Background(), &rpc.PromQL_RangeQueryRequest{
 				Query: `metric{source_id="source-0"}`,
-				Start: formatTimeWithDecimalMillis(now.Add(-time.Minute)),
-				End:   formatTimeWithDecimalMillis(now),
+				Start: testing.FormatTimeWithDecimalMillis(now.Add(-time.Minute)),
+				End:   testing.FormatTimeWithDecimalMillis(now),
 				Step:  "1m",
 			})
 			if err != nil {
@@ -328,7 +322,7 @@ var _ = Describe("LogCache", func() {
 			{Timestamp: 4, SourceId: "source-0"},
 		})
 
-		Eventually(spyMetrics.getter("Ingress")).Should(Equal(uint64(4)))
+		Eventually(spyMetrics.Getter("Ingress")).Should(Equal(uint64(4)))
 	})
 
 	It("routes envelopes to peers", func() {
@@ -340,10 +334,10 @@ var _ = Describe("LogCache", func() {
 			{Timestamp: 3, SourceId: "source-1"},
 		})
 
-		Eventually(peer.getEnvelopes).Should(HaveLen(2))
-		Expect(peer.getEnvelopes()[0].Timestamp).To(Equal(int64(2)))
-		Expect(peer.getEnvelopes()[1].Timestamp).To(Equal(int64(3)))
-		Expect(peer.getLocalOnlyValues()).ToNot(ContainElement(false))
+		Eventually(peer.GetEnvelopes).Should(HaveLen(2))
+		Expect(peer.GetEnvelopes()[0].Timestamp).To(Equal(int64(2)))
+		Expect(peer.GetEnvelopes()[1].Timestamp).To(Equal(int64(3)))
+		Expect(peer.GetLocalOnlyValues()).ToNot(ContainElement(false))
 	})
 
 	It("accepts envelopes from peers", func() {
@@ -382,7 +376,7 @@ var _ = Describe("LogCache", func() {
 	})
 
 	It("routes query requests to peers", func() {
-		peer.readEnvelopes["source-1"] = func() []*loggregator_v2.Envelope {
+		peer.ReadEnvelopes["source-1"] = func() []*loggregator_v2.Envelope {
 			return []*loggregator_v2.Envelope{
 				{Timestamp: 99},
 				{Timestamp: 101},
@@ -406,8 +400,8 @@ var _ = Describe("LogCache", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.Envelopes.Batch).To(HaveLen(2))
 
-		Eventually(peer.getReadRequests).Should(HaveLen(1))
-		req := peer.getReadRequests()[0]
+		Eventually(peer.GetReadRequests).Should(HaveLen(1))
+		req := peer.GetReadRequests()[0]
 		Expect(req.SourceId).To(Equal("source-1"))
 		Expect(req.StartTime).To(Equal(int64(99)))
 		Expect(req.EndTime).To(Equal(int64(101)))
@@ -415,7 +409,7 @@ var _ = Describe("LogCache", func() {
 	})
 
 	It("returns all meta information", func() {
-		peer.metaResponses = map[string]*rpc.MetaInfo{
+		peer.MetaResponses = map[string]*rpc.MetaInfo{
 			"source-1": {
 				Count:           1,
 				Expired:         2,
@@ -463,10 +457,10 @@ var _ = Describe("LogCache", func() {
 })
 
 func writeEnvelopes(addr string, es []*loggregator_v2.Envelope) {
-	tlsConfig, err := newTLSConfig(
-		Cert("log-cache-ca.crt"),
-		Cert("log-cache.crt"),
-		Cert("log-cache.key"),
+	tlsConfig, err := testing.NewTLSConfig(
+		testing.Cert("log-cache-ca.crt"),
+		testing.Cert("log-cache.crt"),
+		testing.Cert("log-cache.key"),
 		"log-cache",
 	)
 	if err != nil {
@@ -497,212 +491,4 @@ func writeEnvelopes(addr string, es []*loggregator_v2.Envelope) {
 	if err != nil {
 		panic(err)
 	}
-}
-
-type spyLogCache struct {
-	mu                 sync.Mutex
-	localOnlyValues    []bool
-	envelopes          []*loggregator_v2.Envelope
-	readRequests       []*rpc.ReadRequest
-	queryRequests      []*rpc.PromQL_InstantQueryRequest
-	queryError         error
-	rangeQueryRequests []*rpc.PromQL_RangeQueryRequest
-	readEnvelopes      map[string]func() []*loggregator_v2.Envelope
-	metaResponses      map[string]*rpc.MetaInfo
-	tlsConfig          *tls.Config
-	value              float64
-}
-
-func (s *spyLogCache) SetValue(value float64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.value = value
-}
-
-func newSpyLogCache(tlsConfig *tls.Config) *spyLogCache {
-	return &spyLogCache{
-		readEnvelopes: make(map[string]func() []*loggregator_v2.Envelope),
-		tlsConfig:     tlsConfig,
-		value:         101,
-	}
-}
-
-func (s *spyLogCache) start() string {
-	lis, err := net.Listen("tcp", ":0")
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-
-	srv := grpc.NewServer(
-		grpc.Creds(credentials.NewTLS(s.tlsConfig)),
-	)
-	rpc.RegisterIngressServer(srv, s)
-	rpc.RegisterEgressServer(srv, s)
-	rpc.RegisterPromQLQuerierServer(srv, s)
-	go srv.Serve(lis)
-
-	return lis.Addr().String()
-}
-
-func (s *spyLogCache) getEnvelopes() []*loggregator_v2.Envelope {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	r := make([]*loggregator_v2.Envelope, len(s.envelopes))
-	copy(r, s.envelopes)
-	return r
-}
-
-func (s *spyLogCache) getLocalOnlyValues() []bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	r := make([]bool, len(s.localOnlyValues))
-	copy(r, s.localOnlyValues)
-	return r
-}
-
-func (s *spyLogCache) getReadRequests() []*rpc.ReadRequest {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	r := make([]*rpc.ReadRequest, len(s.readRequests))
-	copy(r, s.readRequests)
-	return r
-}
-
-func (s *spyLogCache) Send(ctx context.Context, r *rpc.SendRequest) (*rpc.SendResponse, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.localOnlyValues = append(s.localOnlyValues, r.LocalOnly)
-
-	for _, e := range r.Envelopes.Batch {
-		s.envelopes = append(s.envelopes, e)
-	}
-
-	return &rpc.SendResponse{}, nil
-}
-
-func (s *spyLogCache) Read(ctx context.Context, r *rpc.ReadRequest) (*rpc.ReadResponse, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.readRequests = append(s.readRequests, r)
-
-	b := s.readEnvelopes[r.GetSourceId()]
-
-	var batch []*loggregator_v2.Envelope
-	if b != nil {
-		batch = b()
-	}
-
-	return &rpc.ReadResponse{
-		Envelopes: &loggregator_v2.EnvelopeBatch{
-			Batch: batch,
-		},
-	}, nil
-}
-
-func (s *spyLogCache) Meta(ctx context.Context, r *rpc.MetaRequest) (*rpc.MetaResponse, error) {
-	return &rpc.MetaResponse{
-		Meta: s.metaResponses,
-	}, nil
-}
-
-func (s *spyLogCache) InstantQuery(ctx context.Context, r *rpc.PromQL_InstantQueryRequest) (*rpc.PromQL_InstantQueryResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.queryRequests = append(s.queryRequests, r)
-
-	return &rpc.PromQL_InstantQueryResult{
-		Result: &rpc.PromQL_InstantQueryResult_Scalar{
-			Scalar: &rpc.PromQL_Scalar{
-				Time:  "99.000",
-				Value: s.value,
-			},
-		},
-	}, s.queryError
-}
-
-func (s *spyLogCache) getQueryRequests() []*rpc.PromQL_InstantQueryRequest {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	r := make([]*rpc.PromQL_InstantQueryRequest, len(s.queryRequests))
-	copy(r, s.queryRequests)
-
-	return r
-}
-
-func (s *spyLogCache) RangeQuery(ctx context.Context, r *rpc.PromQL_RangeQueryRequest) (*rpc.PromQL_RangeQueryResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.rangeQueryRequests = append(s.rangeQueryRequests, r)
-
-	return &rpc.PromQL_RangeQueryResult{
-		Result: &rpc.PromQL_RangeQueryResult_Matrix{
-			Matrix: &rpc.PromQL_Matrix{
-				Series: []*rpc.PromQL_Series{
-					{
-						Metric: map[string]string{
-							"__name__": "test",
-						},
-						Points: []*rpc.PromQL_Point{
-							{
-								Time:  "99.000",
-								Value: s.value,
-							},
-						},
-					},
-				},
-			},
-		},
-	}, nil
-}
-
-func (s *spyLogCache) getRangeQueryRequests() []*rpc.PromQL_RangeQueryRequest {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	r := make([]*rpc.PromQL_RangeQueryRequest, len(s.rangeQueryRequests))
-	copy(r, s.rangeQueryRequests)
-
-	return r
-}
-
-func newTLSConfig(caPath, certPath, keyPath, cn string) (*tls.Config, error) {
-	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
-	if err != nil {
-		return nil, err
-	}
-
-	tlsConfig := &tls.Config{
-		ServerName:         cn,
-		Certificates:       []tls.Certificate{cert},
-		InsecureSkipVerify: false,
-	}
-
-	caCertBytes, err := ioutil.ReadFile(caPath)
-	if err != nil {
-		return nil, err
-	}
-
-	caCertPool := x509.NewCertPool()
-	if ok := caCertPool.AppendCertsFromPEM(caCertBytes); !ok {
-		return nil, errors.New("cannot parse ca cert")
-	}
-
-	tlsConfig.RootCAs = caCertPool
-
-	return tlsConfig, nil
-}
-
-func formatTimeWithDecimalMillis(t time.Time) string {
-	return fmt.Sprintf("%.3f", float64(t.UnixNano())/1e9)
-}
-
-func parseTimeWithDecimalMillis(t string) time.Time {
-	decimalTime, err := strconv.ParseFloat(t, 64)
-	Expect(err).ToNot(HaveOccurred())
-	return time.Unix(0, int64(decimalTime*1e9))
 }

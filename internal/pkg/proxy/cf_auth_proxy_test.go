@@ -1,10 +1,10 @@
-package logcache_test
+package proxy_test
 
 import (
 	"net/http"
 	"net/http/httptest"
 
-	"code.cloudfoundry.org/log-cache"
+	. "code.cloudfoundry.org/log-cache/internal/pkg/proxy"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -18,7 +18,7 @@ var _ = Describe("CFAuthProxy", func() {
 				called = true
 			}))
 
-		proxy := logcache.NewCFAuthProxy(testServer.URL, "127.0.0.1:0")
+		proxy := NewCFAuthProxy(testServer.URL, "127.0.0.1:0")
 		proxy.Start()
 
 		resp, err := http.Get("http://" + proxy.Addr())
@@ -34,10 +34,10 @@ var _ = Describe("CFAuthProxy", func() {
 			w.WriteHeader(http.StatusNotFound)
 		})
 
-		proxy := logcache.NewCFAuthProxy(
+		proxy := NewCFAuthProxy(
 			"https://127.0.0.1",
 			"127.0.0.1:0",
-			logcache.WithAuthMiddleware(func(http.Handler) http.Handler {
+			WithAuthMiddleware(func(http.Handler) http.Handler {
 				return middleware
 			}),
 		)

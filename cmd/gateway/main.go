@@ -7,7 +7,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 
-	"code.cloudfoundry.org/log-cache"
+	. "code.cloudfoundry.org/log-cache/internal/pkg/gateway"
 	"google.golang.org/grpc"
 )
 
@@ -22,12 +22,12 @@ func main() {
 		log.Fatalf("invalid configuration: %s", err)
 	}
 
-	gateway := logcache.NewGateway(cfg.LogCacheAddr, cfg.Addr,
-		logcache.WithGatewayLogger(log.New(os.Stderr, "[GATEWAY] ", log.LstdFlags)),
-		logcache.WithGatewayLogCacheDialOpts(
+	gateway := NewGateway(cfg.LogCacheAddr, cfg.Addr,
+		WithGatewayLogger(log.New(os.Stderr, "[GATEWAY] ", log.LstdFlags)),
+		WithGatewayLogCacheDialOpts(
 			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
 		),
-		logcache.WithGatewayVersion(cfg.Version),
+		WithGatewayVersion(cfg.Version),
 	)
 
 	gateway.Start()

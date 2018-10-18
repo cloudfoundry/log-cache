@@ -295,7 +295,7 @@ var _ = Describe("Log Cache Client", func() {
 				Expect(err).To(HaveOccurred())
 			})
 
-			It("returns an error on TODO wtf", func() {
+			It("returns an error on unreachable URL", func() {
 				client := logcache.NewClient("http://invalid.url")
 
 				_, err := client.PromQL(context.Background(), "some-query")

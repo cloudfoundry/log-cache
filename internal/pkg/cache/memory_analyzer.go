@@ -1,10 +1,11 @@
-package logcache
+package cache
 
 import (
 	"runtime"
 
 	"sync"
 
+	"code.cloudfoundry.org/log-cache/internal/pkg/metrics"
 	"github.com/cloudfoundry/gosigar"
 )
 
@@ -24,11 +25,11 @@ type MemoryAnalyzer struct {
 }
 
 // NewMemoryAnalyzer creates and returns a new MemoryAnalyzer.
-func NewMemoryAnalyzer(m Metrics) *MemoryAnalyzer {
+func NewMemoryAnalyzer(metrics metrics.Initializer) *MemoryAnalyzer {
 	return &MemoryAnalyzer{
-		setAvail: m.NewGauge("AvailableSystemMemory"),
-		setHeap:  m.NewGauge("HeapInUseMemory"),
-		setTotal: m.NewGauge("TotalSystemMemory"),
+		setAvail: metrics.NewGauge("AvailableSystemMemory"),
+		setHeap:  metrics.NewGauge("HeapInUseMemory"),
+		setTotal: metrics.NewGauge("TotalSystemMemory"),
 	}
 }
 

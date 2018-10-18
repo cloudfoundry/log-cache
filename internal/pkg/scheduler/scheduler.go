@@ -1,4 +1,4 @@
-package logcache
+package scheduler
 
 import (
 	"io/ioutil"
@@ -10,6 +10,7 @@ import (
 	"expvar"
 
 	orchestrator "code.cloudfoundry.org/go-orchestrator"
+	"code.cloudfoundry.org/log-cache/internal/pkg/metrics"
 	"code.cloudfoundry.org/log-cache/internal/pkg/routing"
 	rpc "code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 	"golang.org/x/net/context"
@@ -19,7 +20,7 @@ import (
 // Scheduler manages the routes of the Log Cache nodes.
 type Scheduler struct {
 	log                      *log.Logger
-	metrics                  Metrics
+	metrics                  metrics.Initializer
 	workerAssignmentReporter *expvar.Map
 	workerHealthReporter     *expvar.Map
 	interval                 time.Duration
@@ -48,7 +49,7 @@ func NewScheduler(logCacheAddrs []string, opts ...SchedulerOption) *Scheduler {
 
 	s := &Scheduler{
 		log:                      log.New(ioutil.Discard, "", 0),
-		metrics:                  nopMetrics{},
+		metrics:                  metrics.NullMetrics{},
 		workerAssignmentReporter: workerAssignmentReporter.(*expvar.Map),
 		workerHealthReporter:     workerHealthReporter.(*expvar.Map),
 		interval:                 time.Minute,
@@ -91,7 +92,7 @@ func WithSchedulerLogger(l *log.Logger) SchedulerOption {
 
 // WithSchedulerMetrics returns a SchedulerOption that configures the metrics
 // for the Scheduler. It will add metrics to the given map.
-func WithSchedulerMetrics(m Metrics) SchedulerOption {
+func WithSchedulerMetrics(m metrics.Initializer) SchedulerOption {
 	return func(s *Scheduler) {
 		s.metrics = m
 	}

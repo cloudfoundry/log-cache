@@ -3,30 +3,30 @@ package promql_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"log"
-	"strconv"
 	"sync"
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
+
+	"code.cloudfoundry.org/log-cache/internal/pkg/testing"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("PromQL", func() {
 	var (
-		spyMetrics    *spyMetrics
+		spyMetrics    *testing.SpyMetrics
 		spyDataReader *spyDataReader
 		q             *promql.PromQL
 	)
 
 	BeforeEach(func() {
 		spyDataReader = newSpyDataReader()
-		spyMetrics = newSpyMetrics()
+		spyMetrics = testing.NewSpyMetrics()
 
 		q = promql.New(
 			spyDataReader,
@@ -349,7 +349,7 @@ var _ = Describe("PromQL", func() {
 				context.Background(),
 				&logcache_v1.PromQL_InstantQueryRequest{
 					Query: `some_metric_time{source_id="some-id-1"} + some_metric_time{source_id="some-id-2"}`,
-					Time:  formatTimeWithDecimalMillis(hourAgo),
+					Time:  testing.FormatTimeWithDecimalMillis(hourAgo),
 				},
 			)
 			Expect(err).NotTo(HaveOccurred())
@@ -427,7 +427,7 @@ var _ = Describe("PromQL", func() {
 				context.Background(),
 				&logcache_v1.PromQL_InstantQueryRequest{
 					Query: `some_metric_value{source_id="some-id-1"} + some_metric_value{source_id="some-id-2"} + some_metric_value{source_id="some-id-3"}`,
-					Time:  formatTimeWithDecimalMillis(now),
+					Time:  testing.FormatTimeWithDecimalMillis(now),
 				},
 			)
 
@@ -443,7 +443,7 @@ var _ = Describe("PromQL", func() {
 			r, err := q.InstantQuery(context.Background(), &logcache_v1.PromQL_InstantQueryRequest{Query: `7*9`})
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(parseTimeWithDecimalMillis(r.GetScalar().GetTime())).To(
+			Expect(testing.ParseTimeWithDecimalMillis(r.GetScalar().GetTime())).To(
 				BeTemporally("~", time.Now(), time.Second),
 			)
 
@@ -487,7 +487,7 @@ var _ = Describe("PromQL", func() {
 			r, err := q.InstantQuery(
 				context.Background(),
 				&logcache_v1.PromQL_InstantQueryRequest{
-					Time:  formatTimeWithDecimalMillis(hourAgo),
+					Time:  testing.FormatTimeWithDecimalMillis(hourAgo),
 					Query: `metric{source_id="some-id-1"} + metric{source_id="some-id-2"}`,
 				},
 			)
@@ -496,7 +496,7 @@ var _ = Describe("PromQL", func() {
 			Expect(r.GetVector().GetSamples()).To(HaveLen(1))
 
 			actualTime := r.GetVector().GetSamples()[0].Point.Time
-			Expect(parseTimeWithDecimalMillis(actualTime)).To(BeTemporally("~", hourAgo, time.Second))
+			Expect(testing.ParseTimeWithDecimalMillis(actualTime)).To(BeTemporally("~", hourAgo, time.Second))
 
 			Expect(r.GetVector().GetSamples()).To(Equal([]*logcache_v1.PromQL_Sample{
 				{
@@ -515,7 +515,7 @@ var _ = Describe("PromQL", func() {
 				ConsistOf("some-id-1", "some-id-2"),
 			)
 
-			Expect(parseTimeWithDecimalMillis(actualTime)).To(BeTemporally("~", spyDataReader.readEnds[0]))
+			Expect(testing.ParseTimeWithDecimalMillis(actualTime)).To(BeTemporally("~", spyDataReader.readEnds[0]))
 			Expect(
 				spyDataReader.readEnds[0].Sub(spyDataReader.readStarts[0]),
 			).To(Equal(time.Minute*5 + time.Second))
@@ -554,7 +554,7 @@ var _ = Describe("PromQL", func() {
 						"b": "tag-b",
 					},
 					Points: []*logcache_v1.PromQL_Point{{
-						Time:  formatTimeWithDecimalMillis(now.Truncate(time.Second)),
+						Time:  testing.FormatTimeWithDecimalMillis(now.Truncate(time.Second)),
 						Value: 99,
 					}},
 				},
@@ -731,9 +731,9 @@ var _ = Describe("PromQL", func() {
 
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(spyMetrics.gauges).To(HaveKey("PromQLInstantQueryTime"))
-			Expect(spyMetrics.gauges["PromQLInstantQueryTime"]).To(HaveLen(1))
-			Expect(spyMetrics.gauges["PromQLInstantQueryTime"][0]).ToNot(BeZero())
+			Expect(spyMetrics.Gauges).To(HaveKey("PromQLInstantQueryTime"))
+			Expect(spyMetrics.Gauges["PromQLInstantQueryTime"]).To(HaveLen(1))
+			Expect(spyMetrics.Gauges["PromQLInstantQueryTime"][0]).ToNot(BeZero())
 		})
 
 		It("expands requests filtered for multiple source IDs", func() {
@@ -830,8 +830,8 @@ var _ = Describe("PromQL", func() {
 			)
 			Expect(err).To(HaveOccurred())
 
-			Expect(spyMetrics.names).To(ContainElement("PromQLTimeout"))
-			Expect(spyMetrics.deltas).To(ContainElement(uint64(1)))
+			Expect(spyMetrics.Names).To(ContainElement("PromQLTimeout"))
+			Expect(spyMetrics.Deltas).To(ContainElement(uint64(1)))
 		})
 
 		It("returns an error for a cancelled context", func() {
@@ -969,8 +969,8 @@ var _ = Describe("PromQL", func() {
 				context.Background(),
 				&logcache_v1.PromQL_RangeQueryRequest{
 					Query: `avg_over_time(metric{source_id="some-id-1"}[1m])`,
-					Start: formatTimeWithDecimalMillis(lastHour),
-					End:   formatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)),
+					Start: testing.FormatTimeWithDecimalMillis(lastHour),
+					End:   testing.FormatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)),
 					Step:  "1m",
 				},
 			)
@@ -984,12 +984,12 @@ var _ = Describe("PromQL", func() {
 						"b": "tag-b",
 					},
 					Points: []*logcache_v1.PromQL_Point{
-						{Time: formatTimeWithDecimalMillis(lastHour), Value: 98},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 102},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(2 * time.Minute)), Value: 106},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(3 * time.Minute)), Value: 108},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(4 * time.Minute)), Value: 110},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)), Value: 112},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour), Value: 98},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 102},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(2 * time.Minute)), Value: 106},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(3 * time.Minute)), Value: 108},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(4 * time.Minute)), Value: 110},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)), Value: 112},
 					},
 				},
 			}))
@@ -1085,8 +1085,8 @@ var _ = Describe("PromQL", func() {
 				context.Background(),
 				&logcache_v1.PromQL_RangeQueryRequest{
 					Query: `metric{source_id="some-id-1"}`,
-					Start: formatTimeWithDecimalMillis(lastHour),
-					End:   formatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)),
+					Start: testing.FormatTimeWithDecimalMillis(lastHour),
+					End:   testing.FormatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)),
 					Step:  "1m",
 				},
 			)
@@ -1100,12 +1100,12 @@ var _ = Describe("PromQL", func() {
 						"b": "tag-b",
 					},
 					Points: []*logcache_v1.PromQL_Point{
-						{Time: formatTimeWithDecimalMillis(lastHour), Value: 97},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 103},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(2 * time.Minute)), Value: 103},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(3 * time.Minute)), Value: 105},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(4 * time.Minute)), Value: 105},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)), Value: 111},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour), Value: 97},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 103},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(2 * time.Minute)), Value: 103},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(3 * time.Minute)), Value: 105},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(4 * time.Minute)), Value: 105},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)), Value: 111},
 					},
 				},
 			}))
@@ -1164,8 +1164,8 @@ var _ = Describe("PromQL", func() {
 				context.Background(),
 				&logcache_v1.PromQL_RangeQueryRequest{
 					Query: `metric{source_id="some-id-1"}`,
-					Start: formatTimeWithDecimalMillis(lastHour),
-					End:   formatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)),
+					Start: testing.FormatTimeWithDecimalMillis(lastHour),
+					End:   testing.FormatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)),
 					Step:  "1m",
 				},
 			)
@@ -1176,22 +1176,22 @@ var _ = Describe("PromQL", func() {
 				{
 					Metric: map[string]string{"a": "tag-a", "b": "tag-b"},
 					Points: []*logcache_v1.PromQL_Point{
-						{Time: formatTimeWithDecimalMillis(lastHour), Value: 97},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 97},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(2 * time.Minute)), Value: 113},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(3 * time.Minute)), Value: 113},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(4 * time.Minute)), Value: 113},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)), Value: 113},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour), Value: 97},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 97},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(2 * time.Minute)), Value: 113},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(3 * time.Minute)), Value: 113},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(4 * time.Minute)), Value: 113},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)), Value: 113},
 					},
 				},
 				{
 					Metric: map[string]string{"a": "tag-a", "c": "tag-c"},
 					Points: []*logcache_v1.PromQL_Point{
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 101},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(2 * time.Minute)), Value: 101},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(3 * time.Minute)), Value: 101},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(4 * time.Minute)), Value: 101},
-						{Time: formatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)), Value: 101},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 101},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(2 * time.Minute)), Value: 101},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(3 * time.Minute)), Value: 101},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(4 * time.Minute)), Value: 101},
+						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(5 * time.Minute)), Value: 101},
 					},
 				},
 			}))
@@ -1223,9 +1223,9 @@ var _ = Describe("PromQL", func() {
 
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(spyMetrics.gauges).To(HaveKey("PromQLRangeQueryTime"))
-			Expect(spyMetrics.gauges["PromQLRangeQueryTime"]).To(HaveLen(1))
-			Expect(spyMetrics.gauges["PromQLRangeQueryTime"][0]).ToNot(BeZero())
+			Expect(spyMetrics.Gauges).To(HaveKey("PromQLRangeQueryTime"))
+			Expect(spyMetrics.Gauges["PromQLRangeQueryTime"]).To(HaveLen(1))
+			Expect(spyMetrics.Gauges["PromQLRangeQueryTime"][0]).ToNot(BeZero())
 		})
 
 		It("returns an error for an invalid query", func() {
@@ -1270,8 +1270,8 @@ var _ = Describe("PromQL", func() {
 			)
 			Expect(err).To(HaveOccurred())
 
-			Expect(spyMetrics.names).To(ContainElement("PromQLTimeout"))
-			Expect(spyMetrics.deltas).To(ContainElement(uint64(1)))
+			Expect(spyMetrics.Names).To(ContainElement("PromQLTimeout"))
+			Expect(spyMetrics.Deltas).To(ContainElement(uint64(1)))
 		})
 
 		It("returns an error for a cancelled context", func() {
@@ -1364,39 +1364,4 @@ func (s *spyDataReader) setRead(es [][]*loggregator_v2.Envelope, errs []error) {
 
 	s.readResults = es
 	s.readErrs = errs
-}
-
-type spyMetrics struct {
-	names  []string
-	deltas []uint64
-	gauges map[string][]float64
-}
-
-func newSpyMetrics() *spyMetrics {
-	return &spyMetrics{
-		gauges: make(map[string][]float64),
-	}
-}
-
-func (s *spyMetrics) NewCounter(name string) func(delta uint64) {
-	s.names = append(s.names, name)
-	return func(delta uint64) {
-		s.deltas = append(s.deltas, delta)
-	}
-}
-
-func (s *spyMetrics) NewGauge(name string) func(value float64) {
-	return func(value float64) {
-		s.gauges[name] = append(s.gauges[name], value)
-	}
-}
-
-func formatTimeWithDecimalMillis(t time.Time) string {
-	return fmt.Sprintf("%.3f", float64(t.UnixNano())/1e9)
-}
-
-func parseTimeWithDecimalMillis(t string) time.Time {
-	decimalTime, err := strconv.ParseFloat(t, 64)
-	Expect(err).ToNot(HaveOccurred())
-	return time.Unix(0, int64(decimalTime*1e9))
 }

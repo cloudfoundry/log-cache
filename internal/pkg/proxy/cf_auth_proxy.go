@@ -1,4 +1,4 @@
-package logcache
+package proxy
 
 import (
 	"log"

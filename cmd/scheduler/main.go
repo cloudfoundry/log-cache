@@ -8,8 +8,8 @@ import (
 	"os"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
-	logcache "code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/pkg/metrics"
+	. "code.cloudfoundry.org/log-cache/internal/pkg/scheduler"
 	"google.golang.org/grpc"
 )
 
@@ -26,19 +26,19 @@ func main() {
 
 	envstruct.WriteReport(cfg)
 
-	opts := []logcache.SchedulerOption{
-		logcache.WithSchedulerLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		logcache.WithSchedulerMetrics(metrics.New(expvar.NewMap("Scheduler"))),
-		logcache.WithSchedulerInterval(cfg.Interval),
-		logcache.WithSchedulerCount(cfg.Count),
-		logcache.WithSchedulerReplicationFactor(cfg.ReplicationFactor),
-		logcache.WithSchedulerDialOpts(
+	opts := []SchedulerOption{
+		WithSchedulerLogger(log.New(os.Stderr, "", log.LstdFlags)),
+		WithSchedulerMetrics(metrics.New(expvar.NewMap("Scheduler"))),
+		WithSchedulerInterval(cfg.Interval),
+		WithSchedulerCount(cfg.Count),
+		WithSchedulerReplicationFactor(cfg.ReplicationFactor),
+		WithSchedulerDialOpts(
 			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
 		),
 	}
 
 	if cfg.LeaderElectionEndpoint != "" {
-		opts = append(opts, logcache.WithSchedulerLeadership(func() bool {
+		opts = append(opts, WithSchedulerLeadership(func() bool {
 			resp, err := http.Get(cfg.LeaderElectionEndpoint)
 			if err != nil {
 				log.Printf("failed to read from leaderhip endpoint: %s", err)
@@ -49,7 +49,7 @@ func main() {
 		}))
 	}
 
-	sched := logcache.NewScheduler(
+	sched := NewScheduler(
 		cfg.NodeAddrs,
 		opts...,
 	)

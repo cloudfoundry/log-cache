@@ -1,45 +1,46 @@
-package logcache_test
+package nozzle_test
 
 import (
 	"sync"
 
 	"code.cloudfoundry.org/go-loggregator"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"code.cloudfoundry.org/log-cache"
+	. "code.cloudfoundry.org/log-cache/internal/pkg/nozzle"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
+	"code.cloudfoundry.org/log-cache/internal/pkg/testing"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Nozzle", func() {
 	var (
-		n               *logcache.Nozzle
+		n               *Nozzle
 		streamConnector *spyStreamConnector
-		logCache        *spyLogCache
-		metricMap       *spyMetrics
+		logCache        *testing.SpyLogCache
+		metricMap       *testing.SpyMetrics
 	)
 
 	Context("With custom envelope selectors", func() {
 		BeforeEach(func() {
-			tlsConfig, err := newTLSConfig(
-				Cert("log-cache-ca.crt"),
-				Cert("log-cache.crt"),
-				Cert("log-cache.key"),
+			tlsConfig, err := testing.NewTLSConfig(
+				testing.Cert("log-cache-ca.crt"),
+				testing.Cert("log-cache.crt"),
+				testing.Cert("log-cache.key"),
 				"log-cache",
 			)
 			Expect(err).ToNot(HaveOccurred())
 			streamConnector = newSpyStreamConnector()
-			metricMap = newSpyMetrics()
-			logCache = newSpyLogCache(tlsConfig)
-			addr := logCache.start()
+			metricMap = testing.NewSpyMetrics()
+			logCache = testing.NewSpyLogCache(tlsConfig)
+			addr := logCache.Start()
 
-			n = logcache.NewNozzle(streamConnector, addr, "log-cache",
-				logcache.WithNozzleMetrics(metricMap),
-				logcache.WithNozzleDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
-				logcache.WithNozzleSelectors("gauge", "timer", "event"),
+			n = NewNozzle(streamConnector, addr, "log-cache",
+				WithNozzleMetrics(metricMap),
+				WithNozzleDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
+				WithNozzleSelectors("gauge", "timer", "event"),
 			)
 			go n.Start()
 		})
@@ -72,22 +73,22 @@ var _ = Describe("Nozzle", func() {
 
 	Context("With default envelope selectors", func() {
 		BeforeEach(func() {
-			tlsConfig, err := newTLSConfig(
-				Cert("log-cache-ca.crt"),
-				Cert("log-cache.crt"),
-				Cert("log-cache.key"),
+			tlsConfig, err := testing.NewTLSConfig(
+				testing.Cert("log-cache-ca.crt"),
+				testing.Cert("log-cache.crt"),
+				testing.Cert("log-cache.key"),
 				"log-cache",
 			)
 			Expect(err).ToNot(HaveOccurred())
 			streamConnector = newSpyStreamConnector()
-			metricMap = newSpyMetrics()
-			logCache = newSpyLogCache(tlsConfig)
-			addr := logCache.start()
+			metricMap = testing.NewSpyMetrics()
+			logCache = testing.NewSpyLogCache(tlsConfig)
+			addr := logCache.Start()
 
-			n = logcache.NewNozzle(streamConnector, addr, "log-cache",
-				logcache.WithNozzleMetrics(metricMap),
-				logcache.WithNozzleDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
-				logcache.WithNozzleSelectors("log", "gauge", "counter", "timer", "event"),
+			n = NewNozzle(streamConnector, addr, "log-cache",
+				WithNozzleMetrics(metricMap),
+				WithNozzleDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
+				WithNozzleSelectors("log", "gauge", "counter", "timer", "event"),
 			)
 			go n.Start()
 		})
@@ -140,10 +141,10 @@ var _ = Describe("Nozzle", func() {
 			addEnvelope(2, "some-source-id", streamConnector)
 			addEnvelope(3, "some-source-id", streamConnector)
 
-			Eventually(logCache.getEnvelopes).Should(HaveLen(3))
-			Expect(logCache.getEnvelopes()[0].Timestamp).To(Equal(int64(1)))
-			Expect(logCache.getEnvelopes()[1].Timestamp).To(Equal(int64(2)))
-			Expect(logCache.getEnvelopes()[2].Timestamp).To(Equal(int64(3)))
+			Eventually(logCache.GetEnvelopes).Should(HaveLen(3))
+			Expect(logCache.GetEnvelopes()[0].Timestamp).To(Equal(int64(1)))
+			Expect(logCache.GetEnvelopes()[1].Timestamp).To(Equal(int64(2)))
+			Expect(logCache.GetEnvelopes()[2].Timestamp).To(Equal(int64(3)))
 		})
 
 		It("writes Ingress, Egress and Err metrics", func() {
@@ -151,9 +152,9 @@ var _ = Describe("Nozzle", func() {
 			addEnvelope(2, "some-source-id", streamConnector)
 			addEnvelope(3, "some-source-id", streamConnector)
 
-			Eventually(metricMap.getter("Ingress")).Should(Equal(uint64(3)))
-			Eventually(metricMap.getter("Ingress")).Should(Equal(uint64(3)))
-			Eventually(metricMap.getter("Err")).Should(Equal(uint64(0)))
+			Eventually(metricMap.Getter("Ingress")).Should(Equal(uint64(3)))
+			Eventually(metricMap.Getter("Egress")).Should(Equal(uint64(3)))
+			Eventually(metricMap.Getter("Err")).Should(Equal(uint64(0)))
 		})
 	})
 })
@@ -202,51 +203,4 @@ func (s *spyStreamConnector) requests() []*loggregator_v2.EgressBatchRequest {
 	copy(reqs, s.requests_)
 
 	return reqs
-}
-
-type spyMetrics struct {
-	mu sync.Mutex
-	m  map[string]uint64
-}
-
-func newSpyMetrics() *spyMetrics {
-	return &spyMetrics{
-		m: make(map[string]uint64),
-	}
-}
-
-func (s *spyMetrics) NewCounter(key string) func(uint64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.m[key] = 0
-
-	return func(i uint64) {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		s.m[key] += i
-	}
-}
-
-func (s *spyMetrics) NewGauge(key string) func(float64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.m[key] = 0
-
-	return func(i float64) {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		s.m[key] = uint64(i)
-	}
-}
-
-func (s *spyMetrics) getter(key string) func() uint64 {
-	return func() uint64 {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		value, ok := s.m[key]
-		if !ok {
-			return 99999999999
-		}
-		return value
-	}
 }

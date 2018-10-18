@@ -8,7 +8,7 @@ import (
 	"os"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
-	logcache "code.cloudfoundry.org/log-cache"
+	. "code.cloudfoundry.org/log-cache/internal/pkg/cache"
 	"code.cloudfoundry.org/log-cache/internal/pkg/metrics"
 	"google.golang.org/grpc"
 )
@@ -26,20 +26,20 @@ func main() {
 
 	envstruct.WriteReport(cfg)
 
-	cache := logcache.New(
-		logcache.WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		logcache.WithMetrics(metrics.New(expvar.NewMap("LogCache"))),
-		logcache.WithAddr(cfg.Addr),
-		logcache.WithMinimumSize(cfg.MinimumSize),
-		logcache.WithMemoryLimit(cfg.MemoryLimit),
-		logcache.WithClustered(
+	cache := New(
+		WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
+		WithMetrics(metrics.New(expvar.NewMap("LogCache"))),
+		WithAddr(cfg.Addr),
+		WithMinimumSize(cfg.MinimumSize),
+		WithMemoryLimit(cfg.MemoryLimit),
+		WithClustered(
 			cfg.NodeIndex,
 			cfg.NodeAddrs,
 			grpc.WithTransportCredentials(
 				cfg.TLS.Credentials("log-cache"),
 			),
 		),
-		logcache.WithServerOpts(grpc.Creds(cfg.TLS.Credentials("log-cache"))),
+		WithServerOpts(grpc.Creds(cfg.TLS.Credentials("log-cache"))),
 	)
 
 	cache.Start()

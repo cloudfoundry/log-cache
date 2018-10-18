@@ -1,4 +1,4 @@
-package logcache_test
+package expvar_test
 
 import (
 	. "github.com/onsi/ginkgo"
@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestLogCache(t *testing.T) {
+func TestExpvar(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "LogCache Suite")
+	RunSpecs(t, "Expvar Suite")
 }

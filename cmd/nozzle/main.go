@@ -8,8 +8,8 @@ import (
 	"os"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
-	logcache "code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/pkg/metrics"
+	. "code.cloudfoundry.org/log-cache/internal/pkg/nozzle"
 	"google.golang.org/grpc"
 
 	loggregator "code.cloudfoundry.org/go-loggregator"
@@ -51,18 +51,18 @@ func main() {
 		}),
 	)
 
-	nozzle := logcache.NewNozzle(
+	nozzle := NewNozzle(
 		streamConnector,
 		cfg.LogCacheAddr,
 		cfg.ShardId,
-		logcache.WithNozzleLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		logcache.WithNozzleMetrics(m),
-		logcache.WithNozzleDialOpts(
+		WithNozzleLogger(log.New(os.Stderr, "", log.LstdFlags)),
+		WithNozzleMetrics(m),
+		WithNozzleDialOpts(
 			grpc.WithTransportCredentials(
 				cfg.LogCacheTLS.Credentials("log-cache"),
 			),
 		),
-		logcache.WithNozzleSelectors(cfg.Selectors...),
+		WithNozzleSelectors(cfg.Selectors...),
 	)
 
 	go nozzle.Start()

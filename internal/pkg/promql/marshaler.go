@@ -1,4 +1,4 @@
-package gateway
+package promql
 
 import (
 	"encoding/json"

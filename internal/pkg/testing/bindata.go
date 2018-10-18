@@ -8,7 +8,7 @@
 // certs/log-cache.key
 // DO NOT EDIT!
 
-package logcache_test
+package testing
 
 import (
 	"fmt"

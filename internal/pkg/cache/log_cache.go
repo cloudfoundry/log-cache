@@ -1,4 +1,4 @@
-package logcache
+package cache
 
 import (
 	"hash/crc64"
@@ -11,9 +11,11 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
+	"code.cloudfoundry.org/log-cache/internal/pkg/cache/store"
+	"code.cloudfoundry.org/log-cache/internal/pkg/metrics"
 	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
+	"code.cloudfoundry.org/log-cache/internal/pkg/promql/data_reader"
 	"code.cloudfoundry.org/log-cache/internal/pkg/routing"
-	"code.cloudfoundry.org/log-cache/internal/pkg/store"
 	logcache "code.cloudfoundry.org/log-cache/pkg/client"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 )
@@ -26,7 +28,7 @@ type LogCache struct {
 	server *grpc.Server
 
 	serverOpts []grpc.ServerOption
-	metrics    Metrics
+	metrics    metrics.Initializer
 	closing    int64
 
 	maxPerSource       int
@@ -50,7 +52,7 @@ type LogCache struct {
 func New(opts ...LogCacheOption) *LogCache {
 	cache := &LogCache{
 		log:                log.New(ioutil.Discard, "", 0),
-		metrics:            nopMetrics{},
+		metrics:            metrics.NullMetrics{},
 		maxPerSource:       100000,
 		min:                500000,
 		memoryLimitPercent: 50,
@@ -146,32 +148,12 @@ func WithExternalAddr(addr string) LogCacheOption {
 	}
 }
 
-// Metrics registers Counter and Gauge metrics.
-type Metrics interface {
-	// NewCounter returns a function to increment for the given metric.
-	NewCounter(name string) func(delta uint64)
-
-	// NewGauge returns a function to set the value for the given metric.
-	NewGauge(name string) func(value float64)
-}
-
 // WithMetrics returns a LogCacheOption that configures the metrics for the
 // LogCache. It will add metrics to the given map.
-func WithMetrics(m Metrics) LogCacheOption {
+func WithMetrics(m metrics.Initializer) LogCacheOption {
 	return func(c *LogCache) {
 		c.metrics = m
 	}
-}
-
-// nopMetrics are the default metrics.
-type nopMetrics struct{}
-
-func (m nopMetrics) NewCounter(name string) func(uint64) {
-	return func(uint64) {}
-}
-
-func (m nopMetrics) NewGauge(name string) func(float64) {
-	return func(float64) {}
 }
 
 // Start starts the LogCache. It has an internal go-routine that it creates
@@ -256,7 +238,7 @@ func (c *LogCache) setupRouting(s *store.Store) {
 	egressReverseProxy := routing.NewEgressReverseProxy(lookup.Lookup, egressClients, localIdx, c.log)
 
 	promQL := promql.New(
-		promql.NewWalkingDataReader(
+		data_reader.NewWalkingDataReader(
 			logcache.NewClient(c.Addr(), logcache.WithViaGRPC(c.dialOpts...)).Read,
 		),
 		c.metrics,

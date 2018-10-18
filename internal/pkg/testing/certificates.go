@@ -1,7 +1,7 @@
-package logcache_test
+package testing
 
 //go:generate $GOPATH/scripts/generate-certs
-//go:generate go-bindata -nocompress -pkg logcache_test -o bindata_test.go -prefix certs/ certs/
+//go:generate go-bindata -nocompress -pkg testing -o bindata.go -prefix certs/ certs/
 //go:generate rm -rf certs/
 
 import (

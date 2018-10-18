@@ -13,12 +13,12 @@ import (
 	"crypto/x509"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
-	"code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/pkg/auth"
 	"code.cloudfoundry.org/log-cache/internal/pkg/metrics"
 	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
+	. "code.cloudfoundry.org/log-cache/internal/pkg/proxy"
 	logtls "code.cloudfoundry.org/log-cache/internal/pkg/tls"
-	gologcache "code.cloudfoundry.org/log-cache/pkg/client"
+	client "code.cloudfoundry.org/log-cache/pkg/client"
 )
 
 func main() {
@@ -53,7 +53,7 @@ func main() {
 		log,
 	)
 
-	metaFetcher := gologcache.NewClient(cfg.LogCacheGatewayAddr)
+	metaFetcher := client.NewClient(cfg.LogCacheGatewayAddr)
 
 	middlewareProvider := auth.NewCFAuthMiddlewareProvider(
 		uaaClient,
@@ -63,10 +63,10 @@ func main() {
 		capiClient,
 	)
 
-	proxy := logcache.NewCFAuthProxy(
+	proxy := NewCFAuthProxy(
 		cfg.LogCacheGatewayAddr,
 		cfg.Addr,
-		logcache.WithAuthMiddleware(middlewareProvider.Middleware),
+		WithAuthMiddleware(middlewareProvider.Middleware),
 	)
 	proxy.Start()
 

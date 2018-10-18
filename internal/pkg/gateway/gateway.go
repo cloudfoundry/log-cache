@@ -1,4 +1,4 @@
-package logcache
+package gateway
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"code.cloudfoundry.org/log-cache/internal/pkg/gateway"
+	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 )
 
@@ -109,7 +109,7 @@ func (g *Gateway) Addr() string {
 func (g *Gateway) listenAndServe() {
 	mux := runtime.NewServeMux(
 		runtime.WithMarshalerOption(
-			runtime.MIMEWildcard, gateway.NewPromqlMarshaler(&runtime.JSONPb{OrigName: true, EmitDefaults: true}),
+			runtime.MIMEWildcard, promql.NewPromqlMarshaler(&runtime.JSONPb{OrigName: true, EmitDefaults: true}),
 		),
 	)
 

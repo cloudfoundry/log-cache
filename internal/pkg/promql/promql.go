@@ -382,7 +382,7 @@ func (l *LogCacheQuerier) Select(params *storage.SelectParams, ll ...*labels.Mat
 
 			e.Timestamp = time.Unix(0, e.GetTimestamp()).Truncate(l.interval).UnixNano()
 
-			builder.add(e.Tags, sample{
+			builder.add(e.Tags, point{
 				t: e.GetTimestamp() / int64(time.Millisecond),
 				v: f,
 			})
@@ -461,11 +461,11 @@ func (c *concreteSeriesSet) Err() error {
 
 // concreteSeries implements storage.Series.
 type concreteSeries struct {
-	labels  labels.Labels
-	samples []sample
+	labels labels.Labels
+	points []point
 }
 
-type sample struct {
+type point struct {
 	t int64
 	v float64
 }
@@ -493,15 +493,15 @@ func newConcreteSeriersIterator(series *concreteSeries) storage.SeriesIterator {
 
 // Seek implements storage.SeriesIterator.
 func (c *concreteSeriesIterator) Seek(t int64) bool {
-	c.cur = sort.Search(len(c.series.samples), func(n int) bool {
-		return c.series.samples[n].t >= t
+	c.cur = sort.Search(len(c.series.points), func(n int) bool {
+		return c.series.points[n].t >= t
 	})
-	return c.cur < len(c.series.samples)
+	return c.cur < len(c.series.points)
 }
 
 // At implements storage.SeriesIterator.
 func (c *concreteSeriesIterator) At() (t int64, v float64) {
-	s := c.series.samples[c.cur]
+	s := c.series.points[c.cur]
 
 	return s.t, s.v
 }
@@ -509,7 +509,7 @@ func (c *concreteSeriesIterator) At() (t int64, v float64) {
 // Next implements storage.SeriesIterator.
 func (c *concreteSeriesIterator) Next() bool {
 	c.cur++
-	return c.cur < len(c.series.samples)
+	return c.cur < len(c.series.points)
 }
 
 // Err implements storage.SeriesIterator.
@@ -518,8 +518,8 @@ func (c *concreteSeriesIterator) Err() error {
 }
 
 type seriesData struct {
-	tags    map[string]string
-	samples []sample
+	tags   map[string]string
+	points []point
 }
 
 func newSeriesBuilder() *seriesSetBuilder {
@@ -532,20 +532,20 @@ type seriesSetBuilder struct {
 	data map[string]seriesData
 }
 
-func (b *seriesSetBuilder) add(tags map[string]string, s sample) {
+func (b *seriesSetBuilder) add(tags map[string]string, s point) {
 	seriesID := b.getSeriesID(tags)
 	d, ok := b.data[seriesID]
 
 	if !ok {
 		b.data[seriesID] = seriesData{
-			tags:    tags,
-			samples: make([]sample, 0),
+			tags:   tags,
+			points: make([]point, 0),
 		}
 
 		d = b.data[seriesID]
 	}
 
-	d.samples = append(d.samples, s)
+	d.points = append(d.points, s)
 	b.data[seriesID] = d
 }
 
@@ -572,8 +572,8 @@ func (b *seriesSetBuilder) buildSeriesSet() storage.SeriesSet {
 
 	for _, v := range b.data {
 		set.series = append(set.series, &concreteSeries{
-			labels:  convertToLabels(v.tags),
-			samples: v.samples,
+			labels: convertToLabels(v.tags),
+			points: v.points,
 		})
 	}
 

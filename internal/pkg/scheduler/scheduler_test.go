@@ -1,12 +1,12 @@
-package logcache_test
+package scheduler_test
 
 import (
 	"net"
 	"sync"
 	"time"
 
-	"code.cloudfoundry.org/log-cache"
 	"code.cloudfoundry.org/log-cache/internal/pkg/routing"
+	. "code.cloudfoundry.org/log-cache/internal/pkg/scheduler"
 	rpc "code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -16,7 +16,7 @@ import (
 
 var _ = Describe("Scheduler", func() {
 	var (
-		s *logcache.Scheduler
+		s *Scheduler
 
 		logCacheSpy1 *spyOrchestration
 		logCacheSpy2 *spyOrchestration
@@ -29,15 +29,15 @@ var _ = Describe("Scheduler", func() {
 		logCacheSpy2 = startSpyOrchestration()
 		leadershipSpy = newSpyLeadership(true)
 
-		s = logcache.NewScheduler(
+		s = NewScheduler(
 			[]string{
 				logCacheSpy1.lis.Addr().String(),
 				logCacheSpy2.lis.Addr().String(),
 			},
-			logcache.WithSchedulerInterval(time.Millisecond),
-			logcache.WithSchedulerCount(7),
-			logcache.WithSchedulerReplicationFactor(2),
-			logcache.WithSchedulerLeadership(leadershipSpy.IsLeader),
+			WithSchedulerInterval(time.Millisecond),
+			WithSchedulerCount(7),
+			WithSchedulerReplicationFactor(2),
+			WithSchedulerLeadership(leadershipSpy.IsLeader),
 		)
 	})
 
@@ -109,14 +109,14 @@ var _ = Describe("Scheduler", func() {
 		startupLogCacheSpy := startSpyOrchestration()
 		startupLeadershipSpy := newSpyLeadership(true)
 
-		s = logcache.NewScheduler(
+		s = NewScheduler(
 			[]string{
 				startupLogCacheSpy.lis.Addr().String(),
 			},
-			logcache.WithSchedulerInterval(time.Hour),
-			logcache.WithSchedulerCount(7),
-			logcache.WithSchedulerReplicationFactor(1),
-			logcache.WithSchedulerLeadership(startupLeadershipSpy.IsLeader),
+			WithSchedulerInterval(time.Hour),
+			WithSchedulerCount(7),
+			WithSchedulerReplicationFactor(1),
+			WithSchedulerLeadership(startupLeadershipSpy.IsLeader),
 		)
 		s.Start()
 
@@ -159,13 +159,13 @@ var _ = Describe("Scheduler", func() {
 				start += x + 1
 			}
 
-			s := logcache.NewScheduler(
+			s := NewScheduler(
 				[]string{
 					logCacheSpy1.lis.Addr().String(),
 					logCacheSpy2.lis.Addr().String(),
 				},
-				logcache.WithSchedulerInterval(time.Millisecond),
-				logcache.WithSchedulerCount(7),
+				WithSchedulerInterval(time.Millisecond),
+				WithSchedulerCount(7),
 			)
 
 			s.Start()

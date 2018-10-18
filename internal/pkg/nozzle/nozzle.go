@@ -1,4 +1,4 @@
-package logcache
+package nozzle
 
 import (
 	"io/ioutil"
@@ -7,6 +7,7 @@ import (
 
 	"code.cloudfoundry.org/go-loggregator"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
+	"code.cloudfoundry.org/log-cache/internal/pkg/metrics"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -16,7 +17,7 @@ import (
 type Nozzle struct {
 	log       *log.Logger
 	s         StreamConnector
-	metrics   Metrics
+	metrics   metrics.Initializer
 	shardId   string
 	selectors []string
 
@@ -38,7 +39,7 @@ func NewNozzle(c StreamConnector, logCacheAddr string, shardId string, opts ...N
 		addr:      logCacheAddr,
 		opts:      []grpc.DialOption{grpc.WithInsecure()},
 		log:       log.New(ioutil.Discard, "", 0),
-		metrics:   nopMetrics{},
+		metrics:   metrics.NullMetrics{},
 		shardId:   shardId,
 		selectors: []string{},
 	}
@@ -63,9 +64,9 @@ func WithNozzleLogger(l *log.Logger) NozzleOption {
 
 // WithNozzleMetrics returns a NozzleOption that configures the metrics for the
 // Nozzle. It will add metrics to the given map.
-func WithNozzleMetrics(m Metrics) NozzleOption {
+func WithNozzleMetrics(metrics metrics.Initializer) NozzleOption {
 	return func(n *Nozzle) {
-		n.metrics = m
+		n.metrics = metrics
 	}
 }
 

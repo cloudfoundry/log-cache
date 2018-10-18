@@ -1,4 +1,4 @@
-package logcache_test
+package expvar_test
 
 import (
 	"crypto/tls"
@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"code.cloudfoundry.org/log-cache"
+	. "code.cloudfoundry.org/log-cache/internal/pkg/expvar"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
+	"code.cloudfoundry.org/log-cache/internal/pkg/testing"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
@@ -20,13 +21,13 @@ import (
 
 var _ = Describe("ExpvarForwarder", func() {
 	var (
-		r *logcache.ExpvarForwarder
+		r *ExpvarForwarder
 
 		addr      string
 		server1   *httptest.Server
 		server2   *httptest.Server
 		server    *httptest.Server
-		logCache  *spyLogCache
+		logCache  *testing.SpyLogCache
 		tlsConfig *tls.Config
 		sbuffer   *gbytes.Buffer
 	)
@@ -34,10 +35,10 @@ var _ = Describe("ExpvarForwarder", func() {
 	Context("Normal gauges and counters", func() {
 		BeforeEach(func() {
 			var err error
-			tlsConfig, err = newTLSConfig(
-				Cert("log-cache-ca.crt"),
-				Cert("log-cache.crt"),
-				Cert("log-cache.key"),
+			tlsConfig, err = testing.NewTLSConfig(
+				testing.Cert("log-cache-ca.crt"),
+				testing.Cert("log-cache.crt"),
+				testing.Cert("log-cache.key"),
 				"log-cache",
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -64,16 +65,16 @@ var _ = Describe("ExpvarForwarder", func() {
 			}`))
 			}))
 
-			logCache = newSpyLogCache(tlsConfig)
-			addr = logCache.start()
+			logCache = testing.NewSpyLogCache(tlsConfig)
+			addr = logCache.Start()
 
 			sbuffer = gbytes.NewBuffer()
 
-			r = logcache.NewExpvarForwarder(addr,
-				logcache.WithExpvarInterval(time.Millisecond),
-				logcache.WithExpvarStructuredLogger(log.New(sbuffer, "", 0)),
-				logcache.WithExpvarDefaultSourceId("log-cache"),
-				logcache.AddExpvarGaugeTemplate(
+			r = NewExpvarForwarder(addr,
+				WithExpvarInterval(time.Millisecond),
+				WithExpvarStructuredLogger(log.New(sbuffer, "", 0)),
+				WithExpvarDefaultSourceId("log-cache"),
+				AddExpvarGaugeTemplate(
 					server1.URL,
 					"CachePeriod",
 					"mS",
@@ -81,7 +82,7 @@ var _ = Describe("ExpvarForwarder", func() {
 					"{{.LogCache.CachePeriod}}",
 					map[string]string{"a": "some-value"},
 				),
-				logcache.AddExpvarCounterTemplate(
+				AddExpvarCounterTemplate(
 					server2.URL,
 					"Egress",
 					"log-cache-nozzle",
@@ -89,7 +90,7 @@ var _ = Describe("ExpvarForwarder", func() {
 					map[string]string{"a": "some-value"},
 				),
 
-				logcache.WithExpvarDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
+				WithExpvarDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
 			)
 
 			go r.Start()
@@ -97,13 +98,13 @@ var _ = Describe("ExpvarForwarder", func() {
 
 		It("writes the expvar metrics to LogCache", func() {
 			Eventually(func() int {
-				return len(logCache.getEnvelopes())
+				return len(logCache.GetEnvelopes())
 			}).Should(BeNumerically(">=", 2))
 
 			var e *loggregator_v2.Envelope
 
 			// Find counter
-			for _, ee := range logCache.getEnvelopes() {
+			for _, ee := range logCache.GetEnvelopes() {
 				if ee.GetCounter() == nil {
 					continue
 				}
@@ -120,7 +121,7 @@ var _ = Describe("ExpvarForwarder", func() {
 
 			e = nil
 			// Find gauge
-			for _, ee := range logCache.getEnvelopes() {
+			for _, ee := range logCache.GetEnvelopes() {
 				if ee.GetGauge() == nil {
 					continue
 				}
@@ -139,13 +140,13 @@ var _ = Describe("ExpvarForwarder", func() {
 
 		It("writes correct timestamps to LogCache", func() {
 			Eventually(func() int {
-				return len(logCache.getEnvelopes())
+				return len(logCache.GetEnvelopes())
 			}).Should(BeNumerically(">=", 4))
 
 			var counterEnvelopes []*loggregator_v2.Envelope
 
 			// Find counters
-			for _, ee := range logCache.getEnvelopes() {
+			for _, ee := range logCache.GetEnvelopes() {
 				if ee.GetCounter() == nil {
 					continue
 				}
@@ -166,16 +167,16 @@ var _ = Describe("ExpvarForwarder", func() {
 
 		It("panics if a counter or gauge template is invalid", func() {
 			Expect(func() {
-				logcache.NewExpvarForwarder(addr,
-					logcache.AddExpvarCounterTemplate(
+				NewExpvarForwarder(addr,
+					AddExpvarCounterTemplate(
 						server1.URL, "some-name", "a", "{{invalid", nil,
 					),
 				)
 			}).To(Panic())
 
 			Expect(func() {
-				logcache.NewExpvarForwarder(addr,
-					logcache.AddExpvarGaugeTemplate(
+				NewExpvarForwarder(addr,
+					AddExpvarGaugeTemplate(
 						server1.URL, "some-name", "", "a", "{{invalid", nil,
 					),
 				)
@@ -186,10 +187,10 @@ var _ = Describe("ExpvarForwarder", func() {
 	Context("Map gauges", func() {
 		BeforeEach(func() {
 			var err error
-			tlsConfig, err = newTLSConfig(
-				Cert("log-cache-ca.crt"),
-				Cert("log-cache.crt"),
-				Cert("log-cache.key"),
+			tlsConfig, err = testing.NewTLSConfig(
+				testing.Cert("log-cache-ca.crt"),
+				testing.Cert("log-cache.crt"),
+				testing.Cert("log-cache.key"),
 				"log-cache",
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -206,15 +207,15 @@ var _ = Describe("ExpvarForwarder", func() {
 				}`))
 			}))
 
-			logCache = newSpyLogCache(tlsConfig)
-			addr = logCache.start()
+			logCache = testing.NewSpyLogCache(tlsConfig)
+			addr = logCache.Start()
 
 			sbuffer = gbytes.NewBuffer()
 
-			r = logcache.NewExpvarForwarder(addr,
-				logcache.WithExpvarInterval(time.Millisecond),
-				logcache.WithExpvarStructuredLogger(log.New(sbuffer, "", 0)),
-				logcache.AddExpvarMapTemplate(
+			r = NewExpvarForwarder(addr,
+				WithExpvarInterval(time.Millisecond),
+				WithExpvarStructuredLogger(log.New(sbuffer, "", 0)),
+				AddExpvarMapTemplate(
 					server.URL,
 					"WorkerState",
 					"log-cache-scheduler",
@@ -222,7 +223,7 @@ var _ = Describe("ExpvarForwarder", func() {
 					map[string]string{"a": "some-value"},
 				),
 
-				logcache.WithExpvarDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
+				WithExpvarDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
 			)
 
 			go r.Start()
@@ -230,14 +231,14 @@ var _ = Describe("ExpvarForwarder", func() {
 
 		It("writes the expvar map to LogCache as gauges", func() {
 			Eventually(func() int {
-				return len(logCache.getEnvelopes())
+				return len(logCache.GetEnvelopes())
 			}).Should(BeNumerically(">=", 3))
 
 			var e *loggregator_v2.Envelope
 			e = nil
 			pass := 1.0
 
-			for _, ee := range logCache.getEnvelopes() {
+			for _, ee := range logCache.GetEnvelopes() {
 				if ee.GetGauge() == nil {
 					continue
 				}
@@ -260,10 +261,10 @@ var _ = Describe("ExpvarForwarder", func() {
 			tc := setup("1.2.3-dev.4")
 
 			Eventually(func() int {
-				return len(tc.logCache.getEnvelopes())
+				return len(tc.logCache.GetEnvelopes())
 			}).Should(BeNumerically(">", 0))
 
-			firstEnvelope := tc.logCache.getEnvelopes()[0]
+			firstEnvelope := tc.logCache.GetEnvelopes()[0]
 			Expect(firstEnvelope.SourceId).To(Equal("log-cache"))
 			Expect(firstEnvelope.GetGauge().Metrics["version-major"].Value).To(Equal(1.0))
 			Expect(firstEnvelope.GetGauge().Metrics["version-minor"].Value).To(Equal(2.0))
@@ -276,10 +277,10 @@ var _ = Describe("ExpvarForwarder", func() {
 				tc := setup("1.2.3")
 
 				Eventually(func() int {
-					return len(tc.logCache.getEnvelopes())
+					return len(tc.logCache.GetEnvelopes())
 				}).Should(BeNumerically(">", 0))
 
-				firstEnvelope := tc.logCache.getEnvelopes()[0]
+				firstEnvelope := tc.logCache.GetEnvelopes()[0]
 				Expect(firstEnvelope.SourceId).To(Equal("log-cache"))
 				Expect(firstEnvelope.GetGauge().Metrics["version-major"].Value).To(Equal(1.0))
 				Expect(firstEnvelope.GetGauge().Metrics["version-minor"].Value).To(Equal(2.0))
@@ -296,30 +297,30 @@ var _ = Describe("ExpvarForwarder", func() {
 })
 
 type testContext struct {
-	logCache *spyLogCache
+	logCache *testing.SpyLogCache
 	sbuffer  *gbytes.Buffer
 }
 
 func setup(version string) testContext {
 	var err error
-	tlsConfig, err := newTLSConfig(
-		Cert("log-cache-ca.crt"),
-		Cert("log-cache.crt"),
-		Cert("log-cache.key"),
+	tlsConfig, err := testing.NewTLSConfig(
+		testing.Cert("log-cache-ca.crt"),
+		testing.Cert("log-cache.crt"),
+		testing.Cert("log-cache.key"),
 		"log-cache",
 	)
 	Expect(err).ToNot(HaveOccurred())
 
-	logCache := newSpyLogCache(tlsConfig)
-	addr := logCache.start()
+	logCache := testing.NewSpyLogCache(tlsConfig)
+	addr := logCache.Start()
 	sbuffer := gbytes.NewBuffer()
 
-	expvarForwarder := logcache.NewExpvarForwarder(addr,
-		logcache.WithExpvarInterval(time.Millisecond),
-		logcache.WithExpvarStructuredLogger(log.New(sbuffer, "", 0)),
-		logcache.WithExpvarVersion(version),
-		logcache.WithExpvarDefaultSourceId("log-cache"),
-		logcache.WithExpvarDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
+	expvarForwarder := NewExpvarForwarder(addr,
+		WithExpvarInterval(time.Millisecond),
+		WithExpvarStructuredLogger(log.New(sbuffer, "", 0)),
+		WithExpvarVersion(version),
+		WithExpvarDefaultSourceId("log-cache"),
+		WithExpvarDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
 	)
 
 	go expvarForwarder.Start()

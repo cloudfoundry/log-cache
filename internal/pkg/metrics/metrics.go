@@ -2,6 +2,26 @@ package metrics
 
 import "expvar"
 
+// Metrics registers Counter and Gauge metrics.
+type Initializer interface {
+	// NewCounter returns a function to increment for the given metric.
+	NewCounter(name string) func(delta uint64)
+
+	// NewGauge returns a function to set the value for the given metric.
+	NewGauge(name string) func(value float64)
+}
+
+// NullMetrics are the default metrics.
+type NullMetrics struct{}
+
+func (m NullMetrics) NewCounter(name string) func(uint64) {
+	return func(uint64) {}
+}
+
+func (m NullMetrics) NewGauge(name string) func(float64) {
+	return func(float64) {}
+}
+
 // Metrics stores health metrics for the process. It has a gauge and counter
 // metrics.
 type Metrics struct {

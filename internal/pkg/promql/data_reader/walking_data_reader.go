@@ -1,4 +1,4 @@
-package promql
+package data_reader
 
 import (
 	"context"

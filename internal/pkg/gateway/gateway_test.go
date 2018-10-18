@@ -1,4 +1,4 @@
-package logcache_test
+package gateway_test
 
 import (
 	"errors"
@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"strings"
 
-	"code.cloudfoundry.org/log-cache"
+	. "code.cloudfoundry.org/log-cache/internal/pkg/gateway"
 	rpc "code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
+	"code.cloudfoundry.org/log-cache/internal/pkg/testing"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
@@ -19,29 +20,29 @@ import (
 
 var _ = Describe("Gateway", func() {
 	var (
-		spyLogCache *spyLogCache
-		gw          *logcache.Gateway
+		spyLogCache *testing.SpyLogCache
+		gw          *Gateway
 	)
 
 	BeforeEach(func() {
-		tlsConfig, err := newTLSConfig(
-			Cert("log-cache-ca.crt"),
-			Cert("log-cache.crt"),
-			Cert("log-cache.key"),
+		tlsConfig, err := testing.NewTLSConfig(
+			testing.Cert("log-cache-ca.crt"),
+			testing.Cert("log-cache.crt"),
+			testing.Cert("log-cache.key"),
 			"log-cache",
 		)
 		Expect(err).ToNot(HaveOccurred())
 
-		spyLogCache = newSpyLogCache(tlsConfig)
-		logCacheAddr := spyLogCache.start()
+		spyLogCache = testing.NewSpyLogCache(tlsConfig)
+		logCacheAddr := spyLogCache.Start()
 
-		gw = logcache.NewGateway(
+		gw = NewGateway(
 			logCacheAddr,
 			"127.0.0.1:0",
-			logcache.WithGatewayLogCacheDialOpts(
+			WithGatewayLogCacheDialOpts(
 				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 			),
-			logcache.WithGatewayVersion("1.2.3"),
+			WithGatewayVersion("1.2.3"),
 		)
 		gw.Start()
 	})
@@ -53,7 +54,7 @@ var _ = Describe("Gateway", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
-		reqs := spyLogCache.getReadRequests()
+		reqs := spyLogCache.GetReadRequests()
 		Expect(reqs).To(HaveLen(1))
 		Expect(reqs[0].SourceId).To(Equal(expectedSourceID))
 		Expect(reqs[0].StartTime).To(Equal(int64(99)))
@@ -86,7 +87,7 @@ var _ = Describe("Gateway", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
-		reqs := spyLogCache.getQueryRequests()
+		reqs := spyLogCache.GetQueryRequests()
 		Expect(reqs).To(HaveLen(1))
 		Expect(reqs[0].Query).To(Equal(`metric{source_id="some-id"}`))
 		Expect(reqs[0].Time).To(Equal("1234.000"))
@@ -100,7 +101,7 @@ var _ = Describe("Gateway", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
-		reqs := spyLogCache.getRangeQueryRequests()
+		reqs := spyLogCache.GetRangeQueryRequests()
 		Expect(reqs).To(HaveLen(1))
 		Expect(reqs[0].Query).To(Equal(`metric{source_id="some-id"}`))
 		Expect(reqs[0].Start).To(Equal("1234.000"))
@@ -139,7 +140,7 @@ var _ = Describe("Gateway", func() {
 	Context("errors", func() {
 		It("passes through content-type correctly on errors", func() {
 			path := `api/v1/query?query=metric{source_id="some-id"}&time=1234`
-			spyLogCache.queryError = errors.New("expected error")
+			spyLogCache.QueryError = errors.New("expected error")
 			URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 			req, _ := http.NewRequest("GET", URL, nil)
 
@@ -151,7 +152,7 @@ var _ = Describe("Gateway", func() {
 
 		It("adds necessary fields to match Prometheus API", func() {
 			path := `api/v1/query?query=metric{source_id="some-id"}&time=1234`
-			spyLogCache.queryError = errors.New("expected error")
+			spyLogCache.QueryError = errors.New("expected error")
 			URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
 			req, _ := http.NewRequest("GET", URL, nil)
 
