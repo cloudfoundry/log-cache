@@ -4,7 +4,7 @@ import (
 	"time"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
-	"code.cloudfoundry.org/log-cache/internal/pkg/tls"
+	"code.cloudfoundry.org/log-cache/internal/tls"
 )
 
 // Config is the configuration for a Scheduler.

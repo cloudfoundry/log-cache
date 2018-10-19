@@ -7,7 +7,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 
-	. "code.cloudfoundry.org/log-cache/internal/pkg/gateway"
+	. "code.cloudfoundry.org/log-cache/internal/gateway"
 	"google.golang.org/grpc"
 )
 

@@ -5,7 +5,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 
-	. "code.cloudfoundry.org/log-cache/internal/pkg/expvar"
+	. "code.cloudfoundry.org/log-cache/internal/expvar"
 	"google.golang.org/grpc"
 )
 

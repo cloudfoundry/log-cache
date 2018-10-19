@@ -13,11 +13,11 @@ import (
 	"crypto/x509"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
-	"code.cloudfoundry.org/log-cache/internal/pkg/auth"
-	"code.cloudfoundry.org/log-cache/internal/pkg/metrics"
-	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
-	. "code.cloudfoundry.org/log-cache/internal/pkg/proxy"
-	logtls "code.cloudfoundry.org/log-cache/internal/pkg/tls"
+	"code.cloudfoundry.org/log-cache/internal/auth"
+	"code.cloudfoundry.org/log-cache/internal/metrics"
+	"code.cloudfoundry.org/log-cache/internal/promql"
+	. "code.cloudfoundry.org/log-cache/internal/proxy"
+	logtls "code.cloudfoundry.org/log-cache/internal/tls"
 	"code.cloudfoundry.org/log-cache/pkg/client"
 )
 

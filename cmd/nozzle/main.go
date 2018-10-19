@@ -8,8 +8,8 @@ import (
 	"os"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
-	"code.cloudfoundry.org/log-cache/internal/pkg/metrics"
-	. "code.cloudfoundry.org/log-cache/internal/pkg/nozzle"
+	"code.cloudfoundry.org/log-cache/internal/metrics"
+	. "code.cloudfoundry.org/log-cache/internal/nozzle"
 	"google.golang.org/grpc"
 
 	loggregator "code.cloudfoundry.org/go-loggregator"
