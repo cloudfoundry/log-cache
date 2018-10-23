@@ -3,6 +3,7 @@ package client_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -322,6 +323,102 @@ var _ = Describe("Log Cache Client", func() {
 			})
 		})
 
+		Describe("PromQLRaw", func() {
+			It("reads points", func() {
+				logCache := newStubLogCache()
+				logcache_client := client.NewClient(logCache.addr())
+
+				result, err := logcache_client.PromQLRaw(context.Background(), `some-query`)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(logCache.reqs).To(HaveLen(1))
+				Expect(logCache.reqs[0].URL.Path).To(Equal("/api/v1/query"))
+				assertQueryParam(logCache.reqs[0].URL, "query", "some-query")
+				Expect(logCache.reqs[0].URL.Query()).To(HaveLen(1))
+
+				Expect(result.Status).To(Equal("success"))
+				Expect(result.Data.ResultType).To(Equal("vector"))
+
+				expected := logCache.result["GET/api/v1/query"]
+				var expectedResult client.PromQLQueryResult
+
+				err = json.Unmarshal(expected, &expectedResult)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(expectedResult.Data.Result).To(Equal(result.Data.Result))
+			})
+
+			It("respects options", func() {
+				logCache := newStubLogCache()
+				logcache_client := client.NewClient(logCache.addr())
+
+				_, err := logcache_client.PromQLRaw(
+					context.Background(),
+					"some-query",
+					client.WithPromQLTime(time.Unix(101, 455700000)),
+				)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(logCache.reqs).To(HaveLen(1))
+				Expect(logCache.reqs[0].URL.Path).To(Equal("/api/v1/query"))
+				assertQueryParam(logCache.reqs[0].URL, "query", "some-query")
+				assertQueryParam(logCache.reqs[0].URL, "time", "101.456")
+				Expect(logCache.reqs[0].URL.Query()).To(HaveLen(2))
+			})
+
+			It("closes the body", func() {
+				spyHTTPClient := newSpyHTTPClient()
+				logcache_client := client.NewClient("", client.WithHTTPClient(spyHTTPClient))
+				logcache_client.PromQLRaw(context.Background(), "some-query")
+
+				Expect(spyHTTPClient.body.closed).To(BeTrue())
+			})
+
+			It("returns an error on a non-200, non-404, non-500 status", func() {
+				logCache := newStubLogCache()
+				logCache.statusCode = 503
+				logcache_client := client.NewClient(logCache.addr())
+
+				_, err := logcache_client.PromQLRaw(context.Background(), "some-query")
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("returns an error on invalid JSON", func() {
+				logCache := newStubLogCache()
+				logCache.result["GET/api/v1/query"] = []byte("invalid")
+				logcache_client := client.NewClient(logCache.addr())
+
+				_, err := logcache_client.PromQLRaw(context.Background(), "some-query")
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("returns an error on unreachable URL", func() {
+				logcache_client := client.NewClient("http://invalid.url")
+
+				_, err := logcache_client.PromQLRaw(context.Background(), "some-query")
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("returns an error on an invalid URL", func() {
+				logcache_client := client.NewClient("-:-invalid")
+
+				_, err := logcache_client.PromQLRaw(context.Background(), "some-query")
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("returns an error on an invalid URL", func() {
+				logCache := newStubLogCache()
+				logCache.block = true
+				logcache_client := client.NewClient(logCache.addr())
+
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+
+				_, err := logcache_client.PromQLRaw(ctx, "some-query")
+				Expect(err).To(HaveOccurred())
+			})
+		})
+
 		Describe("PromQLRange", func() {
 			It("retrieves points", func() {
 				logCache := newStubLogCache()
@@ -356,6 +453,149 @@ var _ = Describe("Log Cache Client", func() {
 				assertQueryParam(logCache.reqs[0].URL, "step", "5m")
 
 				Expect(logCache.reqs[0].URL.Query()).To(HaveLen(4))
+			})
+
+			It("closes the body", func() {
+				spyHTTPClient := newSpyHTTPClient()
+				logcache_client := client.NewClient("", client.WithHTTPClient(spyHTTPClient))
+				logcache_client.PromQLRange(context.Background(), "some-query")
+
+				Expect(spyHTTPClient.body.closed).To(BeTrue())
+			})
+
+			It("returns an error on a non-200 status", func() {
+				logCache := newStubLogCache()
+				logCache.statusCode = 500
+				logcache_client := client.NewClient(logCache.addr())
+
+				_, err := logcache_client.PromQLRange(context.Background(), "some-query")
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("returns an error on invalid JSON", func() {
+				logCache := newStubLogCache()
+				logCache.result["GET/api/v1/query_range"] = []byte("invalid")
+				logcache_client := client.NewClient(logCache.addr())
+
+				_, err := logcache_client.PromQLRange(context.Background(), "some-query")
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("returns an error on unreachable URL", func() {
+				logcache_client := client.NewClient("http://invalid.url")
+
+				_, err := logcache_client.PromQLRange(context.Background(), "some-query")
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("returns an error on an invalid URL", func() {
+				logcache_client := client.NewClient("-:-invalid")
+
+				_, err := logcache_client.PromQLRange(context.Background(), "some-query")
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("returns an error on an invalid URL", func() {
+				logCache := newStubLogCache()
+				logCache.block = true
+				logcache_client := client.NewClient(logCache.addr())
+
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+
+				_, err := logcache_client.PromQLRange(ctx, "some-query")
+				Expect(err).To(HaveOccurred())
+			})
+		})
+
+		Describe("PromQLRangeRaw", func() {
+			It("retrieves points", func() {
+				logCache := newStubLogCache()
+				logcache_client := client.NewClient(logCache.addr())
+				start := time.Unix(time.Now().Unix(), 123000000)
+				end := start.Add(time.Minute)
+
+				result, err := logcache_client.PromQLRangeRaw(
+					context.Background(),
+					`some-query`,
+					client.WithPromQLStart(start),
+					client.WithPromQLEnd(end),
+					client.WithPromQLStep("5m"),
+				)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(logCache.reqs).To(HaveLen(1))
+
+				Expect(logCache.reqs[0].URL.Path).To(Equal("/api/v1/query_range"))
+
+				Expect(logCache.reqs[0].URL.Query()).To(HaveLen(4))
+				assertQueryParam(logCache.reqs[0].URL, "query", "some-query")
+				assertQueryParam(logCache.reqs[0].URL, "start", fmt.Sprintf("%.3f", float64(start.UnixNano())/1e9))
+				assertQueryParam(logCache.reqs[0].URL, "end", fmt.Sprintf("%.3f", float64(end.UnixNano())/1e9))
+				assertQueryParam(logCache.reqs[0].URL, "step", "5m")
+
+				Expect(result.Status).To(Equal("success"))
+				Expect(result.Data.ResultType).To(Equal("matrix"))
+
+				expected := logCache.result["GET/api/v1/query_range"]
+				var expectedResult client.PromQLQueryResult
+
+				err = json.Unmarshal(expected, &expectedResult)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(expectedResult.Data.Result).To(Equal(result.Data.Result))
+			})
+
+			It("closes the body", func() {
+				spyHTTPClient := newSpyHTTPClient()
+				logcache_client := client.NewClient("", client.WithHTTPClient(spyHTTPClient))
+				logcache_client.PromQLRangeRaw(context.Background(), "some-query")
+
+				Expect(spyHTTPClient.body.closed).To(BeTrue())
+			})
+
+			It("returns an error on a non-200, non404, and non-500 status", func() {
+				logCache := newStubLogCache()
+				logCache.statusCode = 503
+				logcache_client := client.NewClient(logCache.addr())
+
+				_, err := logcache_client.PromQLRangeRaw(context.Background(), "some-query")
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("returns an error on invalid JSON", func() {
+				logCache := newStubLogCache()
+				logCache.result["GET/api/v1/query_range"] = []byte("invalid")
+				logcache_client := client.NewClient(logCache.addr())
+
+				_, err := logcache_client.PromQLRangeRaw(context.Background(), "some-query")
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("returns an error on unreachable URL", func() {
+				logcache_client := client.NewClient("http://invalid.url")
+
+				_, err := logcache_client.PromQLRangeRaw(context.Background(), "some-query")
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("returns an error on an invalid URL", func() {
+				logcache_client := client.NewClient("-:-invalid")
+
+				_, err := logcache_client.PromQLRangeRaw(context.Background(), "some-query")
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("returns an error on an invalid URL", func() {
+				logCache := newStubLogCache()
+				logCache.block = true
+				logcache_client := client.NewClient(logCache.addr())
+
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+
+				_, err := logcache_client.PromQLRangeRaw(ctx, "some-query")
+				Expect(err).To(HaveOccurred())
 			})
 		})
 	})

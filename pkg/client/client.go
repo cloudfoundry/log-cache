@@ -4,14 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 
-	"code.cloudfoundry.org/log-cache/pkg/marshaler"
-
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
+	"code.cloudfoundry.org/log-cache/pkg/marshaler"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 	"github.com/blang/semver"
 	"github.com/golang/protobuf/jsonpb"
@@ -369,7 +369,7 @@ func WithPromQLStep(step string) PromQLOption {
 	}
 }
 
-// PromQL issues a PromQL query against Log Cache data.
+// PromQL issues a PromQL range query against Log Cache data.
 func (c *Client) PromQLRange(
 	ctx context.Context,
 	query string,
@@ -449,7 +449,67 @@ func (c *Client) grpcPromQLRange(ctx context.Context, query string, opts []PromQ
 	return resp, nil
 }
 
-// PromQL issues a PromQL query against Log Cache data.
+func (c *Client) PromQLRangeRaw(
+	ctx context.Context,
+	query string,
+	opts ...PromQLOption,
+) (*PromQLQueryResult, error) {
+	u, err := url.Parse(c.addr)
+	if err != nil {
+		return nil, err
+	}
+	u.Path = "/api/v1/query_range"
+	q := u.Query()
+	q.Set("query", query)
+
+	// allow the given options to configure the URL.
+	for _, o := range opts {
+		o(u, q)
+	}
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result PromQLQueryResult
+
+	// If we got a 404, it's probably due to lack of authorization. Let's try
+	// to be nice to users and give them a hint.
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("unexpected status code %d (check authorization?)", resp.StatusCode)
+	}
+
+	// The PromQL API will return nicely-formatted JSON errors with a
+	// status code of either 400 (Bad Request) or 500 (Internal Server Error),
+	// but we can return a generic message for every other status code.
+	if resp.StatusCode != http.StatusOK &&
+		resp.StatusCode != http.StatusBadRequest &&
+		resp.StatusCode != http.StatusInternalServerError {
+		return nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("%s (status code %d)", err.Error(), resp.StatusCode)
+	}
+
+	return &result, nil
+}
+
+// PromQL issues a PromQL instant query against Log Cache data.
 func (c *Client) PromQL(
 	ctx context.Context,
 	query string,
@@ -483,6 +543,7 @@ func (c *Client) PromQL(
 	if err != nil {
 		return nil, err
 	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -519,6 +580,78 @@ func (c *Client) grpcPromQL(ctx context.Context, query string, opts []PromQLOpti
 		return nil, err
 	}
 	return resp, nil
+}
+
+func (c *Client) PromQLRaw(
+	ctx context.Context,
+	query string,
+	opts ...PromQLOption,
+) (*PromQLQueryResult, error) {
+	u, err := url.Parse(c.addr)
+	if err != nil {
+		return nil, err
+	}
+	u.Path = "/api/v1/query"
+	q := u.Query()
+	q.Set("query", query)
+
+	// allow the given options to configure the URL.
+	for _, o := range opts {
+		o(u, q)
+	}
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result PromQLQueryResult
+
+	// If we got a 404, it's probably due to lack of authorization. Let's try
+	// to be nice to users and give them a hint.
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("unexpected status code %d (check authorization?)", resp.StatusCode)
+	}
+
+	// The PromQL API will return nicely-formatted JSON errors with a
+	// status code of either 400 (Bad Request) or 500 (Internal Server Error),
+	// but we can return a generic message for every other status code.
+	if resp.StatusCode != http.StatusOK &&
+		resp.StatusCode != http.StatusBadRequest &&
+		resp.StatusCode != http.StatusInternalServerError {
+		return nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("%s (status code %d)", err.Error(), resp.StatusCode)
+	}
+
+	return &result, nil
+}
+
+type PromQLQueryResult struct {
+	Status    string           `json:"status"`
+	Data      PromQLResultData `json:"data"`
+	ErrorType string           `json:"errorType,omitempty"`
+	Error     string           `json:"error,omitempty"`
+}
+
+type PromQLResultData struct {
+	ResultType string          `json:"resultType"`
+	Result     json.RawMessage `json:"result,omitempty"`
 }
 
 var (
