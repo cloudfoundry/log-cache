@@ -4,14 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 
-	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
-
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
+	"code.cloudfoundry.org/log-cache/internal/pkg/promql"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 	"github.com/blang/semver"
 	"github.com/golang/protobuf/jsonpb"
@@ -483,6 +483,7 @@ func (c *Client) PromQL(
 	if err != nil {
 		return nil, err
 	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -496,6 +497,68 @@ func (c *Client) PromQL(
 	}
 
 	return &promQLResponse, nil
+}
+
+func (c *Client) PromQLRaw(
+	ctx context.Context,
+	query string,
+	opts ...PromQLOption,
+) (*PromQLQueryResult, error) {
+	u, err := url.Parse(c.addr)
+	if err != nil {
+		return nil, err
+	}
+	u.Path = "/api/v1/query"
+	q := u.Query()
+	q.Set("query", query)
+
+	// allow the given options to configure the URL.
+	for _, o := range opts {
+		o(u, q)
+	}
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result PromQLQueryResult
+
+	// The PromQL API will return JSON errors with a status code of 400 (Bad Request)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusBadRequest {
+		return nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+type PromQLQueryResult struct {
+	Status    string           `json:"status"`
+	Data      PromQLResultData `json:"data"`
+	ErrorType string           `json:"errorType,omitempty"`
+	Error     string           `json:"error,omitempty"`
+}
+
+type PromQLResultData struct {
+	ResultType string          `json:"resultType"`
+	Result     json.RawMessage `json:"result,omitempty"`
 }
 
 func (c *Client) grpcPromQL(ctx context.Context, query string, opts []PromQLOption) (*logcache_v1.PromQL_InstantQueryResult, error) {
