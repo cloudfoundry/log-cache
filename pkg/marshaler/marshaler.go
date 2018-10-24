@@ -1,4 +1,4 @@
-package promql
+package marshaler
 
 import (
 	"encoding/json"

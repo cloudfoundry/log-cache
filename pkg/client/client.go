@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"code.cloudfoundry.org/log-cache/internal/promql"
+	"code.cloudfoundry.org/log-cache/pkg/marshaler"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
@@ -410,7 +410,7 @@ func (c *Client) PromQLRange(
 	}
 
 	var promQLResponse logcache_v1.PromQL_RangeQueryResult
-	marshaler := promql.NewPromqlMarshaler(&runtime.JSONPb{})
+	marshaler := marshaler.NewPromqlMarshaler(&runtime.JSONPb{})
 	if err := marshaler.NewDecoder(resp.Body).Decode(&promQLResponse); err != nil {
 		return nil, err
 	}
@@ -490,7 +490,7 @@ func (c *Client) PromQL(
 	}
 
 	var promQLResponse logcache_v1.PromQL_InstantQueryResult
-	marshaler := promql.NewPromqlMarshaler(&runtime.JSONPb{})
+	marshaler := marshaler.NewPromqlMarshaler(&runtime.JSONPb{})
 	if err := marshaler.NewDecoder(resp.Body).Decode(&promQLResponse); err != nil {
 		return nil, err
 	}

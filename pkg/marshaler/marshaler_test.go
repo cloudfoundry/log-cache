@@ -1,4 +1,4 @@
-package promql_test
+package marshaler_test
 
 import (
 	"bytes"
@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"code.cloudfoundry.org/log-cache/internal/promql"
+	"code.cloudfoundry.org/log-cache/pkg/marshaler"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
@@ -18,7 +18,7 @@ import (
 var _ = Describe("PromqlMarshaler", func() {
 	Context("Marshal()", func() {
 		It("handles a scalar instant query result", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			result, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
 				Result: &logcache_v1.PromQL_InstantQueryResult_Scalar{
@@ -40,7 +40,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("handles a vector instant query result", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			result, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
 				Result: &logcache_v1.PromQL_InstantQueryResult_Vector{
@@ -98,7 +98,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("handles an empty vector instant query result", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			result, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
 				Result: &logcache_v1.PromQL_InstantQueryResult_Vector{
@@ -119,7 +119,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("handles a vector instant query result with no tags", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			result, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
 				Result: &logcache_v1.PromQL_InstantQueryResult_Vector{
@@ -152,7 +152,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("handles a matrix instant query result", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			result, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
 				Result: &logcache_v1.PromQL_InstantQueryResult_Matrix{
@@ -228,7 +228,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("handles an empty matrix instant query result", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			result, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
 				Result: &logcache_v1.PromQL_InstantQueryResult_Matrix{
@@ -249,7 +249,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("handles a matrix instant query result with no tags", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			result, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
 				Result: &logcache_v1.PromQL_InstantQueryResult_Matrix{
@@ -291,7 +291,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("handles a matrix range query result", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			result, err := marshaler.Marshal(&logcache_v1.PromQL_RangeQueryResult{
 				Result: &logcache_v1.PromQL_RangeQueryResult_Matrix{
@@ -366,7 +366,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("handles an empty matrix range query result", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			result, err := marshaler.Marshal(&logcache_v1.PromQL_RangeQueryResult{
 				Result: &logcache_v1.PromQL_RangeQueryResult_Matrix{
@@ -387,7 +387,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("handles a matrix range query result with no tags", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			result, err := marshaler.Marshal(&logcache_v1.PromQL_RangeQueryResult{
 				Result: &logcache_v1.PromQL_RangeQueryResult_Matrix{
@@ -429,7 +429,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("reports errors for invalid timestamps", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			_, err := marshaler.Marshal(&logcache_v1.PromQL_InstantQueryResult{
 				Result: &logcache_v1.PromQL_InstantQueryResult_Scalar{
@@ -443,7 +443,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("falls back to the fallback marshaler for non-PromQL replies", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			result, err := marshaler.Marshal(nil)
 			Expect(err).ToNot(HaveOccurred())
@@ -451,7 +451,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("passes through errors from the fallback marshaler", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{
 				marshalError: errors.New("expected error"),
 			})
 
@@ -463,7 +463,7 @@ var _ = Describe("PromqlMarshaler", func() {
 	Context("NewEncoder()", func() {
 		It("can encode to a writer", func() {
 			encoded := bytes.NewBuffer(nil)
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 			encoder := marshaler.NewEncoder(encoded)
 
 			err := encoder.Encode(&logcache_v1.PromQL_InstantQueryResult{
@@ -487,7 +487,7 @@ var _ = Describe("PromqlMarshaler", func() {
 
 		It("falls back to the fallback marshaler for non-PromQL replies", func() {
 			encoded := bytes.NewBuffer(nil)
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 			encoder := marshaler.NewEncoder(encoded)
 
 			err := encoder.Encode(nil)
@@ -500,7 +500,7 @@ var _ = Describe("PromqlMarshaler", func() {
 
 		It("passes through errors from the fallback marshaler", func() {
 			encoded := bytes.NewBuffer(nil)
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{
 				encodeError: errors.New("expected error"),
 			})
 			encoder := marshaler.NewEncoder(encoded)
@@ -513,7 +513,7 @@ var _ = Describe("PromqlMarshaler", func() {
 
 	Context("Unmarshal()", func() {
 		It("handles a scalar instant query result", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			var result logcache_v1.PromQL_InstantQueryResult
 			err := marshaler.Unmarshal([]byte(`{
@@ -536,7 +536,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("handles a vector instant query result", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			var result logcache_v1.PromQL_InstantQueryResult
 			err := marshaler.Unmarshal([]byte(`{
@@ -594,7 +594,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("handles a matrix instant query result", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			var result logcache_v1.PromQL_InstantQueryResult
 			err := marshaler.Unmarshal([]byte(`{
@@ -670,7 +670,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("handles a matrix range query result", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			var result logcache_v1.PromQL_RangeQueryResult
 			err := marshaler.Unmarshal([]byte(`{
@@ -746,7 +746,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("falls back to the fallback marshaler", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			var result string
 			err := marshaler.Unmarshal(nil, &result)
@@ -755,7 +755,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("passes through errors from the fallback marshaler", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{
 				unmarshalError: errors.New("expected error"),
 			})
 
@@ -774,7 +774,7 @@ var _ = Describe("PromqlMarshaler", func() {
 					"result": [1.123, "2.5"]
 				}
 			}`)
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			var result logcache_v1.PromQL_InstantQueryResult
 			err := marshaler.NewDecoder(marshaled).Decode(&result)
@@ -791,7 +791,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("falls back to the fallback marshaler", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 			decoder := marshaler.NewDecoder(bytes.NewBuffer(nil))
 
 			var result string
@@ -801,7 +801,7 @@ var _ = Describe("PromqlMarshaler", func() {
 		})
 
 		It("passes through errors from the fallback marshaler", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{
 				decodeError: errors.New("expected error"),
 			})
 			decoder := marshaler.NewDecoder(bytes.NewBuffer(nil))
@@ -814,7 +814,7 @@ var _ = Describe("PromqlMarshaler", func() {
 
 	Context("ContentType()", func() {
 		It("returns application/json", func() {
-			marshaler := promql.NewPromqlMarshaler(&mockMarshaler{})
+			marshaler := marshaler.NewPromqlMarshaler(&mockMarshaler{})
 
 			Expect(marshaler.ContentType()).To(Equal("application/json"))
 		})
