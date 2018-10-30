@@ -17,8 +17,9 @@ import (
 )
 
 type PromQL struct {
-	r   DataReader
-	log *log.Logger
+	r            DataReader
+	log          *log.Logger
+	queryTimeout time.Duration
 
 	failureCounter    func(uint64)
 	instantQueryTimer func(float64)
@@ -41,10 +42,12 @@ func New(
 	r DataReader,
 	m Metrics,
 	log *log.Logger,
+	queryTimeout time.Duration,
 ) *PromQL {
 	q := &PromQL{
 		r:                 r,
 		log:               log,
+		queryTimeout:      queryTimeout,
 		failureCounter:    m.NewCounter("PromQLTimeout"),
 		instantQueryTimer: m.NewGauge("PromQLInstantQueryTime"),
 		rangeQueryTimer:   m.NewGauge("PromQLRangeQueryTime"),
@@ -68,7 +71,7 @@ func (q *PromQL) InstantQuery(ctx context.Context, req *logcache_v1.PromQL_Insta
 		errf: func(e error) { closureErr = e },
 	}
 
-	queryable := promql.NewEngine(nil, nil, 10, 10*time.Second)
+	queryable := promql.NewEngine(nil, nil, 10, q.queryTimeout)
 
 	var requestTime time.Time
 	var err error
@@ -187,7 +190,7 @@ func (q *PromQL) RangeQuery(ctx context.Context, req *logcache_v1.PromQL_RangeQu
 		// manually.
 		errf: func(e error) { closureErr = e },
 	}
-	queryable := promql.NewEngine(nil, nil, 10, 10*time.Second)
+	queryable := promql.NewEngine(nil, nil, 10, q.queryTimeout)
 
 	step, err := ParseStep(req.Step)
 	if err != nil {

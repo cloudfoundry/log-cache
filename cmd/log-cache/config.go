@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	envstruct "code.cloudfoundry.org/go-envstruct"
 	"code.cloudfoundry.org/log-cache/internal/tls"
 )
@@ -9,6 +11,10 @@ import (
 type Config struct {
 	Addr       string `env:"ADDR, required, report"`
 	HealthAddr string `env:"HEALTH_ADDR, report"`
+
+	// QueryTimeout sets the maximum allowed runtime for a single PromQL query.
+	// Smaller timeouts are recommended.
+	QueryTimeout time.Duration `env:"QUERY_TIMEOUT, report"`
 
 	// MinimumSize sets the lower bound for pruning. It will not prune beyond
 	// the set size. Defaults to 500000.
@@ -36,10 +42,11 @@ type Config struct {
 // LoadConfig creates Config object from environment variables
 func LoadConfig() (*Config, error) {
 	c := Config{
-		Addr:        ":8080",
-		HealthAddr:  "localhost:6060",
-		MinimumSize: 500000,
-		MemoryLimit: 50,
+		Addr:         ":8080",
+		HealthAddr:   "localhost:6060",
+		QueryTimeout: 10 * time.Second,
+		MinimumSize:  500000,
+		MemoryLimit:  50,
 	}
 
 	if err := envstruct.Load(&c); err != nil {

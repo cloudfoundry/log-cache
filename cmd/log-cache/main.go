@@ -32,6 +32,7 @@ func main() {
 		WithAddr(cfg.Addr),
 		WithMinimumSize(cfg.MinimumSize),
 		WithMemoryLimit(cfg.MemoryLimit),
+		WithQueryTimeout(cfg.QueryTimeout),
 		WithClustered(
 			cfg.NodeIndex,
 			cfg.NodeAddrs,

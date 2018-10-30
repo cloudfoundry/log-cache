@@ -32,6 +32,7 @@ var _ = Describe("PromQL", func() {
 			spyDataReader,
 			spyMetrics,
 			log.New(ioutil.Discard, "", 0),
+			5*time.Second,
 		)
 	})
 

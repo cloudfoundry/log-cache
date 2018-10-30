@@ -34,6 +34,7 @@ type LogCache struct {
 	maxPerSource       int
 	min                int
 	memoryLimitPercent float64
+	queryTimeout       time.Duration
 
 	// Cluster Properties
 	addr     string
@@ -56,6 +57,7 @@ func New(opts ...LogCacheOption) *LogCache {
 		maxPerSource:       100000,
 		min:                500000,
 		memoryLimitPercent: 50,
+		queryTimeout:       10 * time.Second,
 
 		addr:     ":8080",
 		dialOpts: []grpc.DialOption{grpc.WithInsecure()},
@@ -121,6 +123,15 @@ func WithMinimumSize(min int) LogCacheOption {
 func WithMemoryLimit(memoryPercent float64) LogCacheOption {
 	return func(c *LogCache) {
 		c.memoryLimitPercent = memoryPercent
+	}
+}
+
+// WithQueryTimeout sets the maximum allowed runtime of a single PromQL query.
+// The default is 10s. If you increase this limit, make sure to keep in mind
+// that memory usage will increase with longer durations.
+func WithQueryTimeout(queryTimeout time.Duration) LogCacheOption {
+	return func(c *LogCache) {
+		c.queryTimeout = queryTimeout
 	}
 }
 
@@ -243,6 +254,7 @@ func (c *LogCache) setupRouting(s *store.Store) {
 		),
 		c.metrics,
 		c.log,
+		c.queryTimeout,
 	)
 	c.server = grpc.NewServer(c.serverOpts...)
 
