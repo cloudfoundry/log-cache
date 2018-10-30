@@ -333,6 +333,7 @@ func (l *LogCacheQuerier) Select(params *storage.SelectParams, ll ...*labels.Mat
 				logcache_v1.EnvelopeType_TIMER,
 			},
 		})
+
 		if err != nil {
 			l.errf(err)
 			return nil, err
@@ -372,7 +373,12 @@ func (l *LogCacheQuerier) Select(params *storage.SelectParams, ll ...*labels.Mat
 
 			e.Timestamp = time.Unix(0, e.GetTimestamp()).Truncate(l.interval).UnixNano()
 
-			builder.add(e.Tags, point{
+			tags := e.GetTags()
+			if e.InstanceId != "" {
+				tags["instance_id"] = e.InstanceId
+			}
+
+			builder.add(tags, point{
 				t: e.GetTimestamp() / int64(time.Millisecond),
 				v: f,
 			})

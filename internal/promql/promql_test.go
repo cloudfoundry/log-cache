@@ -526,8 +526,9 @@ var _ = Describe("PromQL", func() {
 			spyDataReader.readErrs = []error{nil}
 			spyDataReader.readResults = [][]*loggregator_v2.Envelope{
 				{{
-					SourceId:  "some-id-1",
-					Timestamp: now.UnixNano(),
+					SourceId:   "some-id-1",
+					InstanceId: "0",
+					Timestamp:  now.UnixNano(),
 					Message: &loggregator_v2.Envelope_Counter{
 						Counter: &loggregator_v2.Counter{
 							Name:  "metric",
@@ -550,8 +551,9 @@ var _ = Describe("PromQL", func() {
 			Expect(r.GetMatrix().GetSeries()).To(Equal([]*logcache_v1.PromQL_Series{
 				{
 					Metric: map[string]string{
-						"a": "tag-a",
-						"b": "tag-b",
+						"a":           "tag-a",
+						"b":           "tag-b",
+						"instance_id": "0",
 					},
 					Points: []*logcache_v1.PromQL_Point{{
 						Time:  testing.FormatTimeWithDecimalMillis(now.Truncate(time.Second)),
