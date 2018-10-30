@@ -33,7 +33,7 @@ type Config struct {
 type CounterDescription struct {
 	Addr     string            `json:"addr"`
 	Name     string            `json:"name"`
-	SourceId string            `json:"source_id, optional"`
+	SourceId string            `json:"source_id,optional"`
 	Template string            `json:"template"`
 	Tags     map[string]string `json:"tags"`
 }
@@ -42,7 +42,7 @@ type GaugeDescription struct {
 	Addr     string            `json:"addr"`
 	Name     string            `json:"name"`
 	Unit     string            `json:"unit"`
-	SourceId string            `json:"source_id, optional"`
+	SourceId string            `json:"source_id,optional"`
 	Template string            `json:"template"`
 	Tags     map[string]string `json:"tags"`
 }
@@ -50,7 +50,7 @@ type GaugeDescription struct {
 type MapDescription struct {
 	Addr     string            `json:"addr"`
 	Name     string            `json:"name"`
-	SourceId string            `json:"source_id, optional"`
+	SourceId string            `json:"source_id,optional"`
 	Template string            `json:"template"`
 	Tags     map[string]string `json:"tags"`
 }
