@@ -25,6 +25,7 @@ type UAAClient struct {
 	uaa          *url.URL
 	client       string
 	clientSecret string
+	tokenCache   map[string]uaaResponse
 	storeLatency func(float64)
 }
 
@@ -49,12 +50,22 @@ func NewUAAClient(
 		clientSecret: clientSecret,
 		httpClient:   httpClient,
 		storeLatency: m.NewGauge("LastUAALatency"),
+		tokenCache:   make(map[string]uaaResponse),
 	}
 }
 
 func (c *UAAClient) Read(token string) (Oauth2Client, error) {
 	if token == "" {
 		return Oauth2Client{}, errors.New("missing token")
+	}
+
+	uaaR, ok := c.tokenCache[token]
+	if ok && uaaR.Exp >= time.Now().Unix() {
+		return Oauth2Client{
+			IsAdmin:  c.hasDopplerScope(uaaR),
+			UserID:   uaaR.UserID,
+			ClientID: uaaR.ClientID,
+		}, nil
 	}
 
 	form := url.Values{
@@ -82,11 +93,13 @@ func (c *UAAClient) Read(token string) (Oauth2Client, error) {
 		resp.Body.Close()
 	}()
 
-	uaaR, err := c.parseResponse(resp.Body)
+	uaaR, err = c.parseResponse(resp.Body)
 	if err != nil {
 		log.Printf("failed to parse UAA response body: %s", err)
 		return Oauth2Client{}, err
 	}
+
+	c.tokenCache[token] = uaaR
 
 	return Oauth2Client{
 		IsAdmin:  resp.StatusCode == http.StatusOK && c.hasDopplerScope(uaaR),
@@ -103,6 +116,7 @@ type uaaResponse struct {
 	Scopes   []string `json:"scope"`
 	UserID   string   `json:"user_id"`
 	ClientID string   `json:"client_id"`
+	Exp      int64    `json:"exp"`
 }
 
 func (c *UAAClient) hasDopplerScope(r uaaResponse) bool {

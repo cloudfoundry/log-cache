@@ -3,6 +3,7 @@ package auth_test
 import (
 	"log"
 	"sync"
+	"time"
 
 	"code.cloudfoundry.org/log-cache/internal/auth"
 
@@ -74,6 +75,45 @@ var _ = Describe("UAAClient", func() {
 		Expect(c.IsAdmin).To(BeTrue())
 		Expect(c.UserID).To(Equal("some-user"))
 		Expect(c.ClientID).To(Equal("some-client"))
+	})
+
+	It("does offline token validation through caching", func() {
+		data, err := json.Marshal(map[string]interface{}{
+			"scope":     []string{"logs.admin"},
+			"user_id":   "some-user",
+			"client_id": "some-client",
+			"exp":       time.Now().Add(time.Minute).Unix(),
+		})
+		Expect(err).ToNot(HaveOccurred())
+		httpClient.resps = []response{{
+			body:   data,
+			status: http.StatusOK,
+		}}
+
+		client.Read("valid-token")
+		client.Read("valid-token")
+
+		Expect(len(httpClient.requests)).To(Equal(1))
+	})
+
+	It("does not validate an expired token", func() {
+		data, err := json.Marshal(map[string]interface{}{
+			"scope":     []string{"logs.admin"},
+			"user_id":   "some-user",
+			"client_id": "some-client",
+			"exp":       time.Now().Add(-time.Minute).Unix(),
+		})
+
+		Expect(err).ToNot(HaveOccurred())
+		httpClient.resps = []response{{
+			body:   data,
+			status: http.StatusOK,
+		}}
+
+		client.Read("valid-token")
+		client.Read("valid-token")
+
+		Expect(len(httpClient.requests)).To(Equal(2))
 	})
 
 	It("calls UAA correctly", func() {
