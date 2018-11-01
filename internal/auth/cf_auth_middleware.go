@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"log"
 
@@ -25,9 +26,11 @@ type CFAuthMiddlewareProvider struct {
 }
 
 type Oauth2Client struct {
-	IsAdmin  bool
-	ClientID string
-	UserID   string
+	IsAdmin    bool
+	ClientID   string
+	UserID     string
+	Expiration time.Time
+	Token      string
 }
 
 type Oauth2ClientReader interface {
@@ -35,7 +38,7 @@ type Oauth2ClientReader interface {
 }
 
 type LogAuthorizer interface {
-	IsAuthorized(sourceID, token string) bool
+	IsAuthorized(sourceID string, clientToken Oauth2Client) bool
 	AvailableSourceIDs(token string) []string
 }
 
@@ -94,7 +97,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		}
 
 		if !c.IsAdmin {
-			if !m.logAuthorizer.IsAuthorized(sourceID, authToken) {
+			if !m.logAuthorizer.IsAuthorized(sourceID, c) {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
@@ -150,7 +153,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 			sourceIdSet := append(relatedSourceIds[sourceId], sourceId)
 
 			if !c.IsAdmin {
-				sourceIdSet = m.authorizeSourceIds(sourceIdSet, authToken)
+				sourceIdSet = m.authorizeSourceIds(sourceIdSet, c)
 
 				if len(sourceIdSet) == 0 {
 					w.WriteHeader(http.StatusNotFound)
@@ -208,11 +211,11 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 	return router
 }
 
-func (m CFAuthMiddlewareProvider) authorizeSourceIds(sourceIds []string, authToken string) []string {
+func (m CFAuthMiddlewareProvider) authorizeSourceIds(sourceIds []string, c Oauth2Client) []string {
 	var authorizedSourceIds []string
 
 	for _, sourceId := range sourceIds {
-		if m.logAuthorizer.IsAuthorized(sourceId, authToken) {
+		if m.logAuthorizer.IsAuthorized(sourceId, c) {
 			authorizedSourceIds = append(authorizedSourceIds, sourceId)
 		}
 	}

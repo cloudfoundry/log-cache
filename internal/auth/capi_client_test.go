@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"sync"
+	"time"
 
 	"code.cloudfoundry.org/log-cache/internal/auth"
 
@@ -31,80 +32,123 @@ var _ = Describe("CAPIClient", func() {
 			capiClient,
 			metrics,
 			log.New(ioutil.Discard, "", 0),
+			auth.WithTokenPruningInterval(250*time.Millisecond),
 		)
 	})
 
 	Describe("IsAuthorized", func() {
-		It("hits CAPI correctly", func() {
+		It("caches CAPI response for /v3/apps and /v2/service_instances request", func() {
 			capiClient.resps = []response{
-				{status: http.StatusNotFound},
+				newCapiAppResp("37cbff06-79ef-4146-a7b0-01838940f185", "my_app", http.StatusOK),
+				newCapiServiceResp("afbdcab7-6fd1-418d-bfd0-95c60276507b", http.StatusOK),
+			}
+			clientToken := auth.Oauth2Client{
+				Expiration: time.Now().Add(time.Minute),
+				Token:      "some-token",
 			}
 
-			client.IsAuthorized("some-id", "some-token")
-			r := capiClient.requests[0]
+			authorized := client.IsAuthorized("37cbff06-79ef-4146-a7b0-01838940f185", clientToken)
 
-			Expect(r.Method).To(Equal(http.MethodGet))
-			Expect(r.URL.String()).To(Equal("https://capi.com/internal/v4/log_access/some-id"))
-			Expect(r.Header.Get("Authorization")).To(Equal("some-token"))
+			Expect(len(capiClient.requests)).To(Equal(2))
+			Expect(authorized).To(BeTrue())
 
-			r = capiClient.requests[1]
+			authorized = client.IsAuthorized("37cbff06-79ef-4146-a7b0-01838940f185", clientToken)
 
-			Expect(r.Method).To(Equal(http.MethodGet))
-			Expect(r.URL.String()).To(Equal("http://external.capi.com/v2/service_instances/some-id"))
-			Expect(r.Header.Get("Authorization")).To(Equal("some-token"))
+			Expect(len(capiClient.requests)).To(Equal(2))
+			Expect(authorized).To(BeTrue())
+
+			authorized = client.IsAuthorized("afbdcab7-6fd1-418d-bfd0-95c60276507b", clientToken)
+
+			Expect(len(capiClient.requests)).To(Equal(2))
+			Expect(authorized).To(BeTrue())
 		})
 
-		It("returns true for authorized token for an app", func() {
-			capiClient.resps = []response{{status: http.StatusOK}}
-			Expect(client.IsAuthorized("some-id", "some-token")).To(BeTrue())
-		})
-
-		It("returns true for authorized token for a service instance", func() {
-			capiClient.resps = []response{
-				{status: http.StatusNotFound},
-				{status: http.StatusOK},
+		It("invalidates cached CAPI response once token expiration occurs", func() {
+			token0 := auth.Oauth2Client{
+				Token:      "token-0",
+				Expiration: time.Now().Add(250 * time.Millisecond),
 			}
-			Expect(client.IsAuthorized("some-id", "some-token")).To(BeTrue())
-		})
 
-		It("returns false when CAPI returns non 200 for app and service instance", func() {
-			capiClient.resps = []response{
-				{status: http.StatusNotFound},
-				{status: http.StatusNotFound},
-			}
-			Expect(client.IsAuthorized("some-id", "some-token")).To(BeFalse())
-		})
-
-		It("returns false when CAPI request fails", func() {
-			capiClient.resps = []response{{err: errors.New("intentional error")}}
-			Expect(client.IsAuthorized("some-id", "some-token")).To(BeFalse())
-		})
-
-		It("stores the latency", func() {
-			capiClient.resps = []response{
-				{status: http.StatusNotFound},
-			}
-			client.IsAuthorized("source-id", "my-token")
-
-			Expect(metrics.m["LastCAPIV4LogAccessLatency"]).ToNot(BeZero())
-			Expect(metrics.m["LastCAPIV2ServiceInstancesLatency"]).ToNot(BeZero())
-		})
-
-		It("is goroutine safe", func() {
-			var wg sync.WaitGroup
-			wg.Add(1)
-			go func() {
-				for i := 0; i < 1000; i++ {
-					client.IsAuthorized(fmt.Sprintf("some-id-%d", i), "some-token")
+			var isExpiredTokenAuthorized = func() bool {
+				capiClient.resps = []response{
+					newCapiAppResp("8208c86c-7afe-45f8-8999-4883d5868cf2", "my_other_app", http.StatusOK),
+					newCapiServiceResp("dc94ebb2-5038-4645-afbf-1093bbd58e94", http.StatusOK),
 				}
 
-				wg.Done()
-			}()
-
-			for i := 0; i < 1000; i++ {
-				client.IsAuthorized(fmt.Sprintf("some-id-%d", i), "some-token")
+				return client.IsAuthorized(
+					"8208c86c-7afe-45f8-8999-4883d5868cf2",
+					token0,
+				)
 			}
-			wg.Wait()
+
+			Expect(isExpiredTokenAuthorized()).To(BeTrue())
+			Eventually(isExpiredTokenAuthorized).Should(BeFalse())
+		})
+
+		It("sourceIDs from expired cached tokens are not authorized", func() {
+			token0 := auth.Oauth2Client{
+				Token:      "token-0",
+				Expiration: time.Now().Add(250 * time.Millisecond),
+			}
+
+			var isExpiredTokenAuthorized = func() bool {
+				capiClient.resps = []response{
+					newCapiAppResp("8208c86c-7afe-45f8-8999-4883d5868cf2", "my_other_app", http.StatusOK),
+					newCapiServiceResp("dc94ebb2-5038-4645-afbf-1093bbd58e94", http.StatusOK),
+				}
+
+				return client.IsAuthorized(
+					"8208c86c-7afe-45f8-8999-4883d5868cf2",
+					token0,
+				)
+			}
+
+			Expect(isExpiredTokenAuthorized()).To(BeTrue())
+			Eventually(isExpiredTokenAuthorized).Should(BeFalse())
+
+			capiClient.resps = []response{
+				newCapiAppResp("37cbff06-79ef-4146-a7b0-01838940f185", "my_app", http.StatusOK),
+				newCapiServiceResp("afbdcab7-6fd1-418d-bfd0-95c60276507b", http.StatusOK),
+			}
+			token1 := auth.Oauth2Client{
+				Token:      "token-1",
+				Expiration: time.Now().Add(time.Second),
+			}
+
+			authorized := client.IsAuthorized(
+				"8208c86c-7afe-45f8-8999-4883d5868cf2",
+				token1,
+			)
+
+			Expect(authorized).To(BeFalse())
+		})
+
+		It("immediately rejects expired token", func() {
+			capiClient.resps = []response{
+				newCapiAppResp("8208c86c-7afe-45f8-8999-4883d5868cf2", "my_other_app", http.StatusOK),
+				newCapiServiceResp("dc94ebb2-5038-4645-afbf-1093bbd58e94", http.StatusOK),
+			}
+			authorized := client.IsAuthorized(
+				"8208c86c-7afe-45f8-8999-4883d5868cf2",
+				auth.Oauth2Client{
+					Token:      "expired-token",
+					Expiration: time.Now().Add(-time.Second),
+				})
+
+			Expect(capiClient.requests).To(BeEmpty())
+			Expect(authorized).To(BeFalse())
+		})
+
+		It("regularly removes expired tokens from cache", func() {
+			client.IsAuthorized(
+				"8208c86c-7afe-45f8-8999-4883d5868cf2",
+				auth.Oauth2Client{
+					Token:      "token",
+					Expiration: time.Now().Add(250 * time.Millisecond),
+				},
+			)
+
+			Eventually(client.TokenCacheSize).Should(BeZero())
 		})
 	})
 
@@ -277,3 +321,34 @@ var _ = Describe("CAPIClient", func() {
 		})
 	})
 })
+
+func newCapiAppResp(guid, name string, status int) response {
+	return response{
+		status: status,
+		body: []byte(fmt.Sprintf(
+			`{
+               "resources": [
+                 {
+                   "guid": "%s",
+                   "name": "%s"
+                 }
+               ]
+             }`, guid, name)),
+	}
+}
+
+func newCapiServiceResp(guid string, status int) response {
+	return response{
+		status: status,
+		body: []byte(fmt.Sprintf(
+			`{
+               "resources": [
+                 {
+                   "metadata": {
+                     "guid": "%s"
+                   }
+                 }
+               ]
+             }`, guid)),
+	}
+}

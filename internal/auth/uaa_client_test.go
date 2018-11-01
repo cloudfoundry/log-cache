@@ -193,6 +193,7 @@ type spyHTTPClient struct {
 	mu       sync.Mutex
 	requests []*http.Request
 	resps    []response
+	tokens   []string
 }
 
 type response struct {
@@ -210,6 +211,7 @@ func (s *spyHTTPClient) Do(r *http.Request) (*http.Response, error) {
 	defer s.mu.Unlock()
 
 	s.requests = append(s.requests, r)
+	s.tokens = append(s.tokens, r.Header.Get("Authorization"))
 
 	if len(s.resps) == 0 {
 		return &http.Response{

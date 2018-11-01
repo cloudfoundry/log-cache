@@ -2,20 +2,23 @@ package auth
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
 type CAPIClient struct {
-	client                           HTTPClient
-	capi                             string
-	externalCapi                     string
+	client               HTTPClient
+	capi                 string
+	externalCapi         string
+	tokenCache           *sync.Map
+	tokenPruningInterval time.Duration
+
 	storeAppsLatency                 func(float64)
 	storeListServiceInstancesLatency func(float64)
 	storeLogAccessLatency            func(float64)
@@ -29,6 +32,7 @@ func NewCAPIClient(
 	client HTTPClient,
 	m Metrics,
 	log *log.Logger,
+	opts ...CAPIOption,
 ) *CAPIClient {
 	_, err := url.Parse(capiAddr)
 	if err != nil {
@@ -40,56 +44,60 @@ func NewCAPIClient(
 		log.Fatalf("failed to parse external CAPI addr: %s", err)
 	}
 
-	return &CAPIClient{
-		client:                           client,
-		capi:                             capiAddr,
-		externalCapi:                     externalCapiAddr,
+	c := &CAPIClient{
+		client:               client,
+		capi:                 capiAddr,
+		externalCapi:         externalCapiAddr,
+		tokenCache:           &sync.Map{},
+		tokenPruningInterval: time.Minute,
+
 		storeAppsLatency:                 m.NewGauge("LastCAPIV3AppsLatency"),
 		storeListServiceInstancesLatency: m.NewGauge("LastCAPIV2ListServiceInstancesLatency"),
 		storeLogAccessLatency:            m.NewGauge("LastCAPIV4LogAccessLatency"),
 		storeServiceInstancesLatency:     m.NewGauge("LastCAPIV2ServiceInstancesLatency"),
 		storeAppsByNameLatency:           m.NewGauge("LastCAPIV3AppsByNameLatency"),
 	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	go c.pruneTokens()
+
+	return c
 }
 
-func (c *CAPIClient) IsAuthorized(sourceID, authToken string) bool {
-	uri := fmt.Sprintf("%s/internal/v4/log_access/%s", c.capi, sourceID)
-	req, err := http.NewRequest(http.MethodGet, uri, nil)
-	if err != nil {
-		log.Printf("failed to build authorize log access request: %s", err)
+type CAPIOption func(c *CAPIClient)
+
+func WithTokenPruningInterval(interval time.Duration) CAPIOption {
+	return func(c *CAPIClient) {
+		c.tokenPruningInterval = interval
+	}
+}
+
+func (c *CAPIClient) IsAuthorized(sourceID string, clientToken Oauth2Client) bool {
+	if !time.Now().Before(clientToken.Expiration) {
+		c.tokenCache.Delete(clientToken)
 		return false
 	}
 
-	resp, err := c.doRequest(req, authToken, c.storeLogAccessLatency)
-	if err != nil {
-		return false
+	var sourceIDs []string
+	sourceIDsValue, ok := c.tokenCache.Load(clientToken)
+
+	if ok {
+		sourceIDs = sourceIDsValue.([]string)
+	} else {
+		sourceIDs = c.AvailableSourceIDs(clientToken.Token)
+		c.tokenCache.Store(clientToken, sourceIDs)
 	}
 
-	defer func(r *http.Response) {
-		cleanup(r)
-	}(resp)
-
-	if resp.StatusCode == http.StatusOK {
-		return true
+	for _, s := range sourceIDs {
+		if s == sourceID {
+			return true
+		}
 	}
 
-	uri = fmt.Sprintf("%s/v2/service_instances/%s", c.externalCapi, sourceID)
-	req, err = http.NewRequest(http.MethodGet, uri, nil)
-	if err != nil {
-		log.Printf("failed to build authorize service instance access request: %s", err)
-		return false
-	}
-
-	resp, err = c.doRequest(req, authToken, c.storeServiceInstancesLatency)
-	if err != nil {
-		return false
-	}
-
-	defer func(r *http.Response) {
-		cleanup(r)
-	}(resp)
-
-	return resp.StatusCode == http.StatusOK
+	return false
 }
 
 func (c *CAPIClient) AvailableSourceIDs(authToken string) []string {
@@ -189,6 +197,29 @@ func (c *CAPIClient) GetRelatedSourceIds(appNames []string, authToken string) ma
 	}
 
 	return guidSets
+}
+
+func (c *CAPIClient) TokenCacheSize() int {
+	var i int
+	c.tokenCache.Range(func(_, _ interface{}) bool {
+		i++
+		return true
+	})
+	return i
+}
+
+func (c *CAPIClient) pruneTokens() {
+	for range time.Tick(c.tokenPruningInterval) {
+		c.tokenCache.Range(func(k, _ interface{}) bool {
+			clientToken := k.(Oauth2Client)
+
+			if !time.Now().Before(clientToken.Expiration) {
+				c.tokenCache.Delete(k)
+			}
+
+			return true
+		})
+	}
 }
 
 func (c *CAPIClient) doRequest(req *http.Request, authToken string, reporter func(float64)) (*http.Response, error) {
