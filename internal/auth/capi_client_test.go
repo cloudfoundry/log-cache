@@ -27,7 +27,6 @@ var _ = Describe("CAPIClient", func() {
 		capiClient = newSpyHTTPClient()
 		metrics = newSpyMetrics()
 		client = auth.NewCAPIClient(
-			"https://capi.com",
 			"http://external.capi.com",
 			capiClient,
 			metrics,

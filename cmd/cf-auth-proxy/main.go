@@ -9,7 +9,6 @@ import (
 	"os"
 	"time"
 
-	"crypto/tls"
 	"crypto/x509"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
@@ -46,7 +45,6 @@ func main() {
 	)
 
 	capiClient := auth.NewCAPIClient(
-		cfg.CAPI.Addr,
 		cfg.CAPI.ExternalAddr,
 		buildCAPIClient(cfg),
 		metrics,
@@ -75,12 +73,10 @@ func main() {
 }
 
 func buildUAAClient(cfg *Config) *http.Client {
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: cfg.SkipCertVerify,
-		MinVersion:         tls.VersionTLS12,
-	}
+	tlsConfig := logtls.NewBaseTLSConfig()
+	tlsConfig.InsecureSkipVerify = cfg.SkipCertVerify
 
-	tlsConfig.RootCAs = loadUaaCA(cfg.UAA.CAPath)
+	tlsConfig.RootCAs = loadCA(cfg.UAA.CAPath)
 
 	transport := &http.Transport{
 		TLSHandshakeTimeout: 10 * time.Second,
@@ -95,15 +91,10 @@ func buildUAAClient(cfg *Config) *http.Client {
 }
 
 func buildCAPIClient(cfg *Config) *http.Client {
-	tlsConfig, err := logtls.NewTLSConfig(
-		cfg.CAPI.CAPath,
-		cfg.CAPI.CertPath,
-		cfg.CAPI.KeyPath,
-		cfg.CAPI.CommonName,
-	)
-	if err != nil {
-		log.Fatalf("unable to create CC HTTP Client: %s", err)
-	}
+	tlsConfig := logtls.NewBaseTLSConfig()
+	tlsConfig.ServerName = cfg.CAPI.CommonName
+
+	tlsConfig.RootCAs = loadCA(cfg.CAPI.CAPath)
 
 	tlsConfig.InsecureSkipVerify = cfg.SkipCertVerify
 	transport := &http.Transport{
@@ -118,16 +109,16 @@ func buildCAPIClient(cfg *Config) *http.Client {
 	}
 }
 
-func loadUaaCA(uaaCertPath string) *x509.CertPool {
-	caCert, err := ioutil.ReadFile(uaaCertPath)
+func loadCA(caCertPath string) *x509.CertPool {
+	caCert, err := ioutil.ReadFile(caCertPath)
 	if err != nil {
-		log.Fatalf("failed to read UAA CA certificate: %s", err)
+		log.Fatalf("failed to read CA certificate: %s", err)
 	}
 
 	certPool := x509.NewCertPool()
 	ok := certPool.AppendCertsFromPEM(caCert)
 	if !ok {
-		log.Fatal("failed to parse UAA CA certificate.")
+		log.Fatal("failed to parse CA certificate.")
 	}
 
 	return certPool

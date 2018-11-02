@@ -31,7 +31,7 @@ func NewTLSCredentials(
 	keyPath string,
 	cn string,
 ) (credentials.TransportCredentials, error) {
-	cfg, err := NewTLSConfig(caPath, certPath, keyPath, cn)
+	cfg, err := NewMutualTLSConfig(caPath, certPath, keyPath, cn)
 	if err != nil {
 		return nil, err
 	}
@@ -39,19 +39,15 @@ func NewTLSCredentials(
 	return credentials.NewTLS(cfg), nil
 }
 
-func NewTLSConfig(caPath, certPath, keyPath, cn string) (*tls.Config, error) {
+func NewMutualTLSConfig(caPath, certPath, keyPath, cn string) (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
 		return nil, err
 	}
 
-	tlsConfig := &tls.Config{
-		ServerName:         cn,
-		Certificates:       []tls.Certificate{cert},
-		InsecureSkipVerify: false,
-		MinVersion:         tls.VersionTLS12,
-		CipherSuites:       supportedCipherSuites,
-	}
+	tlsConfig := NewBaseTLSConfig()
+	tlsConfig.ServerName = cn
+	tlsConfig.Certificates = []tls.Certificate{cert}
 
 	caCertBytes, err := ioutil.ReadFile(caPath)
 	if err != nil {
@@ -66,6 +62,14 @@ func NewTLSConfig(caPath, certPath, keyPath, cn string) (*tls.Config, error) {
 	tlsConfig.RootCAs = caCertPool
 
 	return tlsConfig, nil
+}
+
+func NewBaseTLSConfig() *tls.Config {
+	return &tls.Config{
+		InsecureSkipVerify: false,
+		MinVersion:         tls.VersionTLS12,
+		CipherSuites:       supportedCipherSuites,
+	}
 }
 
 var supportedCipherSuites = []uint16{

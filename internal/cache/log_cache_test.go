@@ -33,7 +33,7 @@ var _ = Describe("LogCache", func() {
 
 	BeforeEach(func() {
 		var err error
-		tlsConfig, err = logtls.NewTLSConfig(
+		tlsConfig, err = logtls.NewMutualTLSConfig(
 			testing.Cert("log-cache-ca.crt"),
 			testing.Cert("log-cache.crt"),
 			testing.Cert("log-cache.key"),

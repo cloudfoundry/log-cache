@@ -15,7 +15,6 @@ import (
 
 type CAPIClient struct {
 	client               HTTPClient
-	capi                 string
 	externalCapi         string
 	tokenCache           *sync.Map
 	tokenPruningInterval time.Duration
@@ -26,26 +25,19 @@ type CAPIClient struct {
 }
 
 func NewCAPIClient(
-	capiAddr string,
 	externalCapiAddr string,
 	client HTTPClient,
 	m Metrics,
 	log *log.Logger,
 	opts ...CAPIOption,
 ) *CAPIClient {
-	_, err := url.Parse(capiAddr)
-	if err != nil {
-		log.Fatalf("failed to parse internal CAPI addr: %s", err)
-	}
-
-	_, err = url.Parse(externalCapiAddr)
+	_, err := url.Parse(externalCapiAddr)
 	if err != nil {
 		log.Fatalf("failed to parse external CAPI addr: %s", err)
 	}
 
 	c := &CAPIClient{
 		client:               client,
-		capi:                 capiAddr,
 		externalCapi:         externalCapiAddr,
 		tokenCache:           &sync.Map{},
 		tokenPruningInterval: time.Minute,

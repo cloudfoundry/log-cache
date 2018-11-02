@@ -5,13 +5,9 @@ import (
 )
 
 type CAPI struct {
-	Addr       string `env:"CAPI_ADDR,        required, report"`
-	CertPath   string `env:"CAPI_CERT_PATH,   required, report"`
-	KeyPath    string `env:"CAPI_KEY_PATH,    required, report"`
-	CAPath     string `env:"CAPI_CA_PATH,     required, report"`
-	CommonName string `env:"CAPI_COMMON_NAME, required, report"`
-
 	ExternalAddr string `env:"CAPI_ADDR_EXTERNAL, required, report"`
+	CAPath       string `env:"CAPI_CA_PATH,     required, report"`
+	CommonName   string `env:"CAPI_COMMON_NAME, required, report"`
 }
 
 type UAA struct {
