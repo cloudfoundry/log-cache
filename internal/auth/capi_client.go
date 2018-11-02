@@ -22,8 +22,6 @@ type CAPIClient struct {
 
 	storeAppsLatency                 func(float64)
 	storeListServiceInstancesLatency func(float64)
-	storeLogAccessLatency            func(float64)
-	storeServiceInstancesLatency     func(float64)
 	storeAppsByNameLatency           func(float64)
 }
 
@@ -53,9 +51,7 @@ func NewCAPIClient(
 		tokenPruningInterval: time.Minute,
 
 		storeAppsLatency:                 m.NewGauge("LastCAPIV3AppsLatency"),
-		storeListServiceInstancesLatency: m.NewGauge("LastCAPIV2ListServiceInstancesLatency"),
-		storeLogAccessLatency:            m.NewGauge("LastCAPIV4LogAccessLatency"),
-		storeServiceInstancesLatency:     m.NewGauge("LastCAPIV2ServiceInstancesLatency"),
+		storeListServiceInstancesLatency: m.NewGauge("LastCAPIV3ListServiceInstancesLatency"),
 		storeAppsByNameLatency:           m.NewGauge("LastCAPIV3AppsByNameLatency"),
 	}
 

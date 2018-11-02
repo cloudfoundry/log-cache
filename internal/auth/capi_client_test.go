@@ -278,7 +278,7 @@ var _ = Describe("CAPIClient", func() {
 			client.AvailableSourceIDs("my-token")
 
 			Expect(metrics.m["LastCAPIV3AppsLatency"]).ToNot(BeZero())
-			Expect(metrics.m["LastCAPIV2ListServiceInstancesLatency"]).ToNot(BeZero())
+			Expect(metrics.m["LastCAPIV3ListServiceInstancesLatency"]).ToNot(BeZero())
 		})
 
 		It("is goroutine safe", func() {
