@@ -142,7 +142,7 @@ func (c *CAPIClient) AvailableSourceIDs(authToken string) []string {
 
 func (c *CAPIClient) GetRelatedSourceIds(appNames []string, authToken string) map[string][]string {
 	if len(appNames) == 0 {
-		return nil
+		return map[string][]string{}
 	}
 
 	req, err := http.NewRequest(http.MethodGet, c.externalCapi+"/v3/apps", nil)
@@ -162,7 +162,7 @@ func (c *CAPIClient) GetRelatedSourceIds(appNames []string, authToken string) ma
 		resources, nextPageURL, err := c.doResourceRequest(req, authToken, c.storeAppsByNameLatency)
 		if err != nil {
 			log.Print(err)
-			return nil
+			return map[string][]string{}
 		}
 
 		for _, resource := range resources {

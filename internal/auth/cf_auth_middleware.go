@@ -149,6 +149,11 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		}
 
 		relatedSourceIds := m.appNameTranslator.GetRelatedSourceIds(sourceIds, authToken)
+		if relatedSourceIds == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
 		for _, sourceId := range sourceIds {
 			sourceIdSet := append(relatedSourceIds[sourceId], sourceId)
 

@@ -349,6 +349,16 @@ var _ = Describe("CfAuthMiddleware", func() {
 			Expect(tc.recorder.Code).To(Equal(http.StatusNotFound))
 			Expect(tc.baseHandlerCalled).To(BeFalse())
 		})
+
+		It("returns 404 Not Found if user is not authorized to see any apps", func() {
+			tc := setup(`/api/v1/query?query=metric{source_id="some-id"}`)
+			tc.spyAppNameTranslator.relatedIds = nil
+
+			tc.invokeAuthHandler()
+
+			Expect(tc.recorder.Code).To(Equal(http.StatusNotFound))
+			Expect(tc.baseHandlerCalled).To(BeFalse())
+		})
 	})
 
 	Describe("/api/v1/query_range", func() {
