@@ -402,14 +402,14 @@ func newAdminChecker() *spyOauth2ClientReader {
 	return &spyOauth2ClientReader{}
 }
 
-func (s *spyOauth2ClientReader) Read(token string) (auth.Oauth2Client, error) {
+func (s *spyOauth2ClientReader) Read(token string) (auth.Oauth2ClientContext, error) {
 	s.token = token
-	return auth.Oauth2Client{
-		IsAdmin:    s.isAdminResult,
-		ClientID:   s.client,
-		UserID:     s.user,
-		Token:      token,
-		Expiration: time.Now().Add(5 * time.Minute),
+	return auth.Oauth2ClientContext{
+		IsAdmin:   s.isAdminResult,
+		ClientID:  s.client,
+		UserID:    s.user,
+		Token:     token,
+		ExpiresAt: time.Now().Add(5 * time.Minute),
 	}, s.err
 }
 
@@ -428,7 +428,7 @@ func newSpyLogAuthorizer() *spyLogAuthorizer {
 	}
 }
 
-func (s *spyLogAuthorizer) IsAuthorized(sourceId string, c auth.Oauth2Client) bool {
+func (s *spyLogAuthorizer) IsAuthorized(sourceId string, c auth.Oauth2ClientContext) bool {
 	s.sourceIDsCalledWith[sourceId] = struct{}{}
 	s.token = c.Token
 

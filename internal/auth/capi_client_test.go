@@ -41,9 +41,9 @@ var _ = Describe("CAPIClient", func() {
 				newCapiResp("37cbff06-79ef-4146-a7b0-01838940f185", http.StatusOK),
 				newCapiResp("afbdcab7-6fd1-418d-bfd0-95c60276507b", http.StatusOK),
 			}
-			clientToken := auth.Oauth2Client{
-				Expiration: time.Now().Add(time.Minute),
-				Token:      "some-token",
+			clientToken := auth.Oauth2ClientContext{
+				ExpiresAt: time.Now().Add(time.Minute),
+				Token:     "some-token",
 			}
 
 			authorized := client.IsAuthorized("37cbff06-79ef-4146-a7b0-01838940f185", clientToken)
@@ -63,9 +63,9 @@ var _ = Describe("CAPIClient", func() {
 		})
 
 		It("invalidates cached CAPI response once token expiration occurs", func() {
-			token0 := auth.Oauth2Client{
-				Token:      "token-0",
-				Expiration: time.Now().Add(250 * time.Millisecond),
+			token0 := auth.Oauth2ClientContext{
+				Token:     "token-0",
+				ExpiresAt: time.Now().Add(250 * time.Millisecond),
 			}
 
 			var isExpiredTokenAuthorized = func() bool {
@@ -85,9 +85,9 @@ var _ = Describe("CAPIClient", func() {
 		})
 
 		It("sourceIDs from expired cached tokens are not authorized", func() {
-			token0 := auth.Oauth2Client{
-				Token:      "token-0",
-				Expiration: time.Now().Add(250 * time.Millisecond),
+			token0 := auth.Oauth2ClientContext{
+				Token:     "token-0",
+				ExpiresAt: time.Now().Add(250 * time.Millisecond),
 			}
 
 			var isExpiredTokenAuthorized = func() bool {
@@ -109,9 +109,9 @@ var _ = Describe("CAPIClient", func() {
 				newCapiResp("37cbff06-79ef-4146-a7b0-01838940f185", http.StatusOK),
 				newCapiResp("afbdcab7-6fd1-418d-bfd0-95c60276507b", http.StatusOK),
 			}
-			token1 := auth.Oauth2Client{
-				Token:      "token-1",
-				Expiration: time.Now().Add(time.Second),
+			token1 := auth.Oauth2ClientContext{
+				Token:     "token-1",
+				ExpiresAt: time.Now().Add(time.Second),
 			}
 
 			authorized := client.IsAuthorized(
@@ -129,9 +129,9 @@ var _ = Describe("CAPIClient", func() {
 			}
 			authorized := client.IsAuthorized(
 				"8208c86c-7afe-45f8-8999-4883d5868cf2",
-				auth.Oauth2Client{
-					Token:      "expired-token",
-					Expiration: time.Now().Add(-time.Second),
+				auth.Oauth2ClientContext{
+					Token:     "expired-token",
+					ExpiresAt: time.Now().Add(-time.Second),
 				})
 
 			Expect(capiClient.requests).To(BeEmpty())
@@ -141,9 +141,9 @@ var _ = Describe("CAPIClient", func() {
 		It("regularly removes expired tokens from cache", func() {
 			client.IsAuthorized(
 				"8208c86c-7afe-45f8-8999-4883d5868cf2",
-				auth.Oauth2Client{
-					Token:      "token",
-					Expiration: time.Now().Add(250 * time.Millisecond),
+				auth.Oauth2ClientContext{
+					Token:     "token",
+					ExpiresAt: time.Now().Add(250 * time.Millisecond),
 				},
 			)
 

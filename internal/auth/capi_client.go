@@ -64,8 +64,10 @@ func WithTokenPruningInterval(interval time.Duration) CAPIOption {
 	}
 }
 
-func (c *CAPIClient) IsAuthorized(sourceID string, clientToken Oauth2Client) bool {
-	if !time.Now().Before(clientToken.Expiration) {
+func (c *CAPIClient) IsAuthorized(sourceID string, clientToken Oauth2ClientContext) bool {
+	// TODO - this should probably be a 60 second expiration, 43,200 may be
+	// too many
+	if !time.Now().Before(clientToken.ExpiresAt) {
 		c.tokenCache.Delete(clientToken)
 		return false
 	}
@@ -187,7 +189,7 @@ type resource struct {
 func (c *CAPIClient) doResourceRequest(req *http.Request, authToken string, metric func(float64)) ([]resource, *url.URL, error) {
 	resp, err := c.doRequest(req, authToken, metric)
 	if err != nil || resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("failed CAPI request (%s) may result in incomplete service listing: %s", req.URL.Path, err)
+		return nil, nil, fmt.Errorf("failed CAPI request (%s): %s", req.URL.Path, err)
 	}
 
 	defer func(r *http.Response) {
@@ -231,9 +233,9 @@ func (c *CAPIClient) TokenCacheSize() int {
 func (c *CAPIClient) pruneTokens() {
 	for range time.Tick(c.tokenPruningInterval) {
 		c.tokenCache.Range(func(k, _ interface{}) bool {
-			clientToken := k.(Oauth2Client)
+			clientToken := k.(Oauth2ClientContext)
 
-			if !time.Now().Before(clientToken.Expiration) {
+			if !time.Now().Before(clientToken.ExpiresAt) {
 				c.tokenCache.Delete(k)
 			}
 

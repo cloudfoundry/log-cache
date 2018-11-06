@@ -54,17 +54,19 @@ func NewUAAClient(
 	}
 }
 
-func (c *UAAClient) Read(token string) (Oauth2Client, error) {
+func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 	if token == "" {
-		return Oauth2Client{}, errors.New("missing token")
+		return Oauth2ClientContext{}, errors.New("missing token")
 	}
 
 	uaaR, ok := c.tokenCache[token]
-	if ok && uaaR.Exp >= time.Now().Unix() {
-		return Oauth2Client{
-			IsAdmin:  c.hasDopplerScope(uaaR),
-			UserID:   uaaR.UserID,
-			ClientID: uaaR.ClientID,
+	if ok && time.Now().Before(uaaR.ExpTime) {
+		return Oauth2ClientContext{
+			IsAdmin:   c.hasDopplerScope(uaaR),
+			UserID:    uaaR.UserID,
+			ClientID:  uaaR.ClientID,
+			ExpiresAt: uaaR.ExpTime,
+			Token:     token,
 		}, nil
 	}
 
@@ -75,7 +77,7 @@ func (c *UAAClient) Read(token string) (Oauth2Client, error) {
 	req, err := http.NewRequest("POST", c.uaa.String(), strings.NewReader(form.Encode()))
 	if err != nil {
 		log.Printf("failed to create UAA request: %s", err)
-		return Oauth2Client{}, err
+		return Oauth2ClientContext{}, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(c.client, c.clientSecret)
@@ -85,7 +87,7 @@ func (c *UAAClient) Read(token string) (Oauth2Client, error) {
 	c.storeLatency(float64(time.Since(start)))
 	if err != nil {
 		log.Printf("UAA request failed: %s", err)
-		return Oauth2Client{}, err
+		return Oauth2ClientContext{}, err
 	}
 
 	defer func() {
@@ -96,15 +98,17 @@ func (c *UAAClient) Read(token string) (Oauth2Client, error) {
 	uaaR, err = c.parseResponse(resp.Body)
 	if err != nil {
 		log.Printf("failed to parse UAA response body: %s", err)
-		return Oauth2Client{}, err
+		return Oauth2ClientContext{}, err
 	}
 
 	c.tokenCache[token] = uaaR
 
-	return Oauth2Client{
-		IsAdmin:  resp.StatusCode == http.StatusOK && c.hasDopplerScope(uaaR),
-		UserID:   uaaR.UserID,
-		ClientID: uaaR.ClientID,
+	return Oauth2ClientContext{
+		IsAdmin:   resp.StatusCode == http.StatusOK && c.hasDopplerScope(uaaR),
+		UserID:    uaaR.UserID,
+		ClientID:  uaaR.ClientID,
+		ExpiresAt: uaaR.ExpTime,
+		Token:     token,
 	}, nil
 }
 
@@ -113,10 +117,11 @@ func trimBearer(authToken string) string {
 }
 
 type uaaResponse struct {
-	Scopes   []string `json:"scope"`
-	UserID   string   `json:"user_id"`
-	ClientID string   `json:"client_id"`
-	Exp      int64    `json:"exp"`
+	Scopes   []string  `json:"scope"`
+	UserID   string    `json:"user_id"`
+	ClientID string    `json:"client_id"`
+	Exp      float64   `json:"exp"`
+	ExpTime  time.Time `json:"-"`
 }
 
 func (c *UAAClient) hasDopplerScope(r uaaResponse) bool {
@@ -135,5 +140,8 @@ func (c *UAAClient) parseResponse(r io.Reader) (uaaResponse, error) {
 		log.Printf("unable to decode json response from UAA: %s", err)
 		return uaaResponse{}, err
 	}
+
+	resp.ExpTime = time.Unix(0, int64(resp.Exp*1e9))
+
 	return resp, nil
 }

@@ -96,7 +96,7 @@ var _ = Describe("UAAClient", func() {
 		Expect(len(httpClient.requests)).To(Equal(1))
 	})
 
-	It("does not validate an expired token", func() {
+	It("does not cache an expired token", func() {
 		data, err := json.Marshal(map[string]interface{}{
 			"scope":     []string{"logs.admin"},
 			"user_id":   "some-user",
@@ -138,6 +138,33 @@ var _ = Describe("UAAClient", func() {
 		urlValues, err := url.ParseQuery(string(reqBytes))
 		Expect(err).ToNot(HaveOccurred())
 		Expect(urlValues.Get("token")).To(Equal(token))
+	})
+
+	It("returns expiration time and token from UAA and cache", func() {
+		expiry := time.Now().Add(time.Minute)
+
+		data, err := json.Marshal(map[string]interface{}{
+			"exp": float64(expiry.UnixNano()) / 1e9,
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		httpClient.resps = []response{{
+			body:   data,
+			status: http.StatusOK,
+		}}
+
+		c, err := client.Read("valid-token")
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(c.ExpiresAt).To(BeTemporally("~", expiry, time.Millisecond))
+		Expect(c.Token).To(Equal("valid-token"))
+
+		c, err = client.Read("valid-token")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(len(httpClient.requests)).To(Equal(1))
+
+		Expect(c.ExpiresAt).To(BeTemporally("~", expiry, time.Millisecond))
+		Expect(c.Token).To(Equal("valid-token"))
 	})
 
 	It("sets the last request latency metric", func() {

@@ -25,20 +25,20 @@ type CFAuthMiddlewareProvider struct {
 	appNameTranslator       AppNameTranslator
 }
 
-type Oauth2Client struct {
-	IsAdmin    bool
-	ClientID   string
-	UserID     string
-	Expiration time.Time
-	Token      string
+type Oauth2ClientContext struct {
+	IsAdmin   bool
+	ClientID  string
+	UserID    string
+	ExpiresAt time.Time
+	Token     string
 }
 
 type Oauth2ClientReader interface {
-	Read(token string) (Oauth2Client, error)
+	Read(token string) (Oauth2ClientContext, error)
 }
 
 type LogAuthorizer interface {
-	IsAuthorized(sourceID string, clientToken Oauth2Client) bool
+	IsAuthorized(sourceID string, clientToken Oauth2ClientContext) bool
 	AvailableSourceIDs(token string) []string
 }
 
@@ -89,15 +89,17 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 			return
 		}
 
-		c, err := m.oauth2Reader.Read(authToken)
+		// TODO - is the returned context really the user? or are we returning
+		// the UAA context of the client that WE use to check the user's token
+		userContext, err := m.oauth2Reader.Read(authToken)
 		if err != nil {
 			log.Printf("failed to read from Oauth2 server: %s", err)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
-		if !c.IsAdmin {
-			if !m.logAuthorizer.IsAuthorized(sourceID, c) {
+		if !userContext.IsAdmin {
+			if !m.logAuthorizer.IsAuthorized(sourceID, userContext) {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
@@ -216,7 +218,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 	return router
 }
 
-func (m CFAuthMiddlewareProvider) authorizeSourceIds(sourceIds []string, c Oauth2Client) []string {
+func (m CFAuthMiddlewareProvider) authorizeSourceIds(sourceIds []string, c Oauth2ClientContext) []string {
 	var authorizedSourceIds []string
 
 	for _, sourceId := range sourceIds {
@@ -228,7 +230,7 @@ func (m CFAuthMiddlewareProvider) authorizeSourceIds(sourceIds []string, c Oauth
 	return authorizedSourceIds
 }
 
-func (m CFAuthMiddlewareProvider) onlyAuthorized(authToken string, meta map[string]*rpc.MetaInfo, c Oauth2Client) map[string]*rpc.MetaInfo {
+func (m CFAuthMiddlewareProvider) onlyAuthorized(authToken string, meta map[string]*rpc.MetaInfo, c Oauth2ClientContext) map[string]*rpc.MetaInfo {
 	if c.IsAdmin {
 		return meta
 	}
