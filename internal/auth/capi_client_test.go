@@ -17,164 +17,140 @@ import (
 )
 
 var _ = Describe("CAPIClient", func() {
-	var (
+	type testContext struct {
 		capiClient *spyHTTPClient
 		client     *auth.CAPIClient
 		metrics    *spyMetrics
-	)
+	}
 
-	BeforeEach(func() {
-		capiClient = newSpyHTTPClient()
-		metrics = newSpyMetrics()
-		client = auth.NewCAPIClient(
+	var setup = func(capiOpts ...auth.CAPIOption) *testContext {
+		capiClient := newSpyHTTPClient()
+		metrics := newSpyMetrics()
+		client := auth.NewCAPIClient(
 			"http://external.capi.com",
 			capiClient,
 			metrics,
 			log.New(ioutil.Discard, "", 0),
-			auth.WithTokenPruningInterval(250*time.Millisecond),
+			capiOpts...,
 		)
-	})
+
+		return &testContext{
+			capiClient: capiClient,
+			metrics:    metrics,
+			client:     client,
+		}
+	}
 
 	Describe("IsAuthorized", func() {
 		It("caches CAPI response for /v3/apps and /v3/service_instances request", func() {
-			capiClient.resps = []response{
+			tc := setup(
+				auth.WithCacheExpirationInterval(250 * time.Millisecond),
+			)
+
+			tc.capiClient.resps = []response{
 				newCapiResp("37cbff06-79ef-4146-a7b0-01838940f185", http.StatusOK),
 				newCapiResp("afbdcab7-6fd1-418d-bfd0-95c60276507b", http.StatusOK),
 			}
-			clientToken := auth.Oauth2ClientContext{
-				ExpiresAt: time.Now().Add(time.Minute),
-				Token:     "some-token",
-			}
 
-			authorized := client.IsAuthorized("37cbff06-79ef-4146-a7b0-01838940f185", clientToken)
+			By("calling isAuthorized the first time and caching response")
+			authorized := tc.client.IsAuthorized("37cbff06-79ef-4146-a7b0-01838940f185", "some-token")
 
-			Expect(len(capiClient.requests)).To(Equal(2))
+			Expect(len(tc.capiClient.requests)).To(Equal(2))
 			Expect(authorized).To(BeTrue())
 
-			authorized = client.IsAuthorized("37cbff06-79ef-4146-a7b0-01838940f185", clientToken)
+			By("reusing the previously cached response")
+			authorized = tc.client.IsAuthorized("afbdcab7-6fd1-418d-bfd0-95c60276507b", "some-token")
 
-			Expect(len(capiClient.requests)).To(Equal(2))
+			Expect(len(tc.capiClient.requests)).To(Equal(2))
 			Expect(authorized).To(BeTrue())
 
-			authorized = client.IsAuthorized("afbdcab7-6fd1-418d-bfd0-95c60276507b", clientToken)
-
-			Expect(len(capiClient.requests)).To(Equal(2))
-			Expect(authorized).To(BeTrue())
-		})
-
-		It("invalidates cached CAPI response once token expiration occurs", func() {
-			token0 := auth.Oauth2ClientContext{
-				Token:     "token-0",
-				ExpiresAt: time.Now().Add(250 * time.Millisecond),
+			tc.capiClient.resps = []response{
+				newCapiResp("37cbff06-79ef-4146-a7b0-01838940f185", http.StatusOK),
+				newCapiResp("afbdcab7-6fd1-418d-bfd0-95c60276507b", http.StatusOK),
 			}
 
-			var isExpiredTokenAuthorized = func() bool {
-				capiClient.resps = []response{
-					newCapiResp("8208c86c-7afe-45f8-8999-4883d5868cf2", http.StatusOK),
-					newCapiResp("dc94ebb2-5038-4645-afbf-1093bbd58e94", http.StatusOK),
-				}
+			By("continuing to call until the previously cached response expires")
+			Eventually(func() int {
+				authorized = tc.client.IsAuthorized("37cbff06-79ef-4146-a7b0-01838940f185", "some-token")
 
-				return client.IsAuthorized(
-					"8208c86c-7afe-45f8-8999-4883d5868cf2",
-					token0,
-				)
-			}
+				Expect(authorized).To(BeTrue())
 
-			Expect(isExpiredTokenAuthorized()).To(BeTrue())
-			Eventually(isExpiredTokenAuthorized).Should(BeFalse())
+				return len(tc.capiClient.requests)
+			}).Should(Equal(4))
 		})
 
 		It("sourceIDs from expired cached tokens are not authorized", func() {
-			token0 := auth.Oauth2ClientContext{
-				Token:     "token-0",
-				ExpiresAt: time.Now().Add(250 * time.Millisecond),
-			}
-
-			var isExpiredTokenAuthorized = func() bool {
-				capiClient.resps = []response{
-					newCapiResp("8208c86c-7afe-45f8-8999-4883d5868cf2", http.StatusOK),
-					newCapiResp("dc94ebb2-5038-4645-afbf-1093bbd58e94", http.StatusOK),
-				}
-
-				return client.IsAuthorized(
-					"8208c86c-7afe-45f8-8999-4883d5868cf2",
-					token0,
-				)
-			}
-
-			Expect(isExpiredTokenAuthorized()).To(BeTrue())
-			Eventually(isExpiredTokenAuthorized).Should(BeFalse())
-
-			capiClient.resps = []response{
-				newCapiResp("37cbff06-79ef-4146-a7b0-01838940f185", http.StatusOK),
-				newCapiResp("afbdcab7-6fd1-418d-bfd0-95c60276507b", http.StatusOK),
-			}
-			token1 := auth.Oauth2ClientContext{
-				Token:     "token-1",
-				ExpiresAt: time.Now().Add(time.Second),
-			}
-
-			authorized := client.IsAuthorized(
-				"8208c86c-7afe-45f8-8999-4883d5868cf2",
-				token1,
+			tc := setup(
+				auth.WithCacheExpirationInterval(250 * time.Millisecond),
 			)
 
-			Expect(authorized).To(BeFalse())
-		})
-
-		It("immediately rejects expired token", func() {
-			capiClient.resps = []response{
+			tc.capiClient.resps = []response{
 				newCapiResp("8208c86c-7afe-45f8-8999-4883d5868cf2", http.StatusOK),
 				newCapiResp("dc94ebb2-5038-4645-afbf-1093bbd58e94", http.StatusOK),
 			}
-			authorized := client.IsAuthorized(
-				"8208c86c-7afe-45f8-8999-4883d5868cf2",
-				auth.Oauth2ClientContext{
-					Token:     "expired-token",
-					ExpiresAt: time.Now().Add(-time.Second),
-				})
 
-			Expect(capiClient.requests).To(BeEmpty())
+			authorized := tc.client.IsAuthorized(
+				"8208c86c-7afe-45f8-8999-4883d5868cf2",
+				"token-0",
+			)
+
+			Expect(authorized).To(BeTrue())
+			time.Sleep(250 * time.Millisecond)
+
+			tc.capiClient.resps = []response{
+				newCapiResp("37cbff06-79ef-4146-a7b0-01838940f185", http.StatusOK),
+				newCapiResp("afbdcab7-6fd1-418d-bfd0-95c60276507b", http.StatusOK),
+			}
+
+			authorized = tc.client.IsAuthorized(
+				"8208c86c-7afe-45f8-8999-4883d5868cf2",
+				"token-1",
+			)
+
 			Expect(authorized).To(BeFalse())
 		})
 
-		It("regularly removes expired tokens from cache", func() {
-			client.IsAuthorized(
-				"8208c86c-7afe-45f8-8999-4883d5868cf2",
-				auth.Oauth2ClientContext{
-					Token:     "token",
-					ExpiresAt: time.Now().Add(250 * time.Millisecond),
-				},
+		It("regularly removes tokens from cache", func() {
+			tc := setup(
+				auth.WithTokenPruningInterval(250*time.Millisecond),
+				auth.WithCacheExpirationInterval(250*time.Millisecond),
 			)
 
-			Eventually(client.TokenCacheSize).Should(BeZero())
+			tc.client.IsAuthorized("8208c86c-7afe-45f8-8999-4883d5868cf2", "token-1")
+			tc.client.IsAuthorized("8208c86c-7afe-45f8-8999-4883d5868cf2", "token-2")
+
+			Eventually(tc.client.TokenCacheSize).Should(BeZero())
 		})
 	})
 
 	Describe("AvailableSourceIDs", func() {
 		It("returns the available app and service instance IDs", func() {
-			capiClient.resps = []response{
+			tc := setup()
+
+			tc.capiClient.resps = []response{
 				{status: http.StatusOK, body: []byte(`{"resources": [{"guid": "app-0"}, {"guid": "app-1"}]}`)},
 				{status: http.StatusOK, body: []byte(`{"resources": [{"guid": "service-2"}, {"guid": "service-3"}]}`)},
 			}
-			sourceIDs := client.AvailableSourceIDs("some-token")
+			sourceIDs := tc.client.AvailableSourceIDs("some-token")
 			Expect(sourceIDs).To(ConsistOf("app-0", "app-1", "service-2", "service-3"))
 
-			Expect(capiClient.requests).To(HaveLen(2))
+			Expect(tc.capiClient.requests).To(HaveLen(2))
 
-			appsReq := capiClient.requests[0]
+			appsReq := tc.capiClient.requests[0]
 			Expect(appsReq.Method).To(Equal(http.MethodGet))
 			Expect(appsReq.URL.String()).To(Equal("http://external.capi.com/v3/apps"))
 			Expect(appsReq.Header.Get("Authorization")).To(Equal("some-token"))
 
-			servicesReq := capiClient.requests[1]
+			servicesReq := tc.capiClient.requests[1]
 			Expect(servicesReq.Method).To(Equal(http.MethodGet))
 			Expect(servicesReq.URL.String()).To(Equal("http://external.capi.com/v3/service_instances"))
 			Expect(servicesReq.Header.Get("Authorization")).To(Equal("some-token"))
 		})
 
 		It("iterates through all pages returned by /v3/apps", func() {
-			capiClient.resps = []response{
+			tc := setup()
+
+			tc.capiClient.resps = []response{
 				{status: http.StatusOK, body: []byte(`{
                   "pagination": {
                     "next": {
@@ -193,9 +169,9 @@ var _ = Describe("CAPIClient", func() {
 				emptyCapiResp,
 			}
 
-			sourceIDs := client.AvailableSourceIDs("some-token")
-			Expect(capiClient.requests).To(HaveLen(3))
-			secondPageReq := capiClient.requests[1]
+			sourceIDs := tc.client.AvailableSourceIDs("some-token")
+			Expect(tc.capiClient.requests).To(HaveLen(3))
+			secondPageReq := tc.capiClient.requests[1]
 			Expect(secondPageReq.URL.Path).To(Equal("/v3/apps"))
 			Expect(secondPageReq.URL.Query().Get("page")).To(Equal("2"))
 			Expect(secondPageReq.URL.Query().Get("per_page")).To(Equal("1"))
@@ -204,7 +180,9 @@ var _ = Describe("CAPIClient", func() {
 		})
 
 		It("iterates through all pages returned by /v3/service_instances", func() {
-			capiClient.resps = []response{
+			tc := setup()
+
+			tc.capiClient.resps = []response{
 				emptyCapiResp,
 				{status: http.StatusOK, body: []byte(`{
                   "pagination": {
@@ -223,9 +201,9 @@ var _ = Describe("CAPIClient", func() {
                   ]
                 }`)},
 			}
-			sourceIDs := client.AvailableSourceIDs("some-token")
-			Expect(capiClient.requests).To(HaveLen(3))
-			secondPageReq := capiClient.requests[2]
+			sourceIDs := tc.client.AvailableSourceIDs("some-token")
+			Expect(tc.capiClient.requests).To(HaveLen(3))
+			secondPageReq := tc.capiClient.requests[2]
 			Expect(secondPageReq.URL.Path).To(Equal("/v3/service_instances"))
 			Expect(secondPageReq.URL.Query().Get("page")).To(Equal("2"))
 			Expect(secondPageReq.URL.Query().Get("per_page")).To(Equal("2"))
@@ -234,65 +212,77 @@ var _ = Describe("CAPIClient", func() {
 		})
 
 		It("returns empty slice when CAPI apps request returns non 200", func() {
-			capiClient.resps = []response{
+			tc := setup()
+
+			tc.capiClient.resps = []response{
 				{status: http.StatusNotFound},
 				{status: http.StatusOK, body: []byte(`{"resources": [{"metadata":{"guid": "service-2"}}, {"metadata":{"guid": "service-3"}}]}`)},
 			}
-			sourceIDs := client.AvailableSourceIDs("some-token")
+			sourceIDs := tc.client.AvailableSourceIDs("some-token")
 			Expect(sourceIDs).To(BeEmpty())
 		})
 
 		It("returns empty slice when CAPI apps request fails", func() {
-			capiClient.resps = []response{
+			tc := setup()
+
+			tc.capiClient.resps = []response{
 				{err: errors.New("intentional error")},
 				{status: http.StatusOK, body: []byte(`{"resources": [{"metadata":{"guid": "service-2"}}, {"metadata":{"guid": "service-3"}}]}`)},
 			}
-			sourceIDs := client.AvailableSourceIDs("some-token")
+			sourceIDs := tc.client.AvailableSourceIDs("some-token")
 			Expect(sourceIDs).To(BeEmpty())
 		})
 
 		It("returns empty slice when CAPI service_instances request returns non 200", func() {
-			capiClient.resps = []response{
+			tc := setup()
+
+			tc.capiClient.resps = []response{
 				{status: http.StatusOK, body: []byte(`{"resources": [{"guid": "app-0"}, {"guid": "app-1"}]}`)},
 				{status: http.StatusNotFound},
 			}
-			sourceIDs := client.AvailableSourceIDs("some-token")
+			sourceIDs := tc.client.AvailableSourceIDs("some-token")
 			Expect(sourceIDs).To(BeEmpty())
 		})
 
 		It("returns empty slice when CAPI service_instances request fails", func() {
-			capiClient.resps = []response{
+			tc := setup()
+
+			tc.capiClient.resps = []response{
 				{status: http.StatusOK, body: []byte(`{"resources": [{"guid": "app-0"}, {"guid": "app-1"}]}`)},
 				{err: errors.New("intentional error")},
 			}
-			sourceIDs := client.AvailableSourceIDs("some-token")
+			sourceIDs := tc.client.AvailableSourceIDs("some-token")
 			Expect(sourceIDs).To(BeEmpty())
 		})
 
 		It("stores the latency", func() {
-			capiClient.resps = []response{
+			tc := setup()
+
+			tc.capiClient.resps = []response{
 				emptyCapiResp,
 				emptyCapiResp,
 			}
-			client.AvailableSourceIDs("my-token")
+			tc.client.AvailableSourceIDs("my-token")
 
-			Expect(metrics.m["LastCAPIV3AppsLatency"]).ToNot(BeZero())
-			Expect(metrics.m["LastCAPIV3ListServiceInstancesLatency"]).ToNot(BeZero())
+			Expect(tc.metrics.m["LastCAPIV3AppsLatency"]).ToNot(BeZero())
+			Expect(tc.metrics.m["LastCAPIV3ListServiceInstancesLatency"]).ToNot(BeZero())
 		})
 
 		It("is goroutine safe", func() {
+			tc := setup()
+
 			var wg sync.WaitGroup
 			wg.Add(1)
 			go func() {
 				for i := 0; i < 1000; i++ {
-					client.AvailableSourceIDs("some-token")
+					tc.client.AvailableSourceIDs("some-token")
 				}
 
 				wg.Done()
 			}()
 
 			for i := 0; i < 1000; i++ {
-				client.AvailableSourceIDs("some-token")
+				tc.client.AvailableSourceIDs("some-token")
 			}
 			wg.Wait()
 		})
@@ -300,10 +290,12 @@ var _ = Describe("CAPIClient", func() {
 
 	Describe("GetRelatedSourceIds", func() {
 		It("hits CAPI correctly", func() {
-			client.GetRelatedSourceIds([]string{"app-name-1", "app-name-2"}, "some-token")
-			Expect(capiClient.requests).To(HaveLen(1))
+			tc := setup()
 
-			appsReq := capiClient.requests[0]
+			tc.client.GetRelatedSourceIds([]string{"app-name-1", "app-name-2"}, "some-token")
+			Expect(tc.capiClient.requests).To(HaveLen(1))
+
+			appsReq := tc.capiClient.requests[0]
 			Expect(appsReq.Method).To(Equal(http.MethodGet))
 			Expect(appsReq.URL.Host).To(Equal("external.capi.com"))
 			Expect(appsReq.URL.Path).To(Equal("/v3/apps"))
@@ -313,7 +305,9 @@ var _ = Describe("CAPIClient", func() {
 		})
 
 		It("gets related source IDs for a single app", func() {
-			capiClient.resps = []response{
+			tc := setup()
+
+			tc.capiClient.resps = []response{
 				{status: http.StatusOK, body: []byte(
 					`{
                   "resources": [
@@ -323,12 +317,14 @@ var _ = Describe("CAPIClient", func() {
                 }`)},
 			}
 
-			sourceIds := client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
+			sourceIds := tc.client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
 			Expect(sourceIds).To(HaveKeyWithValue("app-name", ConsistOf("app-0", "app-1")))
 		})
 
 		It("iterates through all pages returned by /v3/apps", func() {
-			capiClient.resps = []response{
+			tc := setup()
+
+			tc.capiClient.resps = []response{
 				{status: http.StatusOK, body: []byte(`{
                   "pagination": {
                     "next": {
@@ -347,10 +343,10 @@ var _ = Describe("CAPIClient", func() {
                 }`)},
 			}
 
-			sourceIds := client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
+			sourceIds := tc.client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
 
-			Expect(capiClient.requests).To(HaveLen(2))
-			secondPageReq := capiClient.requests[1]
+			Expect(tc.capiClient.requests).To(HaveLen(2))
+			secondPageReq := tc.capiClient.requests[1]
 			Expect(secondPageReq.URL.Path).To(Equal("/v3/apps"))
 			Expect(secondPageReq.URL.Query().Get("page")).To(Equal("2"))
 			Expect(secondPageReq.URL.Query().Get("per_page")).To(Equal("2"))
@@ -358,7 +354,9 @@ var _ = Describe("CAPIClient", func() {
 		})
 
 		It("gets related source IDs for multiple apps", func() {
-			capiClient.resps = []response{
+			tc := setup()
+
+			tc.capiClient.resps = []response{
 				{status: http.StatusOK, body: []byte(`{
                 "pagination": {
                   "next": {
@@ -377,46 +375,56 @@ var _ = Describe("CAPIClient", func() {
               }`)},
 			}
 
-			sourceIds := client.GetRelatedSourceIds([]string{"app-a", "app-b"}, "some-token")
+			sourceIds := tc.client.GetRelatedSourceIds([]string{"app-a", "app-b"}, "some-token")
 			Expect(sourceIds).To(HaveKeyWithValue("app-a", ConsistOf("app-a-0", "app-a-1")))
 			Expect(sourceIds).To(HaveKeyWithValue("app-b", ConsistOf("app-b-0")))
 		})
 
 		It("doesn't issue a request when given no app names", func() {
-			client.GetRelatedSourceIds([]string{}, "some-token")
-			Expect(capiClient.requests).To(HaveLen(0))
+			tc := setup()
+
+			tc.client.GetRelatedSourceIds([]string{}, "some-token")
+			Expect(tc.capiClient.requests).To(HaveLen(0))
 		})
 
 		It("stores the latency", func() {
-			capiClient.resps = []response{
+			tc := setup()
+
+			tc.capiClient.resps = []response{
 				{status: http.StatusNotFound},
 			}
-			client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
+			tc.client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
 
-			Expect(metrics.m["LastCAPIV3AppsByNameLatency"]).ToNot(BeZero())
+			Expect(tc.metrics.m["LastCAPIV3AppsByNameLatency"]).ToNot(BeZero())
 		})
 
 		It("returns no source IDs when the request fails", func() {
-			capiClient.resps = []response{
+			tc := setup()
+
+			tc.capiClient.resps = []response{
 				{status: http.StatusNotFound},
 			}
-			sourceIds := client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
+			sourceIds := tc.client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
 			Expect(sourceIds).To(HaveLen(0))
 		})
 
 		It("returns no source IDs when the request returns a non-200 status code", func() {
-			capiClient.resps = []response{
+			tc := setup()
+
+			tc.capiClient.resps = []response{
 				{err: errors.New("intentional error")},
 			}
-			sourceIds := client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
+			sourceIds := tc.client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
 			Expect(sourceIds).To(HaveLen(0))
 		})
 
 		It("returns no source IDs when JSON decoding fails", func() {
-			capiClient.resps = []response{
+			tc := setup()
+
+			tc.capiClient.resps = []response{
 				{status: http.StatusOK, body: []byte(`{`)},
 			}
-			sourceIds := client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
+			sourceIds := tc.client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
 			Expect(sourceIds).To(HaveLen(0))
 		})
 	})
