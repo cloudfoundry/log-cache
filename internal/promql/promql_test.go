@@ -570,52 +570,56 @@ var _ = Describe("PromQL", func() {
 
 		It("filters for correct counter metric name and label", func() {
 			now := time.Now()
-			spyDataReader.readErrs = []error{nil}
-			spyDataReader.readResults = [][]*loggregator_v2.Envelope{
+			spyDataReader.readErrs = []error{nil, nil, nil, nil}
+			readResult := []*loggregator_v2.Envelope{
 				{
-					{
-						SourceId:  "some-id-1",
-						Timestamp: now.UnixNano(),
-						Message: &loggregator_v2.Envelope_Counter{
-							Counter: &loggregator_v2.Counter{
-								Name:  "metric",
-								Total: 99,
-							},
-						},
-						Tags: map[string]string{
-							"a": "tag-a",
-							"b": "tag-b",
+					SourceId:  "some-id-1",
+					Timestamp: now.UnixNano(),
+					Message: &loggregator_v2.Envelope_Counter{
+						Counter: &loggregator_v2.Counter{
+							Name:  "metric",
+							Total: 99,
 						},
 					},
-					{
-						SourceId:  "some-id-1",
-						Timestamp: now.UnixNano(),
-						Message: &loggregator_v2.Envelope_Counter{
-							Counter: &loggregator_v2.Counter{
-								Name:  "wrongname",
-								Total: 101,
-							},
-						},
-						Tags: map[string]string{
-							"a": "tag-a",
-							"b": "tag-b",
-						},
-					},
-					{
-						SourceId:  "some-id-1",
-						Timestamp: now.UnixNano(),
-						Message: &loggregator_v2.Envelope_Counter{
-							Counter: &loggregator_v2.Counter{
-								Name:  "metric",
-								Total: 103,
-							},
-						},
-						Tags: map[string]string{
-							"a": "wrong-tag",
-							"b": "tag-b",
-						},
+					Tags: map[string]string{
+						"a": "tag-a",
+						"b": "tag-b-1",
 					},
 				},
+				{
+					SourceId:  "some-id-1",
+					Timestamp: now.UnixNano(),
+					Message: &loggregator_v2.Envelope_Counter{
+						Counter: &loggregator_v2.Counter{
+							Name:  "wrongname",
+							Total: 101,
+						},
+					},
+					Tags: map[string]string{
+						"a": "tag-a",
+						"b": "tag-b-2",
+					},
+				},
+				{
+					SourceId:  "some-id-1",
+					Timestamp: now.UnixNano(),
+					Message: &loggregator_v2.Envelope_Counter{
+						Counter: &loggregator_v2.Counter{
+							Name:  "metric",
+							Total: 103,
+						},
+					},
+					Tags: map[string]string{
+						"a": "wrong-tag",
+						"b": "tag-b-3",
+					},
+				},
+			}
+			spyDataReader.readResults = [][]*loggregator_v2.Envelope{
+				readResult,
+				readResult,
+				readResult,
+				readResult,
 			}
 
 			r, err := q.InstantQuery(
@@ -626,6 +630,33 @@ var _ = Describe("PromQL", func() {
 
 			Expect(r.GetVector().GetSamples()).To(HaveLen(1))
 			Expect(r.GetVector().GetSamples()[0].Point.Value).To(Equal(99.0))
+
+			r, err = q.InstantQuery(
+				context.Background(),
+				&logcache_v1.PromQL_InstantQueryRequest{Query: `metric{source_id="some-id-1",a!="tag-a"}`},
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(r.GetVector().GetSamples()).To(HaveLen(1))
+			Expect(r.GetVector().GetSamples()[0].Point.Value).To(Equal(103.0))
+
+			r, err = q.InstantQuery(
+				context.Background(),
+				&logcache_v1.PromQL_InstantQueryRequest{Query: `metric{source_id="some-id-1",b=~".*-1"}`},
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(r.GetVector().GetSamples()).To(HaveLen(1))
+			Expect(r.GetVector().GetSamples()[0].Point.Value).To(Equal(99.0))
+
+			r, err = q.InstantQuery(
+				context.Background(),
+				&logcache_v1.PromQL_InstantQueryRequest{Query: `metric{source_id="some-id-1",b!~".*-1"}`},
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(r.GetVector().GetSamples()).To(HaveLen(1))
+			Expect(r.GetVector().GetSamples()[0].Point.Value).To(Equal(103.0))
 		})
 
 		It("filters for correct timer metric name", func() {

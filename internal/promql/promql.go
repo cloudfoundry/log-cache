@@ -295,25 +295,21 @@ type LogCacheQuerier struct {
 	errf       func(error)
 }
 
-func (l *LogCacheQuerier) Select(params *storage.SelectParams, ll ...*labels.Matcher) (storage.SeriesSet, error) {
+func (l *LogCacheQuerier) Select(params *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
 	var (
-		metric string
-		ls     []labels.Label
+		metric      string
+		tagMatchers []*labels.Matcher
 	)
 	sourceIDs := make(map[string]struct{})
-	for _, l := range ll {
-		if l.Name == "__name__" {
-			metric = l.Value
-			continue
+	for _, matcher := range matchers {
+		switch matcher.Name {
+		case "__name__":
+			metric = matcher.Value
+		case "source_id":
+			addSourceIDsFromLabelMatcher(sourceIDs, matcher)
+		default:
+			tagMatchers = append(tagMatchers, matcher)
 		}
-		if l.Name == "source_id" {
-			addSourceIDsFromLabelMatcher(sourceIDs, l)
-			continue
-		}
-		ls = append(ls, labels.Label{
-			Name:  l.Name,
-			Value: l.Value,
-		})
 	}
 
 	if len(sourceIDs) == 0 {
@@ -343,7 +339,7 @@ func (l *LogCacheQuerier) Select(params *storage.SelectParams, ll ...*labels.Mat
 		}
 
 		for _, e := range envelopeBatch.GetEnvelopes().GetBatch() {
-			if !l.hasLabels(e.GetTags(), ls) {
+			if !l.hasLabels(e.GetTags(), tagMatchers) {
 				continue
 			}
 
@@ -421,9 +417,9 @@ func convertToLabels(tags map[string]string) []labels.Label {
 	return ls
 }
 
-func (l *LogCacheQuerier) hasLabels(tags map[string]string, ls []labels.Label) bool {
-	for _, l := range ls {
-		if v, ok := tags[l.Name]; !ok || v != l.Value {
+func (l *LogCacheQuerier) hasLabels(tags map[string]string, matchers []*labels.Matcher) bool {
+	for _, matcher := range matchers {
+		if v, ok := tags[matcher.Name]; !ok || !matcher.Matches(v) {
 			return false
 		}
 	}
