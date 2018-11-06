@@ -62,11 +62,8 @@ func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 	uaaR, ok := c.tokenCache[token]
 	if ok && time.Now().Before(uaaR.ExpTime) {
 		return Oauth2ClientContext{
-			IsAdmin:   c.hasDopplerScope(uaaR),
-			UserID:    uaaR.UserID,
-			ClientID:  uaaR.ClientID,
-			ExpiresAt: uaaR.ExpTime,
-			Token:     token,
+			IsAdmin: c.hasDopplerScope(uaaR),
+			Token:   token,
 		}, nil
 	}
 
@@ -104,11 +101,8 @@ func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 	c.tokenCache[token] = uaaR
 
 	return Oauth2ClientContext{
-		IsAdmin:   resp.StatusCode == http.StatusOK && c.hasDopplerScope(uaaR),
-		UserID:    uaaR.UserID,
-		ClientID:  uaaR.ClientID,
-		ExpiresAt: uaaR.ExpTime,
-		Token:     token,
+		IsAdmin: resp.StatusCode == http.StatusOK && c.hasDopplerScope(uaaR),
+		Token:   token,
 	}, nil
 }
 
@@ -117,11 +111,9 @@ func trimBearer(authToken string) string {
 }
 
 type uaaResponse struct {
-	Scopes   []string  `json:"scope"`
-	UserID   string    `json:"user_id"`
-	ClientID string    `json:"client_id"`
-	Exp      float64   `json:"exp"`
-	ExpTime  time.Time `json:"-"`
+	Scopes  []string  `json:"scope"`
+	Exp     float64   `json:"exp"`
+	ExpTime time.Time `json:"-"`
 }
 
 func (c *UAAClient) hasDopplerScope(r uaaResponse) bool {

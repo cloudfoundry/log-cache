@@ -3,7 +3,6 @@ package auth
 import (
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"log"
 
@@ -26,11 +25,8 @@ type CFAuthMiddlewareProvider struct {
 }
 
 type Oauth2ClientContext struct {
-	IsAdmin   bool
-	ClientID  string
-	UserID    string
-	ExpiresAt time.Time
-	Token     string
+	IsAdmin bool
+	Token   string
 }
 
 type Oauth2ClientReader interface {
@@ -38,7 +34,7 @@ type Oauth2ClientReader interface {
 }
 
 type LogAuthorizer interface {
-	IsAuthorized(sourceID string, clientToken Oauth2ClientContext) bool
+	IsAuthorized(sourceID string, clientToken string) bool
 	AvailableSourceIDs(token string) []string
 }
 
@@ -99,7 +95,7 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 		}
 
 		if !userContext.IsAdmin {
-			if !m.logAuthorizer.IsAuthorized(sourceID, userContext) {
+			if !m.logAuthorizer.IsAuthorized(sourceID, userContext.Token) {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
@@ -222,7 +218,7 @@ func (m CFAuthMiddlewareProvider) authorizeSourceIds(sourceIds []string, c Oauth
 	var authorizedSourceIds []string
 
 	for _, sourceId := range sourceIds {
-		if m.logAuthorizer.IsAuthorized(sourceId, c) {
+		if m.logAuthorizer.IsAuthorized(sourceId, c.Token) {
 			authorizedSourceIds = append(authorizedSourceIds, sourceId)
 		}
 	}

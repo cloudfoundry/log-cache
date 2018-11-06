@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"time"
 
 	"code.cloudfoundry.org/log-cache/internal/auth"
 
@@ -405,11 +404,8 @@ func newAdminChecker() *spyOauth2ClientReader {
 func (s *spyOauth2ClientReader) Read(token string) (auth.Oauth2ClientContext, error) {
 	s.token = token
 	return auth.Oauth2ClientContext{
-		IsAdmin:   s.isAdminResult,
-		ClientID:  s.client,
-		UserID:    s.user,
-		Token:     token,
-		ExpiresAt: time.Now().Add(5 * time.Minute),
+		IsAdmin: s.isAdminResult,
+		Token:   token,
 	}, s.err
 }
 
@@ -428,9 +424,9 @@ func newSpyLogAuthorizer() *spyLogAuthorizer {
 	}
 }
 
-func (s *spyLogAuthorizer) IsAuthorized(sourceId string, c auth.Oauth2ClientContext) bool {
+func (s *spyLogAuthorizer) IsAuthorized(sourceId string, clientToken string) bool {
 	s.sourceIDsCalledWith[sourceId] = struct{}{}
-	s.token = c.Token
+	s.token = clientToken
 
 	_, exists := s.unauthorizedSourceIds[sourceId]
 

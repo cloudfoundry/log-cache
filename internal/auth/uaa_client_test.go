@@ -40,9 +40,7 @@ var _ = Describe("UAAClient", func() {
 
 	It("returns IsAdmin when scopes include doppler.firehose with correct clientID and UserID", func() {
 		data, err := json.Marshal(map[string]interface{}{
-			"scope":     []string{"doppler.firehose"},
-			"user_id":   "some-user",
-			"client_id": "some-client",
+			"scope": []string{"doppler.firehose"},
 		})
 		Expect(err).ToNot(HaveOccurred())
 
@@ -54,15 +52,12 @@ var _ = Describe("UAAClient", func() {
 		c, err := client.Read("valid-token")
 		Expect(err).ToNot(HaveOccurred())
 		Expect(c.IsAdmin).To(BeTrue())
-		Expect(c.UserID).To(Equal("some-user"))
-		Expect(c.ClientID).To(Equal("some-client"))
+		Expect(c.Token).To(Equal("valid-token"))
 	})
 
 	It("returns IsAdmin when scopes include logs.admin with correct clientID and UserID", func() {
 		data, err := json.Marshal(map[string]interface{}{
-			"scope":     []string{"logs.admin"},
-			"user_id":   "some-user",
-			"client_id": "some-client",
+			"scope": []string{"logs.admin"},
 		})
 		Expect(err).ToNot(HaveOccurred())
 		httpClient.resps = []response{{
@@ -73,16 +68,13 @@ var _ = Describe("UAAClient", func() {
 		c, err := client.Read("valid-token")
 		Expect(err).ToNot(HaveOccurred())
 		Expect(c.IsAdmin).To(BeTrue())
-		Expect(c.UserID).To(Equal("some-user"))
-		Expect(c.ClientID).To(Equal("some-client"))
+		Expect(c.Token).To(Equal("valid-token"))
 	})
 
 	It("does offline token validation through caching", func() {
 		data, err := json.Marshal(map[string]interface{}{
-			"scope":     []string{"logs.admin"},
-			"user_id":   "some-user",
-			"client_id": "some-client",
-			"exp":       time.Now().Add(time.Minute).Unix(),
+			"scope": []string{"logs.admin"},
+			"exp":   float64(time.Now().Add(time.Minute).UnixNano()) / 1e9,
 		})
 		Expect(err).ToNot(HaveOccurred())
 		httpClient.resps = []response{{
@@ -98,10 +90,8 @@ var _ = Describe("UAAClient", func() {
 
 	It("does not cache an expired token", func() {
 		data, err := json.Marshal(map[string]interface{}{
-			"scope":     []string{"logs.admin"},
-			"user_id":   "some-user",
-			"client_id": "some-client",
-			"exp":       time.Now().Add(-time.Minute).Unix(),
+			"scope": []string{"logs.admin"},
+			"exp":   float64(time.Now().Add(-time.Minute).UnixNano()) / 1e9,
 		})
 
 		Expect(err).ToNot(HaveOccurred())
@@ -140,33 +130,6 @@ var _ = Describe("UAAClient", func() {
 		Expect(urlValues.Get("token")).To(Equal(token))
 	})
 
-	It("returns expiration time and token from UAA and cache", func() {
-		expiry := time.Now().Add(time.Minute)
-
-		data, err := json.Marshal(map[string]interface{}{
-			"exp": float64(expiry.UnixNano()) / 1e9,
-		})
-		Expect(err).ToNot(HaveOccurred())
-
-		httpClient.resps = []response{{
-			body:   data,
-			status: http.StatusOK,
-		}}
-
-		c, err := client.Read("valid-token")
-		Expect(err).ToNot(HaveOccurred())
-
-		Expect(c.ExpiresAt).To(BeTemporally("~", expiry, time.Millisecond))
-		Expect(c.Token).To(Equal("valid-token"))
-
-		c, err = client.Read("valid-token")
-		Expect(err).ToNot(HaveOccurred())
-		Expect(len(httpClient.requests)).To(Equal(1))
-
-		Expect(c.ExpiresAt).To(BeTemporally("~", expiry, time.Millisecond))
-		Expect(c.Token).To(Equal("valid-token"))
-	})
-
 	It("sets the last request latency metric", func() {
 		client.Read("my-token")
 
@@ -180,9 +143,7 @@ var _ = Describe("UAAClient", func() {
 
 	It("returns false when scopes don't include doppler.firehose or logs.admin", func() {
 		data, err := json.Marshal(map[string]interface{}{
-			"scope":     []string{"some-scope"},
-			"user_id":   "some-user",
-			"client_id": "some-client",
+			"scope": []string{"some-scope"},
 		})
 		Expect(err).ToNot(HaveOccurred())
 		httpClient.resps = []response{{
