@@ -22,7 +22,7 @@ func main() {
 
 	opts := []ExpvarForwarderOption{
 		WithExpvarLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		WithExpvarDialOpts(grpc.WithTransportCredentials(cfg.LogCacheTLS.Credentials("log-cache"))),
+		WithAgentDialOpts(grpc.WithTransportCredentials(cfg.AgentTLS.Credentials("loggregator-agent"))),
 		WithExpvarGlobalTag("host", cfg.MetricHost),
 		WithExpvarGlobalTag("addr", cfg.InstanceAddr),
 		WithExpvarGlobalTag("id", cfg.InstanceId),
@@ -67,7 +67,7 @@ func main() {
 	}
 
 	forwarder := NewExpvarForwarder(
-		cfg.LogCacheAddr,
+		cfg.AgentAddr,
 		opts...,
 	)
 

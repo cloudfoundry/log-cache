@@ -14,6 +14,59 @@ import (
 	rpc "code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 )
 
+type SpyAgent struct {
+	mu        sync.Mutex
+	envelopes []*loggregator_v2.Envelope
+	tlsConfig *tls.Config
+}
+
+func NewSpyAgent(tlsConfig *tls.Config) *SpyAgent {
+	return &SpyAgent{
+		tlsConfig: tlsConfig,
+	}
+}
+
+func (s *SpyAgent) Start() string {
+	lis, err := net.Listen("tcp", ":0")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+
+	srv := grpc.NewServer(
+		grpc.Creds(credentials.NewTLS(s.tlsConfig)),
+	)
+	loggregator_v2.RegisterIngressServer(srv, s)
+	go srv.Serve(lis)
+
+	return lis.Addr().String()
+
+}
+
+func (s *SpyAgent) Sender(_ loggregator_v2.Ingress_SenderServer) error {
+	return nil
+}
+
+func (s *SpyAgent) BatchSender(_ loggregator_v2.Ingress_BatchSenderServer) error {
+	return nil
+}
+
+func (s *SpyAgent) Send(ctx context.Context, batch *loggregator_v2.EnvelopeBatch) (*loggregator_v2.SendResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.envelopes = append(s.envelopes, batch.GetBatch()...)
+
+	return &loggregator_v2.SendResponse{}, nil
+}
+
+func (s *SpyAgent) GetEnvelopes() []*loggregator_v2.Envelope {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r := make([]*loggregator_v2.Envelope, len(s.envelopes))
+	copy(r, s.envelopes)
+	return r
+}
+
 type SpyLogCache struct {
 	mu                 sync.Mutex
 	localOnlyValues    []bool

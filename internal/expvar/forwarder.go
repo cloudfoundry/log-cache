@@ -14,38 +14,36 @@ import (
 	"golang.org/x/net/context"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 
 	"github.com/blang/semver"
 	"google.golang.org/grpc"
 )
 
-// ExpvarForwarder reads from an expvar and write them to LogCache.
+// ExpvarForwarder reads from an expvar and write them to the Loggregator Agent.
 type ExpvarForwarder struct {
 	log             *log.Logger
 	slog            *log.Logger
 	interval        time.Duration
 	defaultSourceId string
 
-	// LogCache
-	logCacheAddr string
-	opts         []grpc.DialOption
-	globalTags   map[string]string
-	version      string
+	agentAddr     string
+	agentDialOpts []grpc.DialOption
+	globalTags    map[string]string
+	version       string
 
 	metrics map[string][]metricInfo
 }
 
 // NewExpvarForwarder returns a new ExpvarForwarder.
-func NewExpvarForwarder(logCacheAddr string, opts ...ExpvarForwarderOption) *ExpvarForwarder {
+func NewExpvarForwarder(agentAddr string, opts ...ExpvarForwarderOption) *ExpvarForwarder {
 	f := &ExpvarForwarder{
 		log:      log.New(ioutil.Discard, "", 0),
 		slog:     log.New(ioutil.Discard, "", 0),
 		interval: time.Minute,
 
-		logCacheAddr: logCacheAddr,
-		opts:         []grpc.DialOption{grpc.WithInsecure()},
-		globalTags:   make(map[string]string),
+		agentAddr:     agentAddr,
+		agentDialOpts: []grpc.DialOption{grpc.WithInsecure()},
+		globalTags:    make(map[string]string),
 
 		metrics: make(map[string][]metricInfo),
 	}
@@ -80,11 +78,11 @@ func WithExpvarStructuredLogger(l *log.Logger) ExpvarForwarderOption {
 	}
 }
 
-// WithExpvarDialOpts returns an ExpvarForwarderOption that configures the dial
-// options for dialing LogCache. Defaults to grpc.WithInsecure().
-func WithExpvarDialOpts(opts ...grpc.DialOption) ExpvarForwarderOption {
+// WithAgentDialOpts returns an ExpvarForwarderOption that configures the dial
+// options for dialing Agent. Defaults to grpc.WithInsecure().
+func WithAgentDialOpts(opts ...grpc.DialOption) ExpvarForwarderOption {
 	return func(f *ExpvarForwarder) {
-		f.opts = opts
+		f.agentDialOpts = opts
 	}
 }
 
@@ -203,11 +201,11 @@ func AddExpvarMapTemplate(addr, metricName, sourceId, txtTemplate string, tags m
 // Start starts the ExpvarForwarder. It starts reading from the given endpoints
 // and looking for the corresponding metrics via the templates. Start blocks.
 func (f *ExpvarForwarder) Start() {
-	client, err := grpc.Dial(f.logCacheAddr, f.opts...)
+	client, err := grpc.Dial(f.agentAddr, f.agentDialOpts...)
 	if err != nil {
-		f.log.Panicf("failed to dial LogCache (%s): %s", f.logCacheAddr, err)
+		f.log.Panicf("failed to dial Agent (%s): %s", f.agentAddr, err)
 	}
-	ingressClient := logcache_v1.NewIngressClient(client)
+	ingressClient := loggregator_v2.NewIngressClient(client)
 
 	for range time.Tick(f.interval) {
 		var e []*loggregator_v2.Envelope
@@ -382,10 +380,8 @@ func (f *ExpvarForwarder) Start() {
 		}
 
 		ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-		_, err := ingressClient.Send(ctx, &logcache_v1.SendRequest{
-			Envelopes: &loggregator_v2.EnvelopeBatch{
-				Batch: e,
-			},
+		_, err := ingressClient.Send(ctx, &loggregator_v2.EnvelopeBatch{
+			Batch: e,
 		})
 		if err != nil {
 			f.log.Printf("failed to send metrics: %s", err)
