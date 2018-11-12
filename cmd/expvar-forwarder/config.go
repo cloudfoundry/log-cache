@@ -14,7 +14,7 @@ var (
 
 // Config is the configuration for a LogCache.
 type Config struct {
-	LogCacheAddr      string              `env:"LOG_CACHE_ADDR, required, report"`
+	AgentAddr         string              `env:"AGENT_ADDR, required, report"`
 	InstanceAddr      string              `env:"INSTANCE_ADDR, required, report"`
 	InstanceId        string              `env:"INSTANCE_ID, required, report"`
 	InstanceCid       string              `env:"INSTANCE_CID, report"`
@@ -27,7 +27,7 @@ type Config struct {
 	StructuredLogging bool                `env:"STRUCTURED_LOGGING, report"`
 	Version           string
 
-	LogCacheTLS tls.TLS
+	AgentTLS tls.TLS
 }
 
 type CounterDescription struct {
