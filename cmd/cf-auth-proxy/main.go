@@ -4,6 +4,7 @@ import (
 	"expvar"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -66,6 +67,27 @@ func main() {
 		cfg.Addr,
 		WithAuthMiddleware(middlewareProvider.Middleware),
 	)
+
+	if cfg.SecurityEventLog != "" {
+		accessLog, err := os.OpenFile(cfg.SecurityEventLog, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
+		if err != nil {
+			log.Panicf("Unable to open access log: %s", err)
+		}
+		defer func() {
+			accessLog.Sync()
+			accessLog.Close()
+		}()
+
+		_, localPort, err := net.SplitHostPort(cfg.Addr)
+		if err != nil {
+			log.Panicf("Unable to determine local port: %s", err)
+		}
+
+		accessLogger := auth.NewAccessLogger(accessLog)
+		accessMiddleware := auth.NewAccessMiddleware(accessLogger, cfg.InternalIP, localPort)
+		WithAccessMiddleware(accessMiddleware)(proxy)
+	}
+
 	proxy.Start()
 
 	// health endpoints (pprof and expvar)

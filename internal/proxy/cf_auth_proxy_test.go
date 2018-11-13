@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 
+	"code.cloudfoundry.org/log-cache/internal/auth"
 	. "code.cloudfoundry.org/log-cache/internal/proxy"
 
 	. "github.com/onsi/ginkgo"
@@ -39,6 +40,28 @@ var _ = Describe("CFAuthProxy", func() {
 			"127.0.0.1:0",
 			WithAuthMiddleware(func(http.Handler) http.Handler {
 				return middleware
+			}),
+		)
+		proxy.Start()
+
+		resp, err := http.Get("http://" + proxy.Addr())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
+		Expect(middlewareCalled).To(BeTrue())
+	})
+
+	It("delegates to the access middleware", func() {
+		var middlewareCalled bool
+		middleware := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			middlewareCalled = true
+			w.WriteHeader(http.StatusNotFound)
+		})
+
+		proxy := NewCFAuthProxy(
+			"https://127.0.0.1",
+			"127.0.0.1:0",
+			WithAccessMiddleware(func(http.Handler) *auth.AccessHandler {
+				return auth.NewAccessHandler(middleware, auth.NewNullAccessLogger(), "0.0.0.0", "1234")
 			}),
 		)
 		proxy.Start()

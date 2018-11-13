@@ -20,8 +20,10 @@ type UAA struct {
 type Config struct {
 	LogCacheGatewayAddr string `env:"LOG_CACHE_GATEWAY_ADDR, required, report"`
 	Addr                string `env:"ADDR, required, report"`
+	InternalIP          string `env:"INTERNAL_IP, report"`
 	HealthAddr          string `env:"HEALTH_ADDR, report"`
 	SkipCertVerify      bool   `env:"SKIP_CERT_VERIFY, report"`
+	SecurityEventLog    string `env:"SECURITY_EVENT_LOG, report"`
 
 	CAPI CAPI
 	UAA  UAA
@@ -31,6 +33,7 @@ func LoadConfig() (*Config, error) {
 	cfg := Config{
 		SkipCertVerify:      false,
 		Addr:                ":8083",
+		InternalIP:          "0.0.0.0",
 		HealthAddr:          "localhost:6065",
 		LogCacheGatewayAddr: "localhost:8081",
 	}

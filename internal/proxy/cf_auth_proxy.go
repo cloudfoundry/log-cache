@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+
+	"code.cloudfoundry.org/log-cache/internal/auth"
 )
 
 type CFAuthProxy struct {
@@ -15,7 +17,8 @@ type CFAuthProxy struct {
 	gatewayURL *url.URL
 	addr       string
 
-	authMiddleware func(http.Handler) http.Handler
+	authMiddleware   func(http.Handler) http.Handler
+	accessMiddleware func(http.Handler) *auth.AccessHandler
 }
 
 func NewCFAuthProxy(gatewayAddr, addr string, opts ...CFAuthProxyOption) *CFAuthProxy {
@@ -30,6 +33,7 @@ func NewCFAuthProxy(gatewayAddr, addr string, opts ...CFAuthProxyOption) *CFAuth
 		authMiddleware: func(h http.Handler) http.Handler {
 			return h
 		},
+		accessMiddleware: auth.NewNullAccessMiddleware(),
 	}
 
 	for _, o := range opts {
@@ -59,6 +63,12 @@ func WithAuthMiddleware(authMiddleware func(http.Handler) http.Handler) CFAuthPr
 	}
 }
 
+func WithAccessMiddleware(accessMiddleware func(http.Handler) *auth.AccessHandler) CFAuthProxyOption {
+	return func(p *CFAuthProxy) {
+		p.accessMiddleware = accessMiddleware
+	}
+}
+
 // Start starts the HTTP listener and serves the HTTP server. If the
 // CFAuthProxy was initialized with the WithCFAuthProxyBlock option this
 // method will block.
@@ -71,7 +81,7 @@ func (p *CFAuthProxy) Start() {
 	p.ln = ln
 
 	server := http.Server{
-		Handler: p.authMiddleware(p.reverseProxy()),
+		Handler: p.accessMiddleware(p.authMiddleware(p.reverseProxy())),
 	}
 
 	if p.blockOnStart {
