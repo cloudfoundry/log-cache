@@ -22,7 +22,7 @@ func main() {
 
 	opts := []ExpvarForwarderOption{
 		WithExpvarLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		WithAgentDialOpts(grpc.WithTransportCredentials(cfg.AgentTLS.Credentials("loggregator-agent"))),
+		WithAgentDialOpts(grpc.WithTransportCredentials(cfg.AgentTLS.Credentials("metron"))),
 		WithExpvarGlobalTag("host", cfg.MetricHost),
 		WithExpvarGlobalTag("addr", cfg.InstanceAddr),
 		WithExpvarGlobalTag("id", cfg.InstanceId),
