@@ -16,10 +16,6 @@ type Config struct {
 	// Smaller timeouts are recommended.
 	QueryTimeout time.Duration `env:"QUERY_TIMEOUT, report"`
 
-	// MinimumSize sets the lower bound for pruning. It will not prune beyond
-	// the set size. Defaults to 500000.
-	MinimumSize int `env:"MINIMUM_SIZE, report"`
-
 	// MemoryLimit sets the percentage of total system memory to use for the
 	// cache. If exceeded, the cache will prune. Default is 50%.
 	MemoryLimit float64 `env:"MEMORY_LIMIT_PERCENT, report"`
@@ -45,7 +41,6 @@ func LoadConfig() (*Config, error) {
 		Addr:         ":8080",
 		HealthAddr:   "localhost:6060",
 		QueryTimeout: 10 * time.Second,
-		MinimumSize:  500000,
 		MemoryLimit:  50,
 	}
 

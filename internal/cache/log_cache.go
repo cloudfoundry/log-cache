@@ -32,7 +32,6 @@ type LogCache struct {
 	closing    int64
 
 	maxPerSource       int
-	min                int
 	memoryLimitPercent float64
 	queryTimeout       time.Duration
 
@@ -55,7 +54,6 @@ func New(opts ...LogCacheOption) *LogCache {
 		log:                log.New(ioutil.Discard, "", 0),
 		metrics:            metrics.NullMetrics{},
 		maxPerSource:       100000,
-		min:                500000,
 		memoryLimitPercent: 50,
 		queryTimeout:       10 * time.Second,
 
@@ -107,14 +105,6 @@ func WithAddr(addr string) LogCacheOption {
 func WithServerOpts(opts ...grpc.ServerOption) LogCacheOption {
 	return func(c *LogCache) {
 		c.serverOpts = opts
-	}
-}
-
-// WithMinimumSize sets the lower bound for pruning. It will not prune once
-// this size is reached. Defaults to 500000.
-func WithMinimumSize(min int) LogCacheOption {
-	return func(c *LogCache) {
-		c.min = min
 	}
 }
 
@@ -171,7 +161,7 @@ func WithMetrics(m metrics.Initializer) LogCacheOption {
 // and therefore does not block.
 func (c *LogCache) Start() {
 	p := store.NewPruneConsultant(2, c.memoryLimitPercent, NewMemoryAnalyzer(c.metrics))
-	store := store.NewStore(c.maxPerSource, c.min, p, c.metrics)
+	store := store.NewStore(c.maxPerSource, p, c.metrics)
 	c.setupRouting(store)
 }
 

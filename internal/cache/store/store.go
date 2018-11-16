@@ -25,6 +25,8 @@ type MemoryConsultant interface {
 	SetMemoryReporter(func(float64))
 }
 
+const MIN_INT64 = int64(^uint64(0) >> 1)
+
 // Store is an in-memory data store for envelopes. It will store envelopes up
 // to a per-source threshold and evict oldest data first, as instructed by the
 // Pruner. All functions are thread safe.
@@ -33,11 +35,9 @@ type Store struct {
 
 	initializationMutex sync.Mutex
 
-	// count is incremented/decremented atomically during Put. Pruning occurs
-	// only when count surpasses minimumStoreSizeToPrune
-	count                   int64
-	oldestTimestamp         int64
-	minimumStoreSizeToPrune int
+	// count is incremented/decremented atomically during Put
+	count           int64
+	oldestTimestamp int64
 
 	maxPerSource      int
 	maxTimestampFudge int64
@@ -58,12 +58,11 @@ type Metrics struct {
 	setMemoryUtilization  func(value float64)
 }
 
-func NewStore(maxPerSource, minimumStoreSizeToPrune int, mc MemoryConsultant, m MetricsInitializer) *Store {
+func NewStore(maxPerSource int, mc MemoryConsultant, m MetricsInitializer) *Store {
 	store := &Store{
-		minimumStoreSizeToPrune: minimumStoreSizeToPrune,
-		maxPerSource:            maxPerSource,
-		maxTimestampFudge:       4000,
-		oldestTimestamp:         int64(^uint64(0) >> 1),
+		maxPerSource:      maxPerSource,
+		maxTimestampFudge: 4000,
+		oldestTimestamp:   MIN_INT64,
 
 		metrics: Metrics{
 			incExpired:            m.NewCounter("Expired"),
@@ -203,18 +202,17 @@ func (store *Store) BuildExpirationHeap() *ExpirationHeap {
 // truncate removes the n oldest envelopes across all trees
 func (store *Store) truncate() {
 	storeCount := atomic.LoadInt64(&store.count)
-	minimumStoreSizeToPrune := int64(store.minimumStoreSizeToPrune)
-
-	if storeCount < minimumStoreSizeToPrune {
-		store.sendTruncationCompleted(false)
-		return
-	}
 
 	numberToPrune := store.mc.GetQuantityToPrune(storeCount)
 
 	if numberToPrune == 0 {
 		store.sendTruncationCompleted(false)
 		return
+	}
+
+	// Just make sure we don't try to prune more entries than we have
+	if numberToPrune > int(storeCount) {
+		numberToPrune = int(storeCount)
 	}
 
 	expirationHeap := store.BuildExpirationHeap()
@@ -228,16 +226,26 @@ func (store *Store) truncate() {
 		}
 	}
 
-	// Grab the next oldest timestamp and use it to update the cache period
-	oldest := expirationHeap.Pop()
-	if oldest.(storageExpiration).tree != nil {
+	// Always update our store size metric and close out the channel when we return
+	defer func() {
+		store.metrics.setStoreSize(float64(atomic.LoadInt64(&store.count)))
+		store.sendTruncationCompleted(true)
+	}()
+
+	// If there's nothing left on the heap, our store is empty, so we can
+	// reset everything to default values and bail out
+	if expirationHeap.Len() == 0 {
+		atomic.StoreInt64(&store.oldestTimestamp, MIN_INT64)
+		store.metrics.setCachePeriod(0)
+		return
+	}
+
+	// Otherwise, grab the next oldest timestamp and use it to update the cache period
+	if oldest := expirationHeap.Pop(); oldest.(storageExpiration).tree != nil {
 		atomic.StoreInt64(&store.oldestTimestamp, oldest.(storageExpiration).timestamp)
 		cachePeriod := calculateCachePeriod(oldest.(storageExpiration).timestamp)
 		store.metrics.setCachePeriod(float64(cachePeriod))
 	}
-
-	store.metrics.setStoreSize(float64(atomic.LoadInt64(&store.count)))
-	store.sendTruncationCompleted(true)
 }
 
 func (store *Store) removeOldestEnvelope(treeToPrune *storage, sourceId string) (int64, bool) {

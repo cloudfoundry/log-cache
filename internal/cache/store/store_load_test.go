@@ -22,7 +22,7 @@ var _ = Describe("store under high concurrent load", func() {
 		sp.numberToPrune = 128
 		sm := newSpyMetrics()
 
-		loadStore := store.NewStore(2500, 20000, sp, sm)
+		loadStore := store.NewStore(2500, sp, sm)
 		start := time.Now()
 		var envelopesWritten uint64
 
