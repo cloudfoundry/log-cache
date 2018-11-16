@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -91,6 +92,10 @@ func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 		io.Copy(ioutil.Discard, resp.Body)
 		resp.Body.Close()
 	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return Oauth2ClientContext{}, fmt.Errorf("Non-200 status code received from UAA")
+	}
 
 	uaaR, err = c.parseResponse(resp.Body)
 	if err != nil {

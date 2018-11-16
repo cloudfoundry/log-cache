@@ -141,6 +141,22 @@ var _ = Describe("UAAClient", func() {
 		Expect(err).To(HaveOccurred())
 	})
 
+	It("returns an error when UAA returns a non-200 response", func() {
+		data, err := json.Marshal(map[string]interface{}{
+			"error":             []string{"unauthorized"},
+			"error_description": []string{"An Authentication object was not found in the SecurityContext"},
+		})
+		httpClient.resps = []response{{
+			body:   data,
+			status: http.StatusUnauthorized,
+		}}
+
+		c, err := client.Read("token")
+		Expect(err).To(HaveOccurred())
+		Expect(c.IsAdmin).To(BeFalse())
+		Expect(c.Token).To(Equal(""))
+	})
+
 	It("returns false when scopes don't include doppler.firehose or logs.admin", func() {
 		data, err := json.Marshal(map[string]interface{}{
 			"scope": []string{"some-scope"},

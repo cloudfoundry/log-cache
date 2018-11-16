@@ -85,8 +85,6 @@ func (m CFAuthMiddlewareProvider) Middleware(h http.Handler) http.Handler {
 			return
 		}
 
-		// TODO - is the returned context really the user? or are we returning
-		// the UAA context of the client that WE use to check the user's token
 		userContext, err := m.oauth2Reader.Read(authToken)
 		if err != nil {
 			log.Printf("failed to read from Oauth2 server: %s", err)
