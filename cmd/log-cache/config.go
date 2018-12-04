@@ -18,7 +18,7 @@ type Config struct {
 
 	// MemoryLimit sets the percentage of total system memory to use for the
 	// cache. If exceeded, the cache will prune. Default is 50%.
-	MemoryLimit float64 `env:"MEMORY_LIMIT_PERCENT, report"`
+	MemoryLimit uint `env:"MEMORY_LIMIT_PERCENT, report"`
 
 	// NodeIndex determines what data the node stores. It splits up the range
 	// of 0 - 18446744073709551615 evenly. If data falls out of range of the

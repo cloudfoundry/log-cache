@@ -30,7 +30,7 @@ func main() {
 		WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
 		WithMetrics(metrics.New(expvar.NewMap("LogCache"))),
 		WithAddr(cfg.Addr),
-		WithMemoryLimit(cfg.MemoryLimit),
+		WithMemoryLimit(float64(cfg.MemoryLimit)),
 		WithQueryTimeout(cfg.QueryTimeout),
 		WithClustered(
 			cfg.NodeIndex,
