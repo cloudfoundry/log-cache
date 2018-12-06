@@ -381,6 +381,8 @@ func (l *LogCacheQuerier) Select(params *storage.SelectParams, ll ...*labels.Mat
 				tags["instance_id"] = e.InstanceId
 			}
 
+			tags["source_id"] = e.SourceId
+
 			builder.add(tags, point{
 				t: e.GetTimestamp() / int64(time.Millisecond),
 				v: f,

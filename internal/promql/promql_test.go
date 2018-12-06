@@ -501,10 +501,7 @@ var _ = Describe("PromQL", func() {
 
 			Expect(r.GetVector().GetSamples()).To(Equal([]*logcache_v1.PromQL_Sample{
 				{
-					Metric: map[string]string{
-						"a": "tag-a",
-						"b": "tag-b",
-					},
+					Metric: map[string]string{"a": "tag-a", "b": "tag-b", "source_id": "some-id-2"},
 					Point: &logcache_v1.PromQL_Point{
 						Time:  actualTime,
 						Value: 200,
@@ -551,11 +548,7 @@ var _ = Describe("PromQL", func() {
 
 			Expect(r.GetMatrix().GetSeries()).To(Equal([]*logcache_v1.PromQL_Series{
 				{
-					Metric: map[string]string{
-						"a":           "tag-a",
-						"b":           "tag-b",
-						"instance_id": "0",
-					},
+					Metric: map[string]string{"a": "tag-a", "b": "tag-b", "instance_id": "0", "source_id": "some-id-1"},
 					Points: []*logcache_v1.PromQL_Point{{
 						Time:  testing.FormatTimeWithDecimalMillis(now.Truncate(time.Second)),
 						Value: 99,
@@ -982,10 +975,7 @@ var _ = Describe("PromQL", func() {
 
 			Expect(r.GetMatrix().GetSeries()).To(Equal([]*logcache_v1.PromQL_Series{
 				{
-					Metric: map[string]string{
-						"a": "tag-a",
-						"b": "tag-b",
-					},
+					Metric: map[string]string{"a": "tag-a", "b": "tag-b", "source_id": "some-id-1"},
 					Points: []*logcache_v1.PromQL_Point{
 						{Time: testing.FormatTimeWithDecimalMillis(lastHour), Value: 98},
 						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 102},
@@ -1098,10 +1088,7 @@ var _ = Describe("PromQL", func() {
 
 			Expect(r.GetMatrix().GetSeries()).To(Equal([]*logcache_v1.PromQL_Series{
 				{
-					Metric: map[string]string{
-						"a": "tag-a",
-						"b": "tag-b",
-					},
+					Metric: map[string]string{"a": "tag-a", "b": "tag-b", "source_id": "some-id-1"},
 					Points: []*logcache_v1.PromQL_Point{
 						{Time: testing.FormatTimeWithDecimalMillis(lastHour), Value: 97},
 						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 103},
@@ -1177,7 +1164,7 @@ var _ = Describe("PromQL", func() {
 
 			Expect(r.GetMatrix().GetSeries()).To(Equal([]*logcache_v1.PromQL_Series{
 				{
-					Metric: map[string]string{"a": "tag-a", "b": "tag-b"},
+					Metric: map[string]string{"a": "tag-a", "b": "tag-b", "source_id": "some-id-1"},
 					Points: []*logcache_v1.PromQL_Point{
 						{Time: testing.FormatTimeWithDecimalMillis(lastHour), Value: 97},
 						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 97},
@@ -1188,7 +1175,7 @@ var _ = Describe("PromQL", func() {
 					},
 				},
 				{
-					Metric: map[string]string{"a": "tag-a", "c": "tag-c"},
+					Metric: map[string]string{"a": "tag-a", "c": "tag-c", "source_id": "some-id-1"},
 					Points: []*logcache_v1.PromQL_Point{
 						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 101},
 						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(2 * time.Minute)), Value: 101},
