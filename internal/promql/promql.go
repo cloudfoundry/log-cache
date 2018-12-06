@@ -377,6 +377,11 @@ func (l *LogCacheQuerier) Select(params *storage.SelectParams, ll ...*labels.Mat
 			e.Timestamp = time.Unix(0, e.GetTimestamp()).Truncate(l.interval).UnixNano()
 
 			tags := e.GetTags()
+			if tags == nil {
+				tags = make(map[string]string)
+			}
+
+			tags["source_id"] = e.SourceId
 			if e.InstanceId != "" {
 				tags["instance_id"] = e.InstanceId
 			}

@@ -291,7 +291,7 @@ var _ = Describe("PromQL", func() {
 			r, err := q.InstantQuery(
 				context.Background(),
 				&logcache_v1.PromQL_InstantQueryRequest{
-					Query: `some_metric_count{source_id="some-id-1"} + some_metric_count{source_id="some-id-2"}`,
+					Query: `some_metric_count{source_id="some-id-1"} + ignoring (source_id) some_metric_count{source_id="some-id-2"}`,
 				},
 			)
 			Expect(err).NotTo(HaveOccurred())
@@ -349,7 +349,7 @@ var _ = Describe("PromQL", func() {
 			r, err := q.InstantQuery(
 				context.Background(),
 				&logcache_v1.PromQL_InstantQueryRequest{
-					Query: `some_metric_time{source_id="some-id-1"} + some_metric_time{source_id="some-id-2"}`,
+					Query: `some_metric_time{source_id="some-id-1"} + ignoring(source_id) some_metric_time{source_id="some-id-2"}`,
 					Time:  testing.FormatTimeWithDecimalMillis(hourAgo),
 				},
 			)
@@ -427,7 +427,7 @@ var _ = Describe("PromQL", func() {
 			r, err := q.InstantQuery(
 				context.Background(),
 				&logcache_v1.PromQL_InstantQueryRequest{
-					Query: `some_metric_value{source_id="some-id-1"} + some_metric_value{source_id="some-id-2"} + some_metric_value{source_id="some-id-3"}`,
+					Query: `some_metric_value{source_id="some-id-1"} + ignoring (source_id) some_metric_value{source_id="some-id-2"} + ignoring (source_id) some_metric_value{source_id="some-id-3"}`,
 					Time:  testing.FormatTimeWithDecimalMillis(now),
 				},
 			)
@@ -489,7 +489,7 @@ var _ = Describe("PromQL", func() {
 				context.Background(),
 				&logcache_v1.PromQL_InstantQueryRequest{
 					Time:  testing.FormatTimeWithDecimalMillis(hourAgo),
-					Query: `metric{source_id="some-id-1"} + metric{source_id="some-id-2"}`,
+					Query: `metric{source_id="some-id-1"} + ignoring (source_id) metric{source_id="some-id-2"}`,
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -554,6 +554,7 @@ var _ = Describe("PromQL", func() {
 					Metric: map[string]string{
 						"a":           "tag-a",
 						"b":           "tag-b",
+						"source_id":   "some-id-1",
 						"instance_id": "0",
 					},
 					Points: []*logcache_v1.PromQL_Point{{
@@ -754,9 +755,6 @@ var _ = Describe("PromQL", func() {
 								},
 							},
 						},
-						Tags: map[string]string{
-							"source_id": "some-id-1",
-						},
 					},
 				},
 				{
@@ -769,9 +767,6 @@ var _ = Describe("PromQL", func() {
 									"metric": {Unit: "thing", Value: 101},
 								},
 							},
-						},
-						Tags: map[string]string{
-							"source_id": "some-id-2",
 						},
 					},
 				},
@@ -983,8 +978,9 @@ var _ = Describe("PromQL", func() {
 			Expect(r.GetMatrix().GetSeries()).To(Equal([]*logcache_v1.PromQL_Series{
 				{
 					Metric: map[string]string{
-						"a": "tag-a",
-						"b": "tag-b",
+						"a":         "tag-a",
+						"b":         "tag-b",
+						"source_id": "some-id-1",
 					},
 					Points: []*logcache_v1.PromQL_Point{
 						{Time: testing.FormatTimeWithDecimalMillis(lastHour), Value: 98},
@@ -1099,8 +1095,9 @@ var _ = Describe("PromQL", func() {
 			Expect(r.GetMatrix().GetSeries()).To(Equal([]*logcache_v1.PromQL_Series{
 				{
 					Metric: map[string]string{
-						"a": "tag-a",
-						"b": "tag-b",
+						"a":         "tag-a",
+						"b":         "tag-b",
+						"source_id": "some-id-1",
 					},
 					Points: []*logcache_v1.PromQL_Point{
 						{Time: testing.FormatTimeWithDecimalMillis(lastHour), Value: 97},
@@ -1177,7 +1174,11 @@ var _ = Describe("PromQL", func() {
 
 			Expect(r.GetMatrix().GetSeries()).To(Equal([]*logcache_v1.PromQL_Series{
 				{
-					Metric: map[string]string{"a": "tag-a", "b": "tag-b"},
+					Metric: map[string]string{
+						"a":         "tag-a",
+						"b":         "tag-b",
+						"source_id": "some-id-1",
+					},
 					Points: []*logcache_v1.PromQL_Point{
 						{Time: testing.FormatTimeWithDecimalMillis(lastHour), Value: 97},
 						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 97},
@@ -1188,7 +1189,11 @@ var _ = Describe("PromQL", func() {
 					},
 				},
 				{
-					Metric: map[string]string{"a": "tag-a", "c": "tag-c"},
+					Metric: map[string]string{
+						"a":         "tag-a",
+						"c":         "tag-c",
+						"source_id": "some-id-1",
+					},
 					Points: []*logcache_v1.PromQL_Point{
 						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(time.Minute)), Value: 101},
 						{Time: testing.FormatTimeWithDecimalMillis(lastHour.Add(2 * time.Minute)), Value: 101},
