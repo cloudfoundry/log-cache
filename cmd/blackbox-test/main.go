@@ -42,12 +42,16 @@ func main() {
 
 		reliabilityMetrics := make(map[string]float64)
 
-		grpcReceivedCount := countMetricPoints(cfg, grpcEgressClient, cfg.SourceID)
-		reliabilityMetrics["blackbox.grpc_reliability"] = float64(grpcReceivedCount) / expectedEmissionCount
+		grpcReceivedCount, err := countMetricPoints(cfg, grpcEgressClient, cfg.SourceID)
+		if err == nil {
+			reliabilityMetrics["blackbox.grpc_reliability"] = float64(grpcReceivedCount) / expectedEmissionCount
+		}
 
 		if cfg.CfBlackboxEnabled {
-			httpReceivedCount := countMetricPoints(cfg, httpEgressClient, cfg.SourceID)
-			reliabilityMetrics["blackbox.http_reliability"] = float64(httpReceivedCount) / expectedEmissionCount
+			httpReceivedCount, err := countMetricPoints(cfg, httpEgressClient, cfg.SourceID)
+			if err == nil {
+				reliabilityMetrics["blackbox.http_reliability"] = float64(httpReceivedCount) / expectedEmissionCount
+			}
 		}
 
 		log.Println("Emitting measured metrics...")
@@ -177,21 +181,20 @@ func emitMeasuredMetrics(cfg *Config, ingress_client logcache_v1.IngressClient, 
 	}
 }
 
-func countMetricPoints(cfg *Config, logcache_client *client.Client, sourceID string) uint64 {
+func countMetricPoints(cfg *Config, logcache_client *client.Client, sourceID string) (uint64, error) {
 	queryString := fmt.Sprintf(`count_over_time(blackbox_test_metric{source_id="%s"}[%.0fs])`, sourceID, cfg.WindowInterval.Seconds())
 
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	queryResult, err := logcache_client.PromQL(ctx, queryString)
 	if err != nil {
 		log.Printf("failed to count test metrics: %s\n", err)
-		return 0
+		return 0, err
 	}
 
 	samples := queryResult.GetVector().GetSamples()
-
-	if len(samples) < 1 {
-		return 0
+	if len(samples) == 0 {
+		return 0, fmt.Errorf("couldn't find samples for %s\n", queryString)
 	}
 
-	return uint64(samples[0].GetPoint().GetValue())
+	return uint64(samples[0].GetPoint().GetValue()), nil
 }
