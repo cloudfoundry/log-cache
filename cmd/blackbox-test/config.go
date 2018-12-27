@@ -11,10 +11,11 @@ type Config struct {
 	EmissionInterval time.Duration `env:"EMISSION_INTERVAL, required, report"`
 	SampleInterval   time.Duration `env:"SAMPLE_INTERVAL, required, report"`
 	WindowInterval   time.Duration `env:"WINDOW_INTERVAL, required, report"`
-	SourceID         string        `env:"SOURCE_ID, required, report"`
+	WindowLag        time.Duration `env:"WINDOW_LAG, required, report"`
+	SourceId         string        `env:"SOURCE_ID, required, report"`
 
 	CfBlackboxEnabled  bool   `env:"CF_BLACKBOX_ENABLED, report"`
-	DataSourceHttpAddr string `env:"DATA_SOURCE_HTTP_ADDR, report"`
+	DataSourceHTTPAddr string `env:"DATA_SOURCE_HTTP_ADDR, report"`
 	UaaAddr            string `env:"UAA_ADDR, report"`
 	ClientID           string `env:"CLIENT_ID, report"`
 	ClientSecret       string `env:"CLIENT_SECRET"`
