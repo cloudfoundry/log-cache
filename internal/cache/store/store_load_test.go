@@ -59,7 +59,7 @@ var _ = Describe("store under high concurrent load", func() {
 		}()
 
 		Consistently(func() int64 {
-			envelopes := loadStore.Get("index-9", start, time.Now(), nil, 100000, false)
+			envelopes := loadStore.Get("index-9", start, time.Now(), nil, nil, 100000, false)
 			return int64(len(envelopes))
 		}, timeoutInSeconds).Should(BeNumerically("<=", 2500))
 

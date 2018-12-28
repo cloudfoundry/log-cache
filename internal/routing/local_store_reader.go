@@ -2,6 +2,7 @@ package routing
 
 import (
 	"fmt"
+	"regexp"
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
@@ -25,6 +26,7 @@ type StoreReader interface {
 		start time.Time,
 		end time.Time,
 		envelopeTypes []logcache_v1.EnvelopeType,
+		nameFilter *regexp.Regexp,
 		limit int,
 		descending bool,
 	) []*loggregator_v2.Envelope
@@ -62,17 +64,27 @@ func (r *LocalStoreReader) Read(ctx context.Context, req *logcache_v1.ReadReques
 		req.Limit = 100
 	}
 
-	var t []logcache_v1.EnvelopeType
+	var nameFilter *regexp.Regexp
+	var err error
+	if req.NameFilter != "" {
+		nameFilter, err = regexp.Compile(req.NameFilter)
+		if err != nil {
+			return nil, fmt.Errorf("Name filter must be a valid regular expression: %s", err)
+		}
+	}
+
+	var envelopeTypes []logcache_v1.EnvelopeType
 	for _, e := range req.GetEnvelopeTypes() {
 		if e != logcache_v1.EnvelopeType_ANY {
-			t = append(t, e)
+			envelopeTypes = append(envelopeTypes, e)
 		}
 	}
 	envs := r.s.Get(
 		req.SourceId,
 		time.Unix(0, req.StartTime),
 		time.Unix(0, req.EndTime),
-		t,
+		envelopeTypes,
+		nameFilter,
 		int(req.Limit),
 		req.Descending,
 	)

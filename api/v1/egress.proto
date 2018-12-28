@@ -26,6 +26,7 @@ message ReadRequest {
     int64 limit = 4;
     repeated EnvelopeType envelope_types = 5;
     bool descending = 6;
+    string nameFilter = 7;
 }
 
 enum EnvelopeType {

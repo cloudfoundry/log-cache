@@ -1,6 +1,7 @@
 package routing_test
 
 import (
+	"regexp"
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
@@ -25,6 +26,7 @@ var _ = Describe("LocalStoreReader", func() {
 		)
 	})
 
+	// TODO: add nameFiltering tests
 	It("reads envelopes from the store", func() {
 		spyStoreReader.getEnvelopes = []*loggregator_v2.Envelope{
 			{Timestamp: 1},
@@ -177,6 +179,7 @@ type spyStoreReader struct {
 	envelopeTypes []logcache_v1.EnvelopeType
 	limit         int
 	descending    bool
+	nameFilter    *regexp.Regexp
 	metaResponse  map[string]logcache_v1.MetaInfo
 }
 
@@ -189,6 +192,7 @@ func (s *spyStoreReader) Get(
 	start time.Time,
 	end time.Time,
 	envelopeTypes []logcache_v1.EnvelopeType,
+	nameFilter *regexp.Regexp,
 	limit int,
 	descending bool,
 ) []*loggregator_v2.Envelope {
@@ -196,6 +200,7 @@ func (s *spyStoreReader) Get(
 	s.start = start
 	s.end = end
 	s.envelopeTypes = envelopeTypes
+	s.nameFilter = nameFilter
 	s.limit = limit
 	s.descending = descending
 

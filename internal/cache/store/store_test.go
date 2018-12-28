@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -40,7 +41,7 @@ var _ = Describe("Store", func() {
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 4)
-		envelopes := s.Get("a", start, end, nil, 10, false)
+		envelopes := s.Get("a", start, end, nil, nil, 10, false)
 		Expect(envelopes).To(HaveLen(2))
 
 		for _, e := range envelopes {
@@ -63,7 +64,7 @@ var _ = Describe("Store", func() {
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
-		envelopes := s.Get("a", start, end, nil, 3, false)
+		envelopes := s.Get("a", start, end, nil, nil, 3, false)
 		Expect(envelopes).To(HaveLen(3))
 		Expect(envelopes[0].GetTimestamp()).To(Equal(int64(1)))
 		Expect(envelopes[1].GetTimestamp()).To(Equal(int64(2)))
@@ -96,7 +97,7 @@ var _ = Describe("Store", func() {
 
 			start := time.Unix(0, 1)
 			end := time.Unix(0, 3)
-			envelopes := s.Get("a", start, end, nil, 5, false)
+			envelopes := s.Get("a", start, end, nil, nil, 5, false)
 			Expect(envelopes).To(HaveLen(4))
 			Expect(envelopes[0].GetTimestamp()).To(Equal(int64(1)))
 			Expect(envelopes[1].GetTimestamp()).To(Equal(int64(1)))
@@ -116,7 +117,7 @@ var _ = Describe("Store", func() {
 
 			start := time.Unix(0, 0)
 			end := time.Unix(0, 2)
-			envelopes := s.Get("a", start, end, nil, 2, false)
+			envelopes := s.Get("a", start, end, nil, nil, 2, false)
 			Expect(envelopes).To(HaveLen(3))
 			Expect(envelopes[0].GetTimestamp()).To(Equal(int64(0)))
 			Expect(envelopes[1].GetTimestamp()).To(Equal(int64(1)))
@@ -150,7 +151,7 @@ var _ = Describe("Store", func() {
 
 			start := time.Unix(0, 1)
 			end := time.Unix(0, 3)
-			envelopes := s.Get("a", start, end, nil, 5, true)
+			envelopes := s.Get("a", start, end, nil, nil, 5, true)
 			Expect(envelopes).To(HaveLen(4))
 			Expect(envelopes[0].GetTimestamp()).To(Equal(int64(2)))
 			Expect(envelopes[1].GetTimestamp()).To(Equal(int64(2)))
@@ -170,7 +171,7 @@ var _ = Describe("Store", func() {
 
 			start := time.Unix(0, 0)
 			end := time.Unix(0, 2)
-			envelopes := s.Get("a", start, end, nil, 2, true)
+			envelopes := s.Get("a", start, end, nil, nil, 2, true)
 			Expect(envelopes).To(HaveLen(3))
 			Expect(envelopes[0].GetTimestamp()).To(Equal(int64(1)))
 			Expect(envelopes[1].GetTimestamp()).To(Equal(int64(0)))
@@ -191,7 +192,7 @@ var _ = Describe("Store", func() {
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
-		envelopes := s.Get("a", start, end, nil, 3, true)
+		envelopes := s.Get("a", start, end, nil, nil, 3, true)
 		Expect(envelopes).To(HaveLen(3))
 		Expect(envelopes[0].GetTimestamp()).To(Equal(int64(4)))
 		Expect(envelopes[1].GetTimestamp()).To(Equal(int64(3)))
@@ -229,12 +230,12 @@ var _ = Describe("Store", func() {
 
 			start := time.Unix(0, 0)
 			end := time.Unix(0, 9999)
-			envelopes := s.Get("a", start, end, []logcache_v1.EnvelopeType{envelopeType}, 5, false)
+			envelopes := s.Get("a", start, end, []logcache_v1.EnvelopeType{envelopeType}, nil, 5, false)
 			Expect(envelopes).To(HaveLen(1))
 			Expect(envelopes[0].Message).To(BeAssignableToTypeOf(envelopeWrapper))
 
 			// No Filter
-			envelopes = s.Get("a", start, end, nil, 10, false)
+			envelopes = s.Get("a", start, end, nil, nil, 10, false)
 			Expect(envelopes).To(HaveLen(5))
 		},
 
@@ -243,6 +244,45 @@ var _ = Describe("Store", func() {
 		Entry("Gauge", logcache_v1.EnvelopeType_GAUGE, &loggregator_v2.Envelope_Gauge{}),
 		Entry("Timer", logcache_v1.EnvelopeType_TIMER, &loggregator_v2.Envelope_Timer{}),
 		Entry("Event", logcache_v1.EnvelopeType_EVENT, &loggregator_v2.Envelope_Event{}),
+	)
+
+	DescribeTable("fetches data based on metric name",
+		func(expectedName string) {
+			nameFilter := regexp.MustCompile(expectedName)
+
+			e1 := buildTypedEnvelopeWithName(1, "counter-metric-name", &loggregator_v2.Counter{})
+			e2 := buildTypedEnvelopeWithName(2, "gauge-metric-name", &loggregator_v2.Gauge{})
+			e3 := buildTypedEnvelopeWithName(3, "timer-metric-name", &loggregator_v2.Timer{})
+
+			s.Put(e1, e1.GetSourceId())
+			s.Put(e2, e2.GetSourceId())
+			s.Put(e3, e3.GetSourceId())
+
+			start := time.Unix(0, 0)
+			end := time.Unix(0, 9999)
+			envelopes := s.Get("source-id", start, end, nil, nameFilter, 5, false)
+			Expect(envelopes).To(HaveLen(1))
+
+			targetEnvelope := envelopes[0]
+			switch targetEnvelope.Message.(type) {
+			case *loggregator_v2.Envelope_Counter:
+				Expect(targetEnvelope.GetCounter().GetName()).To(Equal(expectedName))
+			case *loggregator_v2.Envelope_Gauge:
+				for gaugeName, _ := range targetEnvelope.GetGauge().GetMetrics() {
+					Expect(gaugeName).To(Equal(expectedName))
+				}
+			case *loggregator_v2.Envelope_Timer:
+				Expect(targetEnvelope.GetTimer().GetName()).To(Equal(expectedName))
+			}
+
+			// No Filter
+			envelopes = s.Get("source-id", start, end, nil, nil, 10, false)
+			Expect(envelopes).To(HaveLen(3))
+		},
+
+		Entry("Counter", "counter-metric-name"),
+		Entry("Gauge", "gauge-metric-name"),
+		Entry("Timer", "timer-metric-name"),
 	)
 
 	It("is thread safe", func() {
@@ -264,7 +304,7 @@ var _ = Describe("Store", func() {
 		start := time.Unix(0, 0)
 		end := time.Unix(9999, 0)
 
-		Eventually(func() int { return len(s.Get("a", start, end, nil, 10, false)) }).Should(Equal(1))
+		Eventually(func() int { return len(s.Get("a", start, end, nil, nil, 10, false)) }).Should(Equal(1))
 	})
 
 	It("survives being over pruned", func() {
@@ -310,7 +350,7 @@ var _ = Describe("Store", func() {
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
-		envelopes := s.Get("a", start, end, nil, 10, false)
+		envelopes := s.Get("a", start, end, nil, nil, 10, false)
 		Expect(envelopes).To(HaveLen(5))
 
 		for _, e := range envelopes {
@@ -342,12 +382,12 @@ var _ = Describe("Store", func() {
 
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
-		envelopes := s.Get("a", start, end, nil, 10, false)
+		envelopes := s.Get("a", start, end, nil, nil, 10, false)
 		Expect(envelopes).To(HaveLen(2))
 		Expect(envelopes[0].Timestamp).To(Equal(int64(3)))
 		Expect(envelopes[1].Timestamp).To(Equal(int64(4)))
 
-		envelopes = s.Get("b", start, end, nil, 10, false)
+		envelopes = s.Get("b", start, end, nil, nil, 10, false)
 		Expect(envelopes).To(HaveLen(1))
 
 		Expect(sm.GetValue("Expired")).To(Equal(1.0))
@@ -368,7 +408,7 @@ var _ = Describe("Store", func() {
 		start := time.Unix(0, 0)
 		end := time.Unix(0, 9999)
 
-		envelopes := s.Get("some-id", start, end, nil, 10, false)
+		envelopes := s.Get("some-id", start, end, nil, nil, 10, false)
 		Expect(envelopes).To(HaveLen(1))
 	})
 
@@ -450,7 +490,7 @@ var _ = Describe("Store", func() {
 		}
 
 		Consistently(func() int64 {
-			envelopes := loadStore.Get("9", start, time.Now(), nil, 100000, false)
+			envelopes := loadStore.Get("9", start, time.Now(), nil, nil, 100000, false)
 			time.Sleep(500 * time.Millisecond)
 			return int64(len(envelopes))
 		}).Should(BeNumerically("<=", 10000))
@@ -490,6 +530,36 @@ func buildTypedEnvelope(timestamp int64, sourceID string, t interface{}) *loggre
 	case *loggregator_v2.Event:
 		e.Message = &loggregator_v2.Envelope_Event{
 			Event: &loggregator_v2.Event{},
+		}
+	default:
+		panic("unexpected type")
+	}
+
+	return e
+}
+
+func buildTypedEnvelopeWithName(timestamp int64, name string, t interface{}) *loggregator_v2.Envelope {
+	e := &loggregator_v2.Envelope{
+		Timestamp: timestamp,
+		SourceId:  "source-id",
+	}
+
+	switch t.(type) {
+	case *loggregator_v2.Counter:
+		e.Message = &loggregator_v2.Envelope_Counter{
+			Counter: &loggregator_v2.Counter{Name: name},
+		}
+	case *loggregator_v2.Gauge:
+		e.Message = &loggregator_v2.Envelope_Gauge{
+			Gauge: &loggregator_v2.Gauge{
+				Metrics: map[string]*loggregator_v2.GaugeValue{
+					name: &loggregator_v2.GaugeValue{},
+				},
+			},
+		}
+	case *loggregator_v2.Timer:
+		e.Message = &loggregator_v2.Envelope_Timer{
+			Timer: &loggregator_v2.Timer{Name: name},
 		}
 	default:
 		panic("unexpected type")

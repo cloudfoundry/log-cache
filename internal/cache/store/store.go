@@ -2,6 +2,7 @@ package store
 
 import (
 	"container/heap"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -284,6 +285,7 @@ func (store *Store) Get(
 	start time.Time,
 	end time.Time,
 	envelopeTypes []logcache_v1.EnvelopeType,
+	nameFilter *regexp.Regexp,
 	limit int,
 	descending bool,
 ) []*loggregator_v2.Envelope {
@@ -302,6 +304,11 @@ func (store *Store) Get(
 
 	var res []*loggregator_v2.Envelope
 	traverser(tree.(*storage).Root, start.UnixNano(), end.UnixNano(), func(e *loggregator_v2.Envelope) bool {
+		e = store.filterByName(e, nameFilter)
+		if e == nil {
+			return false
+		}
+
 		if store.validEnvelopeType(e, envelopeTypes) {
 			res = append(res, e)
 		}
@@ -312,6 +319,53 @@ func (store *Store) Get(
 
 	store.metrics.incEgress(uint64(len(res)))
 	return res
+}
+
+func (store *Store) filterByName(envelope *loggregator_v2.Envelope, nameFilter *regexp.Regexp) *loggregator_v2.Envelope {
+	if nameFilter == nil {
+		return envelope
+	}
+
+	switch envelope.Message.(type) {
+	case *loggregator_v2.Envelope_Counter:
+		if nameFilter.MatchString(envelope.GetCounter().GetName()) {
+			return envelope
+		}
+
+	// TODO: refactor?
+	case *loggregator_v2.Envelope_Gauge:
+		filteredMetrics := make(map[string]*loggregator_v2.GaugeValue)
+		envelopeMetrics := envelope.GetGauge().GetMetrics()
+		for metricName, gaugeValue := range envelopeMetrics {
+			if !nameFilter.MatchString(metricName) {
+				continue
+			}
+			filteredMetrics[metricName] = gaugeValue
+		}
+
+		if len(filteredMetrics) > 0 {
+			return &loggregator_v2.Envelope{
+				Timestamp:      envelope.Timestamp,
+				SourceId:       envelope.SourceId,
+				InstanceId:     envelope.InstanceId,
+				DeprecatedTags: envelope.DeprecatedTags,
+				Tags:           envelope.Tags,
+				Message: &loggregator_v2.Envelope_Gauge{
+					Gauge: &loggregator_v2.Gauge{
+						Metrics: filteredMetrics,
+					},
+				},
+			}
+
+		}
+
+	case *loggregator_v2.Envelope_Timer:
+		if nameFilter.MatchString(envelope.GetTimer().GetName()) {
+			return envelope
+		}
+	}
+
+	return nil
 }
 
 func (s *Store) validEnvelopeType(e *loggregator_v2.Envelope, types []logcache_v1.EnvelopeType) bool {

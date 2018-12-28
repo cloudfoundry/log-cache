@@ -68,7 +68,6 @@ var _ = Describe("LogCache", func() {
 	})
 
 	It("reads data from Log Cache", func() {
-
 		Eventually(func() []int64 {
 			ic1, cleanup1 := ingressClient(node1.Addr())
 			defer cleanup1()
