@@ -4,7 +4,6 @@ import (
 	"context"
 	"io/ioutil"
 	"log"
-	"regexp"
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
@@ -50,6 +49,10 @@ func Walk(ctx context.Context, sourceID string, v Visitor, r Reader, opts ...Wal
 		readOpts = append(readOpts, WithEnvelopeTypes(c.envelopeTypes...))
 	}
 
+	if c.nameFilter != "" {
+		readOpts = append(readOpts, WithNameFilter(c.nameFilter))
+	}
+
 	var receivedEmpty bool
 
 	for {
@@ -91,8 +94,6 @@ func Walk(ctx context.Context, sourceID string, v Visitor, r Reader, opts ...Wal
 			}
 		}
 
-		es = filterEnvelopes(es, c.nameFilter)
-
 		if len(es) == 0 {
 			receivedEmpty = true
 			if !c.backoff.OnEmpty() {
@@ -112,62 +113,6 @@ func Walk(ctx context.Context, sourceID string, v Visitor, r Reader, opts ...Wal
 
 		c.start = es[len(es)-1].Timestamp + 1
 	}
-}
-
-func filterEnvelopes(envelopes []*loggregator_v2.Envelope, nameFilter *regexp.Regexp) []*loggregator_v2.Envelope {
-	if nameFilter == nil {
-		return envelopes
-	}
-
-	var filteredEnvelopes []*loggregator_v2.Envelope
-
-	for _, envelope := range envelopes {
-		switch envelope.Message.(type) {
-		case *loggregator_v2.Envelope_Counter:
-			if !nameFilter.MatchString(envelope.GetCounter().GetName()) {
-				continue
-			}
-			filteredEnvelopes = append(filteredEnvelopes, envelope)
-
-		case *loggregator_v2.Envelope_Gauge:
-			filteredMetrics := make(map[string]*loggregator_v2.GaugeValue)
-			envelopeMetrics := envelope.GetGauge().GetMetrics()
-			for metricName, gaugeValue := range envelopeMetrics {
-				if !nameFilter.MatchString(metricName) {
-					continue
-				}
-				filteredMetrics[metricName] = gaugeValue
-			}
-
-			if len(filteredMetrics) > 0 {
-				filteredEnvelope := &loggregator_v2.Envelope{
-					Timestamp:      envelope.Timestamp,
-					SourceId:       envelope.SourceId,
-					InstanceId:     envelope.InstanceId,
-					DeprecatedTags: envelope.DeprecatedTags,
-					Tags:           envelope.Tags,
-					Message: &loggregator_v2.Envelope_Gauge{
-						Gauge: &loggregator_v2.Gauge{
-							Metrics: filteredMetrics,
-						},
-					},
-				}
-
-				filteredEnvelopes = append(filteredEnvelopes, filteredEnvelope)
-			}
-
-		case *loggregator_v2.Envelope_Timer:
-			if !nameFilter.MatchString(envelope.GetTimer().GetName()) {
-				continue
-			}
-			filteredEnvelopes = append(filteredEnvelopes, envelope)
-
-		default:
-			continue
-		}
-	}
-
-	return filteredEnvelopes
 }
 
 // WalkOption overrides defaults for Walk.
@@ -212,9 +157,9 @@ func WithWalkEnvelopeTypes(t ...logcache_v1.EnvelopeType) WalkOption {
 	})
 }
 
-func WithNameFilter(filter string) WalkOption {
+func WithWalkNameFilter(nameFilter string) WalkOption {
 	return walkOptionFunc(func(c *walkConfig) {
-		c.nameFilter = regexp.MustCompile(filter)
+		c.nameFilter = nameFilter
 	})
 }
 
@@ -364,5 +309,5 @@ type walkConfig struct {
 	limit         *int
 	envelopeTypes []logcache_v1.EnvelopeType
 	delay         time.Duration
-	nameFilter    *regexp.Regexp
+	nameFilter    string
 }

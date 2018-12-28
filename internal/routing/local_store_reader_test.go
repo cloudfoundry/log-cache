@@ -1,6 +1,7 @@
 package routing_test
 
 import (
+	"regexp"
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
@@ -25,6 +26,7 @@ var _ = Describe("LocalStoreReader", func() {
 		)
 	})
 
+	// TODO: add nameFiltering tests
 	It("reads envelopes from the store", func() {
 		spyStoreReader.getEnvelopes = []*loggregator_v2.Envelope{
 			{Timestamp: 1},
@@ -84,6 +86,18 @@ var _ = Describe("LocalStoreReader", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(spyStoreReader.limit).To(Equal(100))
+	})
+
+	It("validates that the name_filter param is passed through to the store", func() {
+		_, err := r.Read(context.Background(), &logcache_v1.ReadRequest{
+			SourceId:      "some-source",
+			StartTime:     99,
+			EndTime:       100,
+			NameFilter:    ".*foo.*",
+			EnvelopeTypes: []logcache_v1.EnvelopeType{logcache_v1.EnvelopeType_ANY},
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(spyStoreReader.nameFilter.String()).To(Equal(".*foo.*"))
 	})
 
 	It("returns an error if the end time is before the start time", func() {
@@ -177,6 +191,7 @@ type spyStoreReader struct {
 	envelopeTypes []logcache_v1.EnvelopeType
 	limit         int
 	descending    bool
+	nameFilter    *regexp.Regexp
 	metaResponse  map[string]logcache_v1.MetaInfo
 }
 
@@ -189,6 +204,7 @@ func (s *spyStoreReader) Get(
 	start time.Time,
 	end time.Time,
 	envelopeTypes []logcache_v1.EnvelopeType,
+	nameFilter *regexp.Regexp,
 	limit int,
 	descending bool,
 ) []*loggregator_v2.Envelope {
@@ -196,6 +212,7 @@ func (s *spyStoreReader) Get(
 	s.start = start
 	s.end = end
 	s.envelopeTypes = envelopeTypes
+	s.nameFilter = nameFilter
 	s.limit = limit
 	s.descending = descending
 

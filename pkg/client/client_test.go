@@ -83,6 +83,7 @@ var _ = Describe("Log Cache Client", func() {
 					client.WithLimit(103),
 					client.WithEnvelopeTypes(rpc.EnvelopeType_LOG, rpc.EnvelopeType_GAUGE),
 					client.WithDescending(),
+					client.WithNameFilter("name.*"),
 				)
 
 				Expect(err).ToNot(HaveOccurred())
@@ -94,9 +95,10 @@ var _ = Describe("Log Cache Client", func() {
 				assertQueryParam(logCache.reqs[1].URL, "end_time", "101")
 				assertQueryParam(logCache.reqs[1].URL, "limit", "103")
 				assertQueryParam(logCache.reqs[1].URL, "envelope_types", "LOG", "GAUGE")
+				assertQueryParam(logCache.reqs[1].URL, "name_filter", "name.*")
 				assertQueryParam(logCache.reqs[1].URL, "descending", "true")
 
-				Expect(logCache.reqs[1].URL.Query()).To(HaveLen(5))
+				Expect(logCache.reqs[1].URL.Query()).To(HaveLen(6))
 			})
 
 			It("closes the body", func() {
@@ -613,6 +615,7 @@ var _ = Describe("Log Cache Client", func() {
 					client.WithEndTime(endTime),
 					client.WithEnvelopeTypes(rpc.EnvelopeType_LOG, rpc.EnvelopeType_GAUGE),
 					client.WithDescending(),
+					client.WithNameFilter("name.*"),
 				)
 
 				Expect(err).ToNot(HaveOccurred())
@@ -633,6 +636,7 @@ var _ = Describe("Log Cache Client", func() {
 								Equal(rpc.EnvelopeType_LOG),
 								Equal(rpc.EnvelopeType_GAUGE),
 							),
+							"NameFilter": Equal("name.*"),
 							"Descending": Equal(true),
 						},
 					),
