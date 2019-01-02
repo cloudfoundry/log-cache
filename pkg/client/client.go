@@ -292,7 +292,7 @@ func (c *Client) getBaseApiPath(ctx context.Context) (string, error) {
 		return c.baseApiPath, nil
 	}
 
-	logCacheVersion, err := c.logCacheVersion(ctx)
+	logCacheVersion, err := c.LogCacheVersion(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -304,7 +304,7 @@ func (c *Client) getBaseApiPath(ctx context.Context) (string, error) {
 	return "/v1", nil
 }
 
-func (c *Client) logCacheVersion(ctx context.Context) (semver.Version, error) {
+func (c *Client) LogCacheVersion(ctx context.Context) (semver.Version, error) {
 	u, err := url.Parse(c.addr)
 	if err != nil {
 		return semver.Version{}, err
