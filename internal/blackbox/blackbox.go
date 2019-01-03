@@ -5,8 +5,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
-	"math/rand"
-	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -37,15 +35,15 @@ func buildIngressClient(grpcAddr string, opts ...grpc.DialOption) logcache_v1.In
 	var conn *grpc.ClientConn
 	var err error
 
-	host, port, _ := net.SplitHostPort(grpcAddr)
-	addrs, _ := net.LookupHost(host)
-	rand.Seed(time.Now().UnixNano())
+	// host, port, _ := net.SplitHostPort(grpcAddr)
+	// addrs, _ := net.LookupHost(host)
+	// rand.Seed(time.Now().UnixNano())
 
 	for retries := 5; retries > 0; retries-- {
-		randomIndex := rand.Int() % len(addrs)
-		addr := fmt.Sprintf("%s:%s", addrs[randomIndex], port)
+		// randomIndex := rand.Int() % len(addrs)
+		// addr := fmt.Sprintf("%s:%s", addrs[randomIndex], port)
 
-		conn, err = grpc.Dial(addr, opts...)
+		conn, err = grpc.Dial(grpcAddr, opts...)
 		if err == nil {
 			break
 		}
