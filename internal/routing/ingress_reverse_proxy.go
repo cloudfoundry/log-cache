@@ -43,19 +43,25 @@ func (p *IngressReverseProxy) Send(ctx context.Context, r *rpc.SendRequest) (*rp
 		return p.clients[p.localIdx].Send(ctx, r)
 	}
 
+	envelopesByNode := make(map[int][]*loggregator_v2.Envelope)
+
 	for _, e := range r.Envelopes.Batch {
 		for _, idx := range p.l(e.GetSourceId()) {
-			_, err := p.clients[idx].Send(ctx, &rpc.SendRequest{
-				LocalOnly: true,
-				Envelopes: &loggregator_v2.EnvelopeBatch{
-					Batch: []*loggregator_v2.Envelope{e},
-				},
-			})
+			envelopesByNode[idx] = append(envelopesByNode[idx], e)
+		}
+	}
 
-			if err != nil {
-				p.log.Printf("failed to write to client: %s", err)
-				continue
-			}
+	for idx, envelopes := range envelopesByNode {
+		_, err := p.clients[idx].Send(ctx, &rpc.SendRequest{
+			LocalOnly: true,
+			Envelopes: &loggregator_v2.EnvelopeBatch{
+				Batch: envelopes,
+			},
+		})
+
+		if err != nil {
+			p.log.Printf("ingress reverse proxy: failed to write to client: %s", err)
+			continue
 		}
 	}
 

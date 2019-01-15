@@ -60,13 +60,6 @@ var _ = Describe("IngressReverseProxy", func() {
 				Envelopes: &loggregator_v2.EnvelopeBatch{
 					Batch: []*loggregator_v2.Envelope{
 						{SourceId: "a", Timestamp: 1},
-					},
-				},
-			},
-			&rpc.SendRequest{
-				LocalOnly: true,
-				Envelopes: &loggregator_v2.EnvelopeBatch{
-					Batch: []*loggregator_v2.Envelope{
 						{SourceId: "c", Timestamp: 3},
 					},
 				},
@@ -79,13 +72,6 @@ var _ = Describe("IngressReverseProxy", func() {
 				Envelopes: &loggregator_v2.EnvelopeBatch{
 					Batch: []*loggregator_v2.Envelope{
 						{SourceId: "b", Timestamp: 2},
-					},
-				},
-			},
-			&rpc.SendRequest{
-				LocalOnly: true,
-				Envelopes: &loggregator_v2.EnvelopeBatch{
-					Batch: []*loggregator_v2.Envelope{
 						{SourceId: "c", Timestamp: 3},
 					},
 				},
