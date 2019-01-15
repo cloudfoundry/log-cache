@@ -25,24 +25,17 @@ func MagicMetricNames() []string {
 	}
 }
 
-func NewIngressClientBuilder(grpcAddr string, opts ...grpc.DialOption) func() logcache_v1.IngressClient {
-	return func() logcache_v1.IngressClient {
+func NewIngressClientBuilder(grpcAddr string, opts ...grpc.DialOption) func() (logcache_v1.IngressClient, func() error) {
+	return func() (logcache_v1.IngressClient, func() error) {
 		return buildIngressClient(grpcAddr, opts...)
 	}
 }
 
-func buildIngressClient(grpcAddr string, opts ...grpc.DialOption) logcache_v1.IngressClient {
+func buildIngressClient(grpcAddr string, opts ...grpc.DialOption) (logcache_v1.IngressClient, func() error) {
 	var conn *grpc.ClientConn
 	var err error
 
-	// host, port, _ := net.SplitHostPort(grpcAddr)
-	// addrs, _ := net.LookupHost(host)
-	// rand.Seed(time.Now().UnixNano())
-
 	for retries := 5; retries > 0; retries-- {
-		// randomIndex := rand.Int() % len(addrs)
-		// addr := fmt.Sprintf("%s:%s", addrs[randomIndex], port)
-
 		conn, err = grpc.Dial(grpcAddr, opts...)
 		if err == nil {
 			break
@@ -56,7 +49,7 @@ func buildIngressClient(grpcAddr string, opts ...grpc.DialOption) logcache_v1.In
 		log.Fatalf("failed to dial %s: %s", grpcAddr, err)
 	}
 
-	return logcache_v1.NewIngressClient(conn)
+	return logcache_v1.NewIngressClient(conn), conn.Close
 }
 
 func NewGrpcEgressClientBuilder(grpcAddr string, opts ...grpc.DialOption) func() QueryableClient {
@@ -77,6 +70,7 @@ func NewHttpEgressClientBuilder(httpAddr, uaaAddr, uaaClientId, uaaClientSecret 
 		return BuildHttpEgressClient(httpAddr, uaaAddr, uaaClientId, uaaClientSecret, skipTLSVerify)
 	}
 }
+
 func BuildHttpEgressClient(httpAddr, uaaAddr, uaaClientId, uaaClientSecret string, skipTLSVerify bool) *logcache_client.Client {
 	return logcache_client.NewClient(
 		httpAddr,
@@ -106,7 +100,7 @@ func buildHttpClient(skipTLSVerify bool) *http.Client {
 	return client
 }
 
-func StartEmittingTestMetrics(sourceId string, emissionInterval time.Duration, newIngressClient func() logcache_v1.IngressClient) {
+func StartEmittingTestMetrics(sourceId string, emissionInterval time.Duration, newIngressClient func() (logcache_v1.IngressClient, func() error)) {
 	var lastTimestamp time.Time
 	var expectedTimestamp time.Time
 	var timestamp time.Time
@@ -119,7 +113,9 @@ func StartEmittingTestMetrics(sourceId string, emissionInterval time.Duration, n
 			log.Printf("WARNING: an expected emission was missed at %s, and was sent at %s\n", expectedTimestamp.String(), timestamp.String())
 		}
 
-		emitTestMetrics(sourceId, newIngressClient(), timestamp)
+		ingressClient, closeFn := newIngressClient()
+		emitTestMetrics(sourceId, ingressClient, timestamp)
+		closeFn()
 		lastTimestamp = timestamp
 	}
 }
@@ -166,7 +162,7 @@ func emitTestMetrics(sourceId string, client logcache_v1.IngressClient, timestam
 	}
 }
 
-func EmitMeasuredMetrics(sourceId string, ingressClientBuilder func() logcache_v1.IngressClient, metrics map[string]float64) {
+func EmitMeasuredMetrics(sourceId string, ingressClientBuilder func() (logcache_v1.IngressClient, func() error), metrics map[string]float64) {
 	envelopeMetrics := make(map[string]*loggregator_v2.GaugeValue)
 
 	if len(metrics) == 0 {
@@ -193,7 +189,8 @@ func EmitMeasuredMetrics(sourceId string, ingressClientBuilder func() logcache_v
 		},
 	}
 
-	ingressClient := ingressClientBuilder()
+	ingressClient, closeFn := ingressClientBuilder()
+	defer closeFn()
 
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	_, err := ingressClient.Send(ctx, &logcache_v1.SendRequest{
