@@ -1,11 +1,11 @@
-package proxy_test
+package cfauthproxy_test
 
 import (
 	"net/http"
 	"net/http/httptest"
 
 	"code.cloudfoundry.org/log-cache/internal/auth"
-	. "code.cloudfoundry.org/log-cache/internal/proxy"
+	. "code.cloudfoundry.org/log-cache/internal/cfauthproxy"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

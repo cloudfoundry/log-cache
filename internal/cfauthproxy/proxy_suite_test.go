@@ -1,4 +1,4 @@
-package proxy_test
+package cfauthproxy_test
 
 import (
 	. "github.com/onsi/ginkgo"
@@ -9,5 +9,5 @@ import (
 
 func TestProxy(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Proxy Suite")
+	RunSpecs(t, "CF Auth Proxy Suite")
 }
