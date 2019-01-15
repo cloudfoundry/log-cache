@@ -122,26 +122,6 @@ func (n *Nozzle) Start() {
 
 	// The batcher will block indefinitely.
 	n.envelopeBatcher(ch)
-
-	for {
-		batch := rx()
-		ingressInc(uint64(len(batch)))
-
-		ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-		_, err := client.Send(ctx, &logcache_v1.SendRequest{
-			Envelopes: &loggregator_v2.EnvelopeBatch{
-				Batch: batch,
-			},
-		})
-
-		if err != nil {
-			log.Printf("failed to write envelopes: %s", err)
-			errInc(1)
-			continue
-		}
-
-		egressInc(uint64(len(batch)))
-	}
 }
 
 func (n *Nozzle) envelopeBatcher(ch chan []*loggregator_v2.Envelope) {
