@@ -25,13 +25,7 @@ func MagicMetricNames() []string {
 	}
 }
 
-func NewIngressClientBuilder(grpcAddr string, opts ...grpc.DialOption) func() (logcache_v1.IngressClient, func() error) {
-	return func() (logcache_v1.IngressClient, func() error) {
-		return buildIngressClient(grpcAddr, opts...)
-	}
-}
-
-func buildIngressClient(grpcAddr string, opts ...grpc.DialOption) (logcache_v1.IngressClient, func() error) {
+func NewIngressClient(grpcAddr string, opts ...grpc.DialOption) logcache_v1.IngressClient {
 	var conn *grpc.ClientConn
 	var err error
 
@@ -49,29 +43,17 @@ func buildIngressClient(grpcAddr string, opts ...grpc.DialOption) (logcache_v1.I
 		log.Fatalf("failed to dial %s: %s", grpcAddr, err)
 	}
 
-	return logcache_v1.NewIngressClient(conn), conn.Close
+	return logcache_v1.NewIngressClient(conn)
 }
 
-func NewGrpcEgressClientBuilder(grpcAddr string, opts ...grpc.DialOption) func() QueryableClient {
-	return func() QueryableClient {
-		return BuildGrpcEgressClient(grpcAddr, opts...)
-	}
-}
-
-func BuildGrpcEgressClient(grpcAddr string, opts ...grpc.DialOption) *logcache_client.Client {
+func NewGrpcEgressClient(grpcAddr string, opts ...grpc.DialOption) QueryableClient {
 	return logcache_client.NewClient(
 		grpcAddr,
 		logcache_client.WithViaGRPC(opts...),
 	)
 }
 
-func NewHttpEgressClientBuilder(httpAddr, uaaAddr, uaaClientId, uaaClientSecret string, skipTLSVerify bool) func() QueryableClient {
-	return func() QueryableClient {
-		return BuildHttpEgressClient(httpAddr, uaaAddr, uaaClientId, uaaClientSecret, skipTLSVerify)
-	}
-}
-
-func BuildHttpEgressClient(httpAddr, uaaAddr, uaaClientId, uaaClientSecret string, skipTLSVerify bool) *logcache_client.Client {
+func NewHttpEgressClient(httpAddr, uaaAddr, uaaClientId, uaaClientSecret string, skipTLSVerify bool) QueryableClient {
 	return logcache_client.NewClient(
 		httpAddr,
 		logcache_client.WithHTTPClient(
@@ -100,7 +82,7 @@ func buildHttpClient(skipTLSVerify bool) *http.Client {
 	return client
 }
 
-func StartEmittingTestMetrics(sourceId string, emissionInterval time.Duration, newIngressClient func() (logcache_v1.IngressClient, func() error)) {
+func StartEmittingTestMetrics(sourceId string, emissionInterval time.Duration, ingressClient logcache_v1.IngressClient) {
 	var lastTimestamp time.Time
 	var expectedTimestamp time.Time
 	var timestamp time.Time
@@ -113,9 +95,7 @@ func StartEmittingTestMetrics(sourceId string, emissionInterval time.Duration, n
 			log.Printf("WARNING: an expected emission was missed at %s, and was sent at %s\n", expectedTimestamp.String(), timestamp.String())
 		}
 
-		ingressClient, closeFn := newIngressClient()
 		emitTestMetrics(sourceId, ingressClient, timestamp)
-		closeFn()
 		lastTimestamp = timestamp
 	}
 }
@@ -162,7 +142,7 @@ func emitTestMetrics(sourceId string, client logcache_v1.IngressClient, timestam
 	}
 }
 
-func EmitMeasuredMetrics(sourceId string, ingressClientBuilder func() (logcache_v1.IngressClient, func() error), metrics map[string]float64) {
+func EmitMeasuredMetrics(sourceId string, ingressClient logcache_v1.IngressClient, metrics map[string]float64) {
 	envelopeMetrics := make(map[string]*loggregator_v2.GaugeValue)
 
 	if len(metrics) == 0 {
@@ -188,9 +168,6 @@ func EmitMeasuredMetrics(sourceId string, ingressClientBuilder func() (logcache_
 			},
 		},
 	}
-
-	ingressClient, closeFn := ingressClientBuilder()
-	defer closeFn()
 
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	_, err := ingressClient.Send(ctx, &logcache_v1.SendRequest{
@@ -218,7 +195,7 @@ type ReliabilityCalculator struct {
 	ErrorLogger      *log.Logger
 }
 
-func (rc ReliabilityCalculator) Calculate(clientBuilder func() QueryableClient) (float64, error) {
+func (rc ReliabilityCalculator) Calculate(client QueryableClient) (float64, error) {
 	var totalReceivedCount uint64
 	expectedEmissionCount := rc.ExpectedSamples()
 	magicMetricNames := MagicMetricNames()
@@ -226,7 +203,7 @@ func (rc ReliabilityCalculator) Calculate(clientBuilder func() QueryableClient) 
 	for _, metricName := range magicMetricNames {
 		rc.InfoLogger.Println(metricName, "expectedEmissionCount =", expectedEmissionCount)
 
-		receivedCount, err := rc.CountMetricPoints(metricName, clientBuilder())
+		receivedCount, err := rc.CountMetricPoints(metricName, client)
 		if err != nil {
 			return 0, err
 		}

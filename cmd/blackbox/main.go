@@ -7,6 +7,7 @@ import (
 
 	"code.cloudfoundry.org/log-cache/internal/blackbox"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/naming"
 )
 
 func main() {
@@ -18,22 +19,36 @@ func main() {
 		log.Fatalf("failed to load configuration: %s", err)
 	}
 
-	ingressClientBuilder := blackbox.NewIngressClientBuilder(
+	resolver, _ := naming.NewDNSResolverWithFreq(1 * time.Minute)
+
+	ingressClient := blackbox.NewIngressClient(
 		cfg.DataSourceGrpcAddr,
 		grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
+		grpc.WithBalancer(
+			grpc.RoundRobin(resolver),
+		),
 	)
 
-	go blackbox.StartEmittingTestMetrics(cfg.SourceId, cfg.EmissionInterval, ingressClientBuilder)
+	go blackbox.StartEmittingTestMetrics(cfg.SourceId, cfg.EmissionInterval, ingressClient)
 
-	grpcEgressClientBuilder := blackbox.NewGrpcEgressClientBuilder(
+	grpcEgressClient := blackbox.NewGrpcEgressClient(
 		cfg.DataSourceGrpcAddr,
 		grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
+		grpc.WithBalancer(
+			grpc.RoundRobin(resolver),
+		),
 	)
 
-	var httpEgressClientBuilder func() blackbox.QueryableClient
+	var httpEgressClient blackbox.QueryableClient
 
 	if cfg.CfBlackboxEnabled {
-		httpEgressClientBuilder = blackbox.NewHttpEgressClientBuilder(cfg.DataSourceHTTPAddr, cfg.UaaAddr, cfg.ClientID, cfg.ClientSecret, cfg.SkipTLSVerify)
+		httpEgressClient = blackbox.NewHttpEgressClient(
+			cfg.DataSourceHTTPAddr,
+			cfg.UaaAddr,
+			cfg.ClientID,
+			cfg.ClientSecret,
+			cfg.SkipTLSVerify,
+		)
 	}
 
 	t := time.NewTicker(cfg.SampleInterval)
@@ -51,19 +66,19 @@ func main() {
 		reliabilityMetrics := make(map[string]float64)
 
 		infoLogger.Println("Querying for gRPC reliability metric...")
-		grpcReliability, err := rc.Calculate(grpcEgressClientBuilder)
+		grpcReliability, err := rc.Calculate(grpcEgressClient)
 		if err == nil {
 			reliabilityMetrics["blackbox.grpc_reliability"] = grpcReliability
 		}
 
 		if cfg.CfBlackboxEnabled {
 			infoLogger.Println("Querying for HTTP reliability metric...")
-			httpReliability, err := rc.Calculate(httpEgressClientBuilder)
+			httpReliability, err := rc.Calculate(httpEgressClient)
 			if err == nil {
 				reliabilityMetrics["blackbox.http_reliability"] = httpReliability
 			}
 		}
 
-		blackbox.EmitMeasuredMetrics(cfg.SourceId, ingressClientBuilder, reliabilityMetrics)
+		blackbox.EmitMeasuredMetrics(cfg.SourceId, ingressClient, reliabilityMetrics)
 	}
 }

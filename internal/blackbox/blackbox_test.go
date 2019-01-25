@@ -25,10 +25,10 @@ var _ = Describe("Log Cache Blackbox™", func() {
 		tc := setup()
 		defer tc.teardown()
 
-		ingressClientBuilder := blackbox.NewIngressClientBuilder(tc.logCache.url(), grpc.WithInsecure())
+		ingressClient := blackbox.NewIngressClient(tc.logCache.url(), grpc.WithInsecure())
 
 		startTime := time.Now().UnixNano()
-		go blackbox.StartEmittingTestMetrics("source-1", 10*time.Millisecond, ingressClientBuilder)
+		go blackbox.StartEmittingTestMetrics("source-1", 10*time.Millisecond, ingressClient)
 
 		Eventually(tc.logCache.numEmittedRequests).Should(BeNumerically(">", 1))
 
@@ -50,7 +50,7 @@ var _ = Describe("Log Cache Blackbox™", func() {
 		tc := setup()
 		defer tc.teardown()
 
-		ingressClientBuilder := blackbox.NewIngressClientBuilder(tc.logCache.url(), grpc.WithInsecure())
+		ingressClient := blackbox.NewIngressClient(tc.logCache.url(), grpc.WithInsecure())
 		startTime := time.Now().UnixNano()
 
 		calculatedMetrics := map[string]float64{
@@ -58,7 +58,7 @@ var _ = Describe("Log Cache Blackbox™", func() {
 			"blackbox_http_reliability": 88.22,
 		}
 
-		blackbox.EmitMeasuredMetrics("source-2", ingressClientBuilder, calculatedMetrics)
+		blackbox.EmitMeasuredMetrics("source-2", ingressClient, calculatedMetrics)
 
 		Eventually(tc.logCache.numEmittedRequests).Should(BeNumerically("==", 1))
 
@@ -81,17 +81,11 @@ var _ = Describe("Log Cache Blackbox™", func() {
 				InfoLogger:       nullLogger(),
 				ErrorLogger:      nullLogger(),
 			}
-			client := mockClient{
+			mc := &mockClient{
 				responseCount: 597,
 			}
 
-			mockClientBuilder := func(mc mockClient) func() blackbox.QueryableClient {
-				return func() blackbox.QueryableClient {
-					return &mc
-				}
-			}(client)
-
-			Expect(rc.Calculate(mockClientBuilder)).To(BeNumerically("==", 0.9950))
+			Expect(rc.Calculate(mc)).To(BeNumerically("==", 0.9950))
 		})
 
 		It("returns an error when log-cache is unresponsive", func() {
@@ -103,15 +97,9 @@ var _ = Describe("Log Cache Blackbox™", func() {
 				InfoLogger:       nullLogger(),
 				ErrorLogger:      nullLogger(),
 			}
-			unresponsiveClient := mockUnresponsiveClient{}
+			unresponsiveClient := &mockUnresponsiveClient{}
 
-			mockUnresponsiveClientBuilder := func(muc mockUnresponsiveClient) func() blackbox.QueryableClient {
-				return func() blackbox.QueryableClient {
-					return &muc
-				}
-			}(unresponsiveClient)
-
-			_, err := rc.Calculate(mockUnresponsiveClientBuilder)
+			_, err := rc.Calculate(unresponsiveClient)
 			Expect(err).NotTo(BeNil())
 		})
 	})
