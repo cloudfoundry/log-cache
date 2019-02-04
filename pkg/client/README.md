@@ -21,5 +21,5 @@ compatibility with released versions of `log-cache`.
 [log-cache-slack]:          https://cloudfoundry.slack.com/archives/log-cache
 [log-cache]:                https://code.cloudfoundry.org/log-cache
 [go-doc-badge]:             https://godoc.org/code.cloudfoundry.org/log-cache/client?status.svg
-[go-doc]:                   https://godoc.org/code.cloudfoundry.org/log-cache/client
+[go-doc]:                   https://godoc.org/code.cloudfoundry.org/log-cache/pkg/client
 [go-log-cache]:             https://github.com/cloudfoundry/go-log-cache
