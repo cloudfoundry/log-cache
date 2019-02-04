@@ -109,6 +109,7 @@ func (c *CAPIClient) AvailableSourceIDs(authToken string) []string {
 		return nil
 	}
 
+	preserveScheme, preserveHost := req.URL.Scheme, req.URL.Host
 	for {
 		resources, nextPageURL, err := c.doResourceRequest(req, authToken, c.storeAppsLatency)
 		if err != nil {
@@ -123,7 +124,9 @@ func (c *CAPIClient) AvailableSourceIDs(authToken string) []string {
 		if nextPageURL == nil {
 			break
 		}
+
 		req.URL = nextPageURL
+		req.URL.Scheme, req.URL.Host = preserveScheme, preserveHost
 	}
 
 	req, err = http.NewRequest(http.MethodGet, c.externalCapi+"/v3/service_instances", nil)
