@@ -15,6 +15,7 @@ import (
 	"net/url"
 
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 )
 
@@ -129,6 +130,24 @@ var _ = Describe("UAAClient", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(urlValues.Get("token")).To(Equal(token))
 	})
+
+	DescribeTable("handling the Bearer prefix in the Authorization header",
+		func(prefix string) {
+			token := "my-token"
+			client.Read(prefix + token)
+
+			r := httpClient.requests[0]
+
+			reqBytes, err := ioutil.ReadAll(r.Body)
+			Expect(err).ToNot(HaveOccurred())
+			urlValues, err := url.ParseQuery(string(reqBytes))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(urlValues.Get("token")).To(Equal(token), "Expected prefix '"+prefix+"' to be removed from header")
+		},
+		Entry("Standard 'Bearer' prefix", "Bearer "),
+		Entry("Non-Standard 'bearer' prefix", "bearer "),
+		Entry("No prefix", ""),
+	)
 
 	It("sets the last request latency metric", func() {
 		client.Read("my-token")
