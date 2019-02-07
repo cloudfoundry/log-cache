@@ -109,22 +109,13 @@ func (c *CAPIClient) AvailableSourceIDs(authToken string) []string {
 		return nil
 	}
 
-	for {
-		resources, nextPageURL, err := c.doResourceRequest(req, authToken, c.storeAppsLatency)
-		if err != nil {
-			log.Print(err)
-			return nil
-		}
-
-		for _, resource := range resources {
-			sourceIDs = append(sourceIDs, resource.Guid)
-		}
-
-		if nextPageURL == nil {
-			break
-		}
-
-		req.URL = nextPageURL
+	resources, err := c.doPaginatedResourceRequest(req, authToken, c.storeAppsLatency)
+	if err != nil {
+		log.Print(err)
+		return nil
+	}
+	for _, resource := range resources {
+		sourceIDs = append(sourceIDs, resource.Guid)
 	}
 
 	req, err = http.NewRequest(http.MethodGet, c.externalCapi+"/v3/service_instances", nil)
@@ -133,21 +124,13 @@ func (c *CAPIClient) AvailableSourceIDs(authToken string) []string {
 		return nil
 	}
 
-	for {
-		resources, nextPageURL, err := c.doResourceRequest(req, authToken, c.storeListServiceInstancesLatency)
-		if err != nil || resources == nil {
-			log.Print(err)
-			return nil
-		}
-
-		for _, resource := range resources {
-			sourceIDs = append(sourceIDs, resource.Guid)
-		}
-
-		if nextPageURL == nil {
-			break
-		}
-		req.URL = nextPageURL
+	resources, err = c.doPaginatedResourceRequest(req, authToken, c.storeListServiceInstancesLatency)
+	if err != nil {
+		log.Print(err)
+		return nil
+	}
+	for _, resource := range resources {
+		sourceIDs = append(sourceIDs, resource.Guid)
 	}
 
 	return sourceIDs
@@ -171,22 +154,13 @@ func (c *CAPIClient) GetRelatedSourceIds(appNames []string, authToken string) ma
 
 	guidSets := make(map[string][]string)
 
-	for {
-		resources, nextPageURL, err := c.doResourceRequest(req, authToken, c.storeAppsByNameLatency)
-		if err != nil {
-			log.Print(err)
-			return map[string][]string{}
-		}
-
-		for _, resource := range resources {
-			guidSets[resource.Name] = append(guidSets[resource.Name], resource.Guid)
-		}
-
-		if nextPageURL == nil {
-			break
-		}
-
-		req.URL = nextPageURL
+	resources, err := c.doPaginatedResourceRequest(req, authToken, c.storeAppsByNameLatency)
+	if err != nil {
+		log.Print(err)
+		return map[string][]string{}
+	}
+	for _, resource := range resources {
+		guidSets[resource.Name] = append(guidSets[resource.Name], resource.Guid)
 	}
 
 	return guidSets
@@ -195,6 +169,26 @@ func (c *CAPIClient) GetRelatedSourceIds(appNames []string, authToken string) ma
 type resource struct {
 	Guid string `json:"guid"`
 	Name string `json:"name"`
+}
+
+func (c *CAPIClient) doPaginatedResourceRequest(req *http.Request, authToken string, metric func(float64)) ([]resource, error) {
+	var resources []resource
+
+	for {
+		page, nextPageURL, err := c.doResourceRequest(req, authToken, metric)
+		if err != nil {
+			return nil, err
+		}
+
+		resources = append(resources, page...)
+
+		if nextPageURL == nil {
+			break
+		}
+		req.URL = nextPageURL
+	}
+
+	return resources, nil
 }
 
 func (c *CAPIClient) doResourceRequest(req *http.Request, authToken string, metric func(float64)) ([]resource, *url.URL, error) {
