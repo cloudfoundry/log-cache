@@ -27,7 +27,7 @@ var _ = Describe("CAPIClient", func() {
 		capiClient := newSpyHTTPClient()
 		metrics := newSpyMetrics()
 		client := auth.NewCAPIClient(
-			"http://external.capi.com",
+			"http://internal.capi.com",
 			capiClient,
 			metrics,
 			log.New(ioutil.Discard, "", 0),
@@ -138,12 +138,12 @@ var _ = Describe("CAPIClient", func() {
 
 			appsReq := tc.capiClient.requests[0]
 			Expect(appsReq.Method).To(Equal(http.MethodGet))
-			Expect(appsReq.URL.String()).To(Equal("http://external.capi.com/v3/apps"))
+			Expect(appsReq.URL.String()).To(Equal("http://internal.capi.com/v3/apps"))
 			Expect(appsReq.Header.Get("Authorization")).To(Equal("some-token"))
 
 			servicesReq := tc.capiClient.requests[1]
 			Expect(servicesReq.Method).To(Equal(http.MethodGet))
-			Expect(servicesReq.URL.String()).To(Equal("http://external.capi.com/v3/service_instances"))
+			Expect(servicesReq.URL.String()).To(Equal("http://internal.capi.com/v3/service_instances"))
 			Expect(servicesReq.Header.Get("Authorization")).To(Equal("some-token"))
 		})
 
@@ -155,7 +155,7 @@ var _ = Describe("CAPIClient", func() {
 				{status: http.StatusOK, body: []byte(`{
                   "pagination": {
                     "next": {
-                      "href": "https://thisismycapi.com/v3/apps?page=2&per_page=1"
+                      "href": "https://external.capi.com/v3/apps?page=2&per_page=1"
                     }
                   },
                   "resources": [
@@ -174,7 +174,7 @@ var _ = Describe("CAPIClient", func() {
 			Expect(tc.capiClient.requests).To(HaveLen(3))
 			secondPageReq := tc.capiClient.requests[1]
 
-			Expect(secondPageReq.URL.String()).To(Equal("http://external.capi.com/v3/apps?page=2&per_page=1"))
+			Expect(secondPageReq.URL.String()).To(Equal("http://internal.capi.com/v3/apps?page=2&per_page=1"))
 			Expect(sourceIDs).To(ConsistOf("app-1", "app-2"))
 		})
 
@@ -186,7 +186,7 @@ var _ = Describe("CAPIClient", func() {
 				{status: http.StatusOK, body: []byte(`{
                   "pagination": {
                     "next": {
-                      "href": "https://external.capi.com/v3/service_instances?page=2&per_page=2"
+                      "href": "https://internal.capi.com/v3/service_instances?page=2&per_page=2"
                     }
                   },
                   "resources": [
@@ -296,7 +296,7 @@ var _ = Describe("CAPIClient", func() {
 
 			appsReq := tc.capiClient.requests[0]
 			Expect(appsReq.Method).To(Equal(http.MethodGet))
-			Expect(appsReq.URL.Host).To(Equal("external.capi.com"))
+			Expect(appsReq.URL.Host).To(Equal("internal.capi.com"))
 			Expect(appsReq.URL.Path).To(Equal("/v3/apps"))
 			Expect(appsReq.URL.Query().Get("names")).To(Equal("app-name-1,app-name-2"))
 			// Expect(appsReq.URL.Query().Get("per_page")).To(Equal("5000"))
@@ -327,7 +327,7 @@ var _ = Describe("CAPIClient", func() {
 				{status: http.StatusOK, body: []byte(`{
                   "pagination": {
                     "next": {
-                      "href": "https://external.capi.com/v3/apps?page=2&per_page=2"
+                      "href": "https://internal.capi.com/v3/apps?page=2&per_page=2"
                     }
                   },
                   "resources": [
