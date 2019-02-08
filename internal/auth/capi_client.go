@@ -15,7 +15,7 @@ import (
 
 type CAPIClient struct {
 	client                  HTTPClient
-	externalCapi            string
+	addr                    string
 	tokenCache              *sync.Map
 	tokenPruningInterval    time.Duration
 	cacheExpirationInterval time.Duration
@@ -26,20 +26,20 @@ type CAPIClient struct {
 }
 
 func NewCAPIClient(
-	externalCapiAddr string,
+	addr string,
 	client HTTPClient,
 	m Metrics,
 	log *log.Logger,
 	opts ...CAPIOption,
 ) *CAPIClient {
-	_, err := url.Parse(externalCapiAddr)
+	_, err := url.Parse(addr)
 	if err != nil {
-		log.Fatalf("failed to parse external CAPI addr: %s", err)
+		log.Fatalf("failed to parse CAPI addr: %s", err)
 	}
 
 	c := &CAPIClient{
 		client:                  client,
-		externalCapi:            externalCapiAddr,
+		addr:                    addr,
 		tokenCache:              &sync.Map{},
 		tokenPruningInterval:    time.Minute,
 		cacheExpirationInterval: time.Minute,
@@ -103,7 +103,7 @@ func (c *CAPIClient) IsAuthorized(sourceId string, clientToken string) bool {
 
 func (c *CAPIClient) AvailableSourceIDs(authToken string) []string {
 	var sourceIDs []string
-	req, err := http.NewRequest(http.MethodGet, c.externalCapi+"/v3/apps", nil)
+	req, err := http.NewRequest(http.MethodGet, c.addr+"/v3/apps", nil)
 	if err != nil {
 		log.Printf("failed to build authorize log access request: %s", err)
 		return nil
@@ -118,7 +118,7 @@ func (c *CAPIClient) AvailableSourceIDs(authToken string) []string {
 		sourceIDs = append(sourceIDs, resource.Guid)
 	}
 
-	req, err = http.NewRequest(http.MethodGet, c.externalCapi+"/v3/service_instances", nil)
+	req, err = http.NewRequest(http.MethodGet, c.addr+"/v3/service_instances", nil)
 	if err != nil {
 		log.Printf("failed to build authorize service instance access request: %s", err)
 		return nil
@@ -141,7 +141,7 @@ func (c *CAPIClient) GetRelatedSourceIds(appNames []string, authToken string) ma
 		return map[string][]string{}
 	}
 
-	req, err := http.NewRequest(http.MethodGet, c.externalCapi+"/v3/apps", nil)
+	req, err := http.NewRequest(http.MethodGet, c.addr+"/v3/apps", nil)
 	if err != nil {
 		log.Printf("failed to build app list request: %s", err)
 		return map[string][]string{}
