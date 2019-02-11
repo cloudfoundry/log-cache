@@ -79,6 +79,6 @@ func main() {
 			}
 		}
 
-		blackbox.EmitMeasuredMetrics(cfg.SourceId, ingressClient, reliabilityMetrics)
+		blackbox.EmitMeasuredMetrics(cfg.SourceId, ingressClient, httpEgressClient, reliabilityMetrics)
 	}
 }

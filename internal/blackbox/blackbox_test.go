@@ -58,7 +58,7 @@ var _ = Describe("Log Cache Blackbox™", func() {
 			"blackbox_http_reliability": 88.22,
 		}
 
-		blackbox.EmitMeasuredMetrics("source-2", ingressClient, calculatedMetrics)
+		blackbox.EmitMeasuredMetrics("source-2", ingressClient, tc.lcClient, calculatedMetrics)
 
 		Eventually(tc.logCache.numEmittedRequests).Should(BeNumerically("==", 1))
 
@@ -69,6 +69,25 @@ var _ = Describe("Log Cache Blackbox™", func() {
 		metrics := batch.GetGauge().GetMetrics()
 		Expect(metrics["blackbox_grpc_reliability"].GetValue()).To(Equal(99.11))
 		Expect(metrics["blackbox_http_reliability"].GetValue()).To(Equal(88.22))
+	})
+
+	Context("when the VM is less than 10m old", func() {
+		It("does not emit calculated blackbox metrics to the log-cache", func() {
+			tc := setup()
+			defer tc.teardown()
+
+			ingressClient := blackbox.NewIngressClient(tc.logCache.url(), grpc.WithInsecure())
+			tc.lcClient.uptime = 456
+
+			calculatedMetrics := map[string]float64{
+				"blackbox_grpc_reliability": 32.11,
+				"blackbox_http_reliability": 31.22,
+			}
+
+			blackbox.EmitMeasuredMetrics("source-2", ingressClient, tc.lcClient, calculatedMetrics)
+
+			Consistently(tc.logCache.numEmittedRequests, "2s", "250ms").Should(BeZero())
+		})
 	})
 
 	Context("ReliabilityCalculator", func() {
@@ -106,16 +125,20 @@ var _ = Describe("Log Cache Blackbox™", func() {
 })
 
 func setup() testContext {
-	lc := mockLogCache{
+	lc := &mockLogCache{
 		port: 8080,
 	}
 
+	mc := &mockClient{
+		uptime: 610,
+	}
 	lc.Start()
 
 	time.Sleep(10 * time.Millisecond)
 
 	return testContext{
-		logCache: &lc,
+		logCache: lc,
+		lcClient: mc,
 	}
 }
 
@@ -125,6 +148,7 @@ func (tc testContext) teardown() {
 
 type testContext struct {
 	logCache *mockLogCache
+	lcClient *mockClient
 }
 
 type mockLogCache struct {
@@ -170,6 +194,7 @@ func (lc *mockLogCache) Send(ctx context.Context, sendRequest *rpc.SendRequest) 
 }
 
 type mockClient struct {
+	uptime        int64
 	responseCount int
 }
 
@@ -204,11 +229,19 @@ func (c *mockClient) PromQL(_ context.Context, _ string, _ ...logcache_client.Pr
 	}, nil
 }
 
+func (c *mockClient) LogCacheVMUptime(ctx context.Context) (int64, error) {
+	return c.uptime, nil
+}
+
 type mockUnresponsiveClient struct {
 }
 
 func (c *mockUnresponsiveClient) PromQL(_ context.Context, _ string, _ ...logcache_client.PromQLOption) (*rpc.PromQL_InstantQueryResult, error) {
 	return nil, fmt.Errorf("unexpected status code 500")
+}
+
+func (c *mockUnresponsiveClient) LogCacheVMUptime(ctx context.Context) (int64, error) {
+	panic("this shouldn't happen")
 }
 
 func nullLogger() *log.Logger {

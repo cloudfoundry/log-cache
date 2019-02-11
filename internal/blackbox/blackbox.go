@@ -17,6 +17,7 @@ import (
 
 const (
 	MAGIC_METRIC_NAME = "blackbox_test_metric"
+	TEN_MINUTES       = int64(600)
 )
 
 func MagicMetricNames() []string {
@@ -142,11 +143,17 @@ func emitTestMetrics(sourceId string, client logcache_v1.IngressClient, timestam
 	}
 }
 
-func EmitMeasuredMetrics(sourceId string, ingressClient logcache_v1.IngressClient, metrics map[string]float64) {
+func EmitMeasuredMetrics(sourceId string, ingressClient logcache_v1.IngressClient, logCache QueryableClient, metrics map[string]float64) {
 	envelopeMetrics := make(map[string]*loggregator_v2.GaugeValue)
 
 	if len(metrics) == 0 {
 		log.Printf("no points to emit")
+		return
+	}
+
+	up, _ := logCache.LogCacheVMUptime(context.TODO())
+	if up < TEN_MINUTES {
+		log.Printf("vm just rolled in the last 10 minutes")
 		return
 	}
 
@@ -183,6 +190,7 @@ func EmitMeasuredMetrics(sourceId string, ingressClient logcache_v1.IngressClien
 
 type QueryableClient interface {
 	PromQL(context.Context, string, ...logcache_client.PromQLOption) (*logcache_v1.PromQL_InstantQueryResult, error)
+	LogCacheVMUptime(ctx context.Context) (int64, error)
 }
 
 type ReliabilityCalculator struct {
