@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -375,6 +376,10 @@ func (c *Client) LogCacheVMUptime(ctx context.Context) (int64, error) {
 	err = json.NewDecoder(resp.Body).Decode(&info)
 	if err != nil {
 		return -1, err
+	}
+
+	if info.VMUptime == "" {
+		return -1, errors.New("This version of log cache does not support vm_uptime info")
 	}
 
 	uptime, err := strconv.ParseInt(info.VMUptime, 10, 64)

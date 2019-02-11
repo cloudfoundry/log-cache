@@ -151,9 +151,13 @@ func EmitMeasuredMetrics(sourceId string, ingressClient logcache_v1.IngressClien
 		return
 	}
 
-	up, _ := logCache.LogCacheVMUptime(context.TODO())
-	if up < TEN_MINUTES {
-		log.Printf("vm just rolled in the last 10 minutes")
+	up, err := logCache.LogCacheVMUptime(context.TODO())
+	if err != nil {
+		log.Printf("Couldn't fetch vm uptime, ignoring it: %s", err.Error())
+	}
+
+	if up >= 0 && up < TEN_MINUTES {
+		log.Printf("vm uptime less than 10 minutes: %d seconds", up)
 		return
 	}
 
@@ -177,7 +181,7 @@ func EmitMeasuredMetrics(sourceId string, ingressClient logcache_v1.IngressClien
 	}
 
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	_, err := ingressClient.Send(ctx, &logcache_v1.SendRequest{
+	_, err = ingressClient.Send(ctx, &logcache_v1.SendRequest{
 		Envelopes: &loggregator_v2.EnvelopeBatch{
 			Batch: batch,
 		},
