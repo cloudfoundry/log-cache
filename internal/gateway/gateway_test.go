@@ -43,6 +43,7 @@ var _ = Describe("Gateway", func() {
 				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 			),
 			WithGatewayVersion("1.2.3"),
+			WithGatewayVMUptimeFn(testing.StubUptimeFn),
 		)
 		gw.Start()
 	})
@@ -133,7 +134,11 @@ var _ = Describe("Gateway", func() {
 
 		respBytes, err := ioutil.ReadAll(resp.Body)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(respBytes).To(MatchJSON(`{"version":"1.2.3"}`))
+		Expect(respBytes).To(MatchJSON(
+			`{
+			"version":"1.2.3",
+			"vm_uptime":"789"
+		}`))
 		Expect(strings.HasSuffix(string(respBytes), "\n")).To(BeTrue())
 	})
 

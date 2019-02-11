@@ -237,3 +237,7 @@ func (s *SpyLogCache) GetRangeQueryRequests() []*rpc.PromQL_RangeQueryRequest {
 
 	return r
 }
+
+func StubUptimeFn() int64 {
+	return 789
+}

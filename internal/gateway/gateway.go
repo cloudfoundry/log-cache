@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"syscall"
 
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"golang.org/x/net/context"
@@ -22,6 +23,7 @@ type Gateway struct {
 
 	logCacheAddr    string
 	logCacheVersion string
+	uptimeFn        func() int64
 
 	gatewayAddr      string
 	lis              net.Listener
@@ -37,6 +39,7 @@ func NewGateway(logCacheAddr, gatewayAddr string, opts ...GatewayOption) *Gatewa
 		log:          log.New(ioutil.Discard, "", 0),
 		logCacheAddr: logCacheAddr,
 		gatewayAddr:  gatewayAddr,
+		uptimeFn:     uptimeInSeconds,
 	}
 
 	for _, o := range opts {
@@ -79,6 +82,14 @@ func WithGatewayLogCacheDialOpts(opts ...grpc.DialOption) GatewayOption {
 func WithGatewayVersion(version string) GatewayOption {
 	return func(g *Gateway) {
 		g.logCacheVersion = version
+	}
+}
+
+// WithGatewayLogCacheDialOpts returns a GatewayOption that the log-cache
+// version returned by the info endpoint.
+func WithGatewayVMUptimeFn(uptimeFn func() int64) GatewayOption {
+	return func(g *Gateway) {
+		g.uptimeFn = uptimeFn
 	}
 }
 
@@ -149,7 +160,14 @@ func (g *Gateway) listenAndServe() {
 }
 
 func (g *Gateway) handleInfoEndpoint(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte(fmt.Sprintf(`{"version":"%s"}`+"\n", g.logCacheVersion)))
+	w.Write([]byte(fmt.Sprintf(`{"version":"%s","vm_uptime":"%d"}`+"\n", g.logCacheVersion, g.uptimeFn())))
+}
+
+func uptimeInSeconds() int64 {
+	info := syscall.Sysinfo_t{}
+	syscall.Sysinfo(&info)
+
+	return info.Uptime
 }
 
 type errorBody struct {
