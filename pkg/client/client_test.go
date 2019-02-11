@@ -28,6 +28,46 @@ var _ client.Reader = client.Reader(client.NewClient("").Read)
 
 var _ = Describe("Log Cache Client", func() {
 	Context("HTTP client", func() {
+		Describe("LogCacheVersion", func() {
+			It("returns the log cache version", func() {
+				logCache := newStubLogCache()
+				logcache_client := client.NewClient(logCache.addr())
+
+				version, err := logcache_client.LogCacheVersion(context.Background())
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(version.String()).To(Equal("2.0.0"))
+
+				Expect(logCache.reqs).To(HaveLen(1))
+				Expect(logCache.reqs[0].URL.Path).To(Equal("/api/v1/info"))
+			})
+		})
+
+		Describe("LogCacheVMUptime", func() {
+			It("returns the log cache gateway VM uptime", func() {
+				logCache := newStubLogCache()
+				logcache_client := client.NewClient(logCache.addr())
+
+				uptime, err := logcache_client.LogCacheVMUptime(context.Background())
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(uptime).To(Equal(int64(789)))
+
+				Expect(logCache.reqs).To(HaveLen(1))
+				Expect(logCache.reqs[0].URL.Path).To(Equal("/api/v1/info"))
+			})
+
+			It("returns an error if /info endpoint does not exist", func() {
+				logCache := newStubOldLogCache()
+				logcache_client := client.NewClient(logCache.addr())
+
+				uptime, err := logcache_client.LogCacheVMUptime(context.Background())
+				Expect(err).To(MatchError("unexpected status code 404"))
+
+				Expect(uptime).To(Equal(int64(-1)))
+			})
+		})
+
 		Describe("Read", func() {
 			It("reads envelopes", func() {
 				logCache := newStubLogCache()
@@ -801,7 +841,8 @@ func newStubLogCache() *stubLogCache {
 			`),
 			"GET/api/v1/info": []byte(`
 	{
-	  "version": "2.0.0"
+	  "version": "2.0.0",
+	  "vm_uptime": "789"
 	}
 			`),
 		},
