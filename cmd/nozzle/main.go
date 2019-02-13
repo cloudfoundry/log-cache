@@ -55,14 +55,14 @@ func main() {
 		streamConnector,
 		cfg.LogCacheAddr,
 		cfg.ShardId,
-		WithNozzleLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		WithNozzleMetrics(m),
-		WithNozzleDialOpts(
+		WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
+		WithMetrics(m),
+		WithDialOpts(
 			grpc.WithTransportCredentials(
 				cfg.LogCacheTLS.Credentials("log-cache"),
 			),
 		),
-		WithNozzleSelectors(cfg.Selectors...),
+		WithSelectors(cfg.Selectors...),
 	)
 
 	go nozzle.Start()

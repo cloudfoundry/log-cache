@@ -38,9 +38,9 @@ var _ = Describe("Nozzle", func() {
 			addr := logCache.Start()
 
 			n = NewNozzle(streamConnector, addr, "log-cache",
-				WithNozzleMetrics(metricMap),
-				WithNozzleDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
-				WithNozzleSelectors("gauge", "timer", "event"),
+				WithMetrics(metricMap),
+				WithDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
+				WithSelectors("gauge", "timer", "event"),
 			)
 			go n.Start()
 		})
@@ -86,9 +86,9 @@ var _ = Describe("Nozzle", func() {
 			addr := logCache.Start()
 
 			n = NewNozzle(streamConnector, addr, "log-cache",
-				WithNozzleMetrics(metricMap),
-				WithNozzleDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
-				WithNozzleSelectors("log", "gauge", "counter", "timer", "event"),
+				WithMetrics(metricMap),
+				WithDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
+				WithSelectors("log", "gauge", "counter", "timer", "event"),
 			)
 			go n.Start()
 		})

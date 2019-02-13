@@ -66,31 +66,31 @@ func NewNozzle(c StreamConnector, logCacheAddr string, shardId string, opts ...N
 // NozzleOption configures a Nozzle.
 type NozzleOption func(*Nozzle)
 
-// WithNozzleLogger returns a NozzleOption that configures a nozzle's logger.
+// WithLogger returns a NozzleOption that configures a nozzle's logger.
 // It defaults to silent logging.
-func WithNozzleLogger(l *log.Logger) NozzleOption {
+func WithLogger(l *log.Logger) NozzleOption {
 	return func(n *Nozzle) {
 		n.log = l
 	}
 }
 
-// WithNozzleMetrics returns a NozzleOption that configures the metrics for the
+// WithMetrics returns a NozzleOption that configures the metrics for the
 // Nozzle. It will add metrics to the given map.
-func WithNozzleMetrics(metrics metrics.Initializer) NozzleOption {
+func WithMetrics(metrics metrics.Initializer) NozzleOption {
 	return func(n *Nozzle) {
 		n.metrics = metrics
 	}
 }
 
-// WithNozzleDialOpts returns a NozzleOption that configures the dial options
+// WithDialOpts returns a NozzleOption that configures the dial options
 // for dialing the LogCache. It defaults to grpc.WithInsecure().
-func WithNozzleDialOpts(opts ...grpc.DialOption) NozzleOption {
+func WithDialOpts(opts ...grpc.DialOption) NozzleOption {
 	return func(n *Nozzle) {
 		n.opts = opts
 	}
 }
 
-func WithNozzleSelectors(selectors ...string) NozzleOption {
+func WithSelectors(selectors ...string) NozzleOption {
 	return func(n *Nozzle) {
 		n.selectors = selectors
 	}
