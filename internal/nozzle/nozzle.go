@@ -132,9 +132,7 @@ func (n *Nozzle) envelopeBatcher(ch chan []*loggregator_v2.Envelope) {
 		data, found := poller.TryNext()
 
 		if found {
-			// this bizarre typecasting is an implementation detail of diode
-			envelope := *(*loggregator_v2.Envelope)(data)
-			envelopes = append(envelopes, &envelope)
+			envelopes = append(envelopes, (*loggregator_v2.Envelope)(data))
 		}
 
 		select {
@@ -144,6 +142,8 @@ func (n *Nozzle) envelopeBatcher(ch chan []*loggregator_v2.Envelope) {
 				case ch <- envelopes:
 					envelopes = make([]*loggregator_v2.Envelope, 0)
 				default:
+					// if we can't write into the channel, it must be full, so
+					// we probably need to drop these envelopes on the floor
 					envelopes = envelopes[:0]
 				}
 			}
@@ -157,6 +157,9 @@ func (n *Nozzle) envelopeBatcher(ch chan []*loggregator_v2.Envelope) {
 					envelopes = envelopes[:0]
 				}
 				t.Reset(BATCH_FLUSH_INTERVAL)
+			}
+			if !found {
+				time.Sleep(time.Millisecond)
 			}
 		}
 	}
