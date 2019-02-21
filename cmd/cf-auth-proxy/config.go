@@ -22,6 +22,8 @@ type Config struct {
 	Addr                string `env:"ADDR, required, report"`
 	InternalIP          string `env:"INTERNAL_IP, report"`
 	HealthAddr          string `env:"HEALTH_ADDR, report"`
+	CertPath            string `env:"EXTERNAL_CERT, required, report"`
+	KeyPath             string `env:"EXTERNAL_KEY, required, report"`
 	SkipCertVerify      bool   `env:"SKIP_CERT_VERIFY, report"`
 	SecurityEventLog    string `env:"SECURITY_EVENT_LOG, report"`
 
