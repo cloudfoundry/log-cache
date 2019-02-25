@@ -6,6 +6,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"time"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
 	. "code.cloudfoundry.org/log-cache/internal/cache"
@@ -26,9 +27,19 @@ func main() {
 
 	envstruct.WriteReport(cfg)
 
+	m := metrics.New(expvar.NewMap("LogCache"))
+	uptimeFn := m.NewGauge("Uptime")
+
+	t := time.NewTicker(time.Second)
+	go func(start time.Time) {
+		for range t.C {
+			uptimeFn(float64(time.Since(start) / time.Second))
+		}
+	}(time.Now())
+
 	cache := New(
 		WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		WithMetrics(metrics.New(expvar.NewMap("LogCache"))),
+		WithMetrics(m),
 		WithAddr(cfg.Addr),
 		WithMemoryLimit(float64(cfg.MemoryLimit)),
 		WithQueryTimeout(cfg.QueryTimeout),

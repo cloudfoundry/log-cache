@@ -6,7 +6,6 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"time"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
 	"code.cloudfoundry.org/log-cache/internal/metrics"
@@ -42,14 +41,6 @@ func main() {
 	loggr := log.New(os.Stderr, "[LOGGR] ", log.LstdFlags)
 
 	dropped := m.NewCounter("Dropped")
-	uptimeFn := m.NewGauge("Uptime")
-
-	t := time.NewTicker(time.Minute)
-	go func(start time.Time) {
-		for range t.C {
-			uptimeFn(float64(time.Since(start)))
-		}
-	}(time.Now())
 
 	streamConnector := loggregator.NewEnvelopeStreamConnector(
 		cfg.LogProviderAddr,
