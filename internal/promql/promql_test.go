@@ -735,9 +735,7 @@ var _ = Describe("PromQL", func() {
 
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(spyMetrics.Gauges).To(HaveKey("PromQLInstantQueryTime"))
-			Expect(spyMetrics.Gauges["PromQLInstantQueryTime"]).To(HaveLen(1))
-			Expect(spyMetrics.Gauges["PromQLInstantQueryTime"][0]).ToNot(BeZero())
+			Expect(spyMetrics.Get("log_cache_promql_instant_query_time")).ToNot(BeZero())
 		})
 
 		It("expands requests filtered for multiple source IDs", func() {
@@ -828,8 +826,7 @@ var _ = Describe("PromQL", func() {
 			)
 			Expect(err).To(HaveOccurred())
 
-			Expect(spyMetrics.Names).To(ContainElement("PromQLTimeout"))
-			Expect(spyMetrics.Deltas).To(ContainElement(uint64(1)))
+			Expect(spyMetrics.Get("log_cache_promql_timeout")).To(Equal(1.0))
 		})
 
 		It("returns an error for a cancelled context", func() {
@@ -1231,9 +1228,7 @@ var _ = Describe("PromQL", func() {
 
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(spyMetrics.Gauges).To(HaveKey("PromQLRangeQueryTime"))
-			Expect(spyMetrics.Gauges["PromQLRangeQueryTime"]).To(HaveLen(1))
-			Expect(spyMetrics.Gauges["PromQLRangeQueryTime"][0]).ToNot(BeZero())
+			Expect(spyMetrics.Get("log_cache_promql_range_query_time")).ToNot(BeZero())
 		})
 
 		It("returns an error for an invalid query", func() {
@@ -1278,8 +1273,7 @@ var _ = Describe("PromQL", func() {
 			)
 			Expect(err).To(HaveOccurred())
 
-			Expect(spyMetrics.Names).To(ContainElement("PromQLTimeout"))
-			Expect(spyMetrics.Deltas).To(ContainElement(uint64(1)))
+			Expect(spyMetrics.Get("log_cache_promql_timeout")).To(Equal(1.0))
 		})
 
 		It("returns an error for a cancelled context", func() {

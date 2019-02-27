@@ -107,9 +107,9 @@ func (n *Nozzle) Start() {
 	}
 	client := logcache_v1.NewIngressClient(conn)
 
-	ingressInc := n.metrics.NewCounter("Ingress")
-	egressInc := n.metrics.NewCounter("Egress")
-	errInc := n.metrics.NewCounter("Err")
+	ingressInc := n.metrics.NewCounter("nozzle_ingress")
+	egressInc := n.metrics.NewCounter("nozzle_egress")
+	errInc := n.metrics.NewCounter("nozzle_err")
 
 	go n.envelopeReader(rx, ingressInc)
 

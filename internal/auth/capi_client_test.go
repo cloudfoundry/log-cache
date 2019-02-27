@@ -260,8 +260,8 @@ var _ = Describe("CAPIClient", func() {
 			}
 			tc.client.AvailableSourceIDs("my-token")
 
-			Expect(tc.metrics.m["LastCAPIV3AppsLatency"]).ToNot(BeZero())
-			Expect(tc.metrics.m["LastCAPIV3ListServiceInstancesLatency"]).ToNot(BeZero())
+			Expect(tc.metrics.m["cf_auth_proxy_last_capiv3_apps_latency"]).ToNot(BeZero())
+			Expect(tc.metrics.m["cf_auth_proxy_last_capiv3_list_service_instances_latency"]).ToNot(BeZero())
 		})
 
 		It("is goroutine safe", func() {
@@ -389,7 +389,7 @@ var _ = Describe("CAPIClient", func() {
 			}
 			tc.client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
 
-			Expect(tc.metrics.m["LastCAPIV3AppsByNameLatency"]).ToNot(BeZero())
+			Expect(tc.metrics.m["cf_auth_proxy_last_capiv3_apps_by_name_latency"]).ToNot(BeZero())
 		})
 
 		It("returns no source IDs when the request fails", func() {

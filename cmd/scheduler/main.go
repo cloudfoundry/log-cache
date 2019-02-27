@@ -1,7 +1,6 @@
 package main
 
 import (
-	"expvar"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -28,7 +27,7 @@ func main() {
 
 	opts := []SchedulerOption{
 		WithSchedulerLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		WithSchedulerMetrics(metrics.New(expvar.NewMap("Scheduler"))),
+		WithSchedulerMetrics(metrics.New()),
 		WithSchedulerInterval(cfg.Interval),
 		WithSchedulerCount(cfg.Count),
 		WithSchedulerReplicationFactor(cfg.ReplicationFactor),
@@ -56,6 +55,6 @@ func main() {
 
 	sched.Start()
 
-	// health endpoints (pprof and expvar)
+	// health endpoints (pprof and prometheus)
 	log.Printf("Health: %s", http.ListenAndServe(cfg.HealthAddr, nil))
 }

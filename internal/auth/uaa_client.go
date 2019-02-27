@@ -15,7 +15,7 @@ import (
 )
 
 type Metrics interface {
-	NewGauge(name string) func(value float64)
+	NewGauge(name, unit string) func(value float64)
 }
 
 type HTTPClient interface {
@@ -51,7 +51,7 @@ func NewUAAClient(
 		client:       client,
 		clientSecret: clientSecret,
 		httpClient:   httpClient,
-		storeLatency: m.NewGauge("LastUAALatency"),
+		storeLatency: m.NewGauge("cf_auth_proxy_last_uaa_latency", "nanoseconds"),
 		tokenCache:   make(map[string]uaaResponse),
 	}
 }

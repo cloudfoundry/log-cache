@@ -152,7 +152,7 @@ var _ = Describe("UAAClient", func() {
 	It("sets the last request latency metric", func() {
 		client.Read("my-token")
 
-		Expect(metrics.m["LastUAALatency"]).ToNot(BeZero())
+		Expect(metrics.m["cf_auth_proxy_last_uaa_latency"]).ToNot(BeZero())
 	})
 
 	It("returns error when token is blank", func() {
@@ -269,7 +269,7 @@ func newSpyMetrics() *spyMetrics {
 	}
 }
 
-func (s *spyMetrics) NewGauge(name string) func(float64) {
+func (s *spyMetrics) NewGauge(name, unit string) func(float64) {
 	return func(v float64) {
 		s.mu.Lock()
 		defer s.mu.Unlock()

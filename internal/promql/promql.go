@@ -35,7 +35,7 @@ type DataReader interface {
 
 type Metrics interface {
 	NewCounter(name string) func(delta uint64)
-	NewGauge(name string) func(value float64)
+	NewGauge(name, unit string) func(value float64)
 }
 
 func New(
@@ -48,9 +48,9 @@ func New(
 		r:                 r,
 		log:               log,
 		queryTimeout:      queryTimeout,
-		failureCounter:    m.NewCounter("PromQLTimeout"),
-		instantQueryTimer: m.NewGauge("PromQLInstantQueryTime"),
-		rangeQueryTimer:   m.NewGauge("PromQLRangeQueryTime"),
+		failureCounter:    m.NewCounter("log_cache_promql_timeout"),
+		instantQueryTimer: m.NewGauge("log_cache_promql_instant_query_time", "milliseconds"),
+		rangeQueryTimer:   m.NewGauge("log_cache_promql_range_query_time", "milliseconds"),
 		result:            1,
 	}
 

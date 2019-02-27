@@ -1,7 +1,6 @@
 package main
 
 import (
-	"expvar"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -37,7 +36,7 @@ func main() {
 		log.Fatalf("invalid LogsProviderTLS configuration: %s", err)
 	}
 
-	m := metrics.New(expvar.NewMap("Nozzle"))
+	m := metrics.New()
 	loggr := log.New(os.Stderr, "[LOGGR] ", log.LstdFlags)
 
 	dropped := m.NewCounter("Dropped")
@@ -68,6 +67,6 @@ func main() {
 
 	go nozzle.Start()
 
-	// health endpoints (pprof and expvar)
+	// health endpoints (pprof and prometheus)
 	log.Printf("Health: %s", http.ListenAndServe(cfg.HealthAddr, nil))
 }

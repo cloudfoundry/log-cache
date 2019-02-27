@@ -44,9 +44,9 @@ func NewCAPIClient(
 		tokenPruningInterval:    time.Minute,
 		cacheExpirationInterval: time.Minute,
 
-		storeAppsLatency:                 m.NewGauge("LastCAPIV3AppsLatency"),
-		storeListServiceInstancesLatency: m.NewGauge("LastCAPIV3ListServiceInstancesLatency"),
-		storeAppsByNameLatency:           m.NewGauge("LastCAPIV3AppsByNameLatency"),
+		storeAppsLatency:                 m.NewGauge("cf_auth_proxy_last_capiv3_apps_latency", "nanoseconds"),
+		storeListServiceInstancesLatency: m.NewGauge("cf_auth_proxy_last_capiv3_list_service_instances_latency", "nanoseconds"),
+		storeAppsByNameLatency:           m.NewGauge("cf_auth_proxy_last_capiv3_apps_by_name_latency", "nanoseconds"),
 	}
 
 	for _, opt := range opts {

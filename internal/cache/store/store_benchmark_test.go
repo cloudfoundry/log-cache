@@ -190,7 +190,7 @@ func (n nopMetrics) NewCounter(string) func(delta uint64) {
 	return func(uint64) {}
 }
 
-func (n nopMetrics) NewGauge(string) func(value float64) {
+func (n nopMetrics) NewGauge(string, string) func(value float64) {
 	return func(float64) {}
 }
 

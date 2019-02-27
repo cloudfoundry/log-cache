@@ -1,7 +1,6 @@
 package main
 
 import (
-	"expvar"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -27,8 +26,8 @@ func main() {
 
 	envstruct.WriteReport(cfg)
 
-	m := metrics.New(expvar.NewMap("LogCache"))
-	uptimeFn := m.NewGauge("Uptime")
+	m := metrics.New()
+	uptimeFn := m.NewGauge("log_cache_uptime", "seconds")
 
 	t := time.NewTicker(time.Second)
 	go func(start time.Time) {
@@ -55,6 +54,6 @@ func main() {
 
 	cache.Start()
 
-	// health endpoints (pprof and expvar)
+	// health endpoints (pprof and prometheus)
 	log.Printf("Health: %s", http.ListenAndServe(cfg.HealthAddr, nil))
 }

@@ -15,7 +15,7 @@ import (
 
 type MetricsInitializer interface {
 	NewCounter(name string) func(delta uint64)
-	NewGauge(name string) func(value float64)
+	NewGauge(name, unit string) func(value float64)
 }
 
 // MemoryConsultant is used to determine if the store should prune.
@@ -66,13 +66,13 @@ func NewStore(maxPerSource int, mc MemoryConsultant, m MetricsInitializer) *Stor
 		oldestTimestamp:   MIN_INT64,
 
 		metrics: Metrics{
-			incExpired:            m.NewCounter("Expired"),
-			setCachePeriod:        m.NewGauge("CachePeriod"),
-			incIngress:            m.NewCounter("Ingress"),
-			incEgress:             m.NewCounter("Egress"),
-			setStoreSize:          m.NewGauge("StoreSize"),
-			setTruncationDuration: m.NewGauge("TruncationDuration"),
-			setMemoryUtilization:  m.NewGauge("MemoryUtilization"),
+			incExpired:            m.NewCounter("log_cache_expired"),
+			setCachePeriod:        m.NewGauge("log_cache_cache_period", "milliseconds"),
+			incIngress:            m.NewCounter("log_cache_ingress"),
+			incEgress:             m.NewCounter("log_cache_egress"),
+			setStoreSize:          m.NewGauge("log_cache_store_size", "entries"),
+			setTruncationDuration: m.NewGauge("log_cache_truncation_duration", "milliseconds"),
+			setMemoryUtilization:  m.NewGauge("log_cache_memory_utilization", "percentage"),
 		},
 
 		mc:                  mc,

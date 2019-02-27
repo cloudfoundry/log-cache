@@ -20,7 +20,7 @@ var _ = Describe("Nozzle", func() {
 		n               *Nozzle
 		streamConnector *spyStreamConnector
 		logCache        *testing.SpyLogCache
-		metricMap       *testing.SpyMetrics
+		spyMetrics      *testing.SpyMetrics
 	)
 
 	Context("With custom envelope selectors", func() {
@@ -33,12 +33,12 @@ var _ = Describe("Nozzle", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 			streamConnector = newSpyStreamConnector()
-			metricMap = testing.NewSpyMetrics()
+			spyMetrics = testing.NewSpyMetrics()
 			logCache = testing.NewSpyLogCache(tlsConfig)
 			addr := logCache.Start()
 
 			n = NewNozzle(streamConnector, addr, "log-cache",
-				WithMetrics(metricMap),
+				WithMetrics(spyMetrics),
 				WithDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
 				WithSelectors("gauge", "timer", "event"),
 			)
@@ -81,12 +81,12 @@ var _ = Describe("Nozzle", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 			streamConnector = newSpyStreamConnector()
-			metricMap = testing.NewSpyMetrics()
+			spyMetrics = testing.NewSpyMetrics()
 			logCache = testing.NewSpyLogCache(tlsConfig)
 			addr := logCache.Start()
 
 			n = NewNozzle(streamConnector, addr, "log-cache",
-				WithMetrics(metricMap),
+				WithMetrics(spyMetrics),
 				WithDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
 				WithSelectors("log", "gauge", "counter", "timer", "event"),
 			)
@@ -152,9 +152,10 @@ var _ = Describe("Nozzle", func() {
 			addEnvelope(2, "some-source-id", streamConnector)
 			addEnvelope(3, "some-source-id", streamConnector)
 
-			Eventually(metricMap.Getter("Ingress")).Should(Equal(uint64(3)))
-			Eventually(metricMap.Getter("Egress")).Should(Equal(uint64(3)))
-			Eventually(metricMap.Getter("Err")).Should(Equal(uint64(0)))
+			Eventually(logCache.GetEnvelopes).Should(HaveLen(3))
+			Expect(spyMetrics.Get("nozzle_ingress")).To(Equal(3.0))
+			Expect(spyMetrics.Get("nozzle_egress")).To(Equal(3.0))
+			Expect(spyMetrics.Get("nozzle_err")).To(BeZero())
 		})
 	})
 })

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"expvar"
 	"io/ioutil"
 	"log"
 	"net"
@@ -34,7 +33,7 @@ func main() {
 	}
 	envstruct.WriteReport(cfg)
 
-	metrics := metrics.New(expvar.NewMap("CFAuthProxy"))
+	metrics := metrics.New()
 
 	uaaClient := auth.NewUAAClient(
 		cfg.UAA.Addr,
@@ -92,7 +91,7 @@ func main() {
 
 	proxy.Start()
 
-	// health endpoints (pprof and expvar)
+	// health endpoints (pprof and prometheus)
 	log.Printf("Health: %s", http.ListenAndServe(cfg.HealthAddr, nil))
 }
 

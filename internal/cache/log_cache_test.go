@@ -213,8 +213,8 @@ var _ = Describe("LogCache", func() {
 		Expect(es[1].Timestamp).To(Equal(int64(3)))
 		Expect(es[1].SourceId).To(Equal("source-0"))
 
-		Eventually(spyMetrics.Getter("Ingress")).Should(Equal(uint64(3)))
-		Eventually(spyMetrics.Getter("Egress")).Should(Equal(uint64(2)))
+		Eventually(spyMetrics.Get("log_cache_ingress")).Should(Equal(3.0))
+		Eventually(spyMetrics.Get("log_cache_egress")).Should(Equal(2.0))
 	})
 
 	It("queries data via PromQL Instant Queries", func() {
@@ -322,7 +322,7 @@ var _ = Describe("LogCache", func() {
 			{Timestamp: 4, SourceId: "source-0"},
 		})
 
-		Eventually(spyMetrics.Getter("Ingress")).Should(Equal(uint64(4)))
+		Eventually(spyMetrics.Get("log_cache_ingress")).Should(Equal(4.0))
 	})
 
 	It("routes envelopes to peers", func() {

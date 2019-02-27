@@ -1,6 +1,8 @@
 package metrics
 
-import "expvar"
+import (
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 // Metrics registers Counter and Gauge metrics.
 type Initializer interface {
@@ -8,7 +10,7 @@ type Initializer interface {
 	NewCounter(name string) func(delta uint64)
 
 	// NewGauge returns a function to set the value for the given metric.
-	NewGauge(name string) func(value float64)
+	NewGauge(name, unit string) func(value float64)
 }
 
 // NullMetrics are the default metrics.
@@ -18,57 +20,44 @@ func (m NullMetrics) NewCounter(name string) func(uint64) {
 	return func(uint64) {}
 }
 
-func (m NullMetrics) NewGauge(name string) func(float64) {
+func (m NullMetrics) NewGauge(name, unit string) func(float64) {
 	return func(float64) {}
 }
 
 // Metrics stores health metrics for the process. It has a gauge and counter
 // metrics.
 type Metrics struct {
-	m Map
-}
-
-// Map stores the desired metrics.
-type Map interface {
-	// Add adds a new metric to the map.
-	Add(key string, delta int64)
-
-	// AddFloat adds a new metric to the map.
-	AddFloat(key string, delta float64)
-
-	// Get gets a Var from the Map.
-	Get(key string) expvar.Var
+	Registry *prometheus.Registry
 }
 
 // New returns a new Metrics.
-func New(m Map) *Metrics {
+func New() *Metrics {
 	return &Metrics{
-		m: m,
+		Registry: prometheus.NewRegistry(),
 	}
 }
 
 // NewCounter returns a func to be used increment the counter total.
 func (m *Metrics) NewCounter(name string) func(delta uint64) {
-	if m.m == nil {
-		return func(_ uint64) {}
-	}
-
-	m.m.Add(name, 0)
-	i := m.m.Get(name).(*expvar.Int)
+	prometheusCounterMetric := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: name,
+	})
+	m.Registry.MustRegister(prometheusCounterMetric)
 
 	return func(d uint64) {
-		i.Add(int64(d))
+		prometheusCounterMetric.Add(float64(d))
 	}
 }
 
 // NewGauge returns a func to be used to set the value of a gauge metric.
-func (m *Metrics) NewGauge(name string) func(value float64) {
-	if m.m == nil {
-		return func(_ float64) {}
-	}
+func (m *Metrics) NewGauge(name, unit string) func(value float64) {
+	prometheusGaugeMetric := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: name,
+		ConstLabels: map[string]string{
+			"unit": unit,
+		},
+	})
+	m.Registry.MustRegister(prometheusGaugeMetric)
 
-	m.m.AddFloat(name, 0)
-	f := m.m.Get(name).(*expvar.Float)
-
-	return f.Set
+	return prometheusGaugeMetric.Set
 }

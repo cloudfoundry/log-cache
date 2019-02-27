@@ -1,62 +1,99 @@
 package testing
 
-import "sync"
+import (
+	"sync"
+)
+
+const (
+	UNDEFINED_METRIC float64 = 99999999999
+)
 
 type SpyMetrics struct {
-	Names  []string
-	Deltas []uint64
-	Gauges map[string][]float64
-	Map    map[string]uint64
-
+	values              map[string]float64
+	units               map[string]string
+	summaryObservations map[string][]float64
 	sync.Mutex
 }
 
 func NewSpyMetrics() *SpyMetrics {
 	return &SpyMetrics{
-		Gauges: make(map[string][]float64),
-		Map:    make(map[string]uint64),
+		values:              make(map[string]float64),
+		units:               make(map[string]string),
+		summaryObservations: make(map[string][]float64),
 	}
 }
 
-func (s *SpyMetrics) NewCounter(name string) func(delta uint64) {
+func (s *SpyMetrics) NewCounter(name string) func(uint64) {
 	s.Lock()
 	defer s.Unlock()
+	s.values[name] = 0
 
-	s.Names = append(s.Names, name)
-	s.Map[name] = 0
-
-	return func(delta uint64) {
+	return func(value uint64) {
 		s.Lock()
 		defer s.Unlock()
 
-		s.Deltas = append(s.Deltas, delta)
-		s.Map[name] += delta
+		s.values[name] += float64(value)
 	}
 }
 
-func (s *SpyMetrics) NewGauge(name string) func(value float64) {
+func (s *SpyMetrics) NewGauge(name, unit string) func(float64) {
 	s.Lock()
 	defer s.Unlock()
-	s.Map[name] = 0
+	s.values[name] = 0
+	s.units[name] = unit
 
 	return func(value float64) {
 		s.Lock()
 		defer s.Unlock()
 
-		s.Gauges[name] = append(s.Gauges[name], value)
-		s.Map[name] = uint64(value)
+		s.values[name] = value
 	}
 }
 
-func (s *SpyMetrics) Getter(key string) func() uint64 {
-	return func() uint64 {
+func (s *SpyMetrics) NewSummary(name, unit string) func(float64) {
+	s.Lock()
+	defer s.Unlock()
+	s.summaryObservations[name] = make([]float64, 0)
+	s.units[name] = unit
+
+	return func(value float64) {
 		s.Lock()
 		defer s.Unlock()
 
-		value, ok := s.Map[key]
+		s.summaryObservations[name] = append(s.summaryObservations[name], value)
+	}
+}
+
+func (s *SpyMetrics) Getter(name string) func() float64 {
+	return func() float64 {
+		s.Lock()
+		defer s.Unlock()
+
+		value, ok := s.values[name]
 		if !ok {
-			return 99999999999
+			return UNDEFINED_METRIC
 		}
+		return value
+	}
+}
+
+func (s *SpyMetrics) Get(name string) float64 {
+	return s.Getter(name)()
+}
+
+func (s *SpyMetrics) GetUnit(name string) string {
+	s.Lock()
+	defer s.Unlock()
+
+	return s.units[name]
+}
+
+func (s *SpyMetrics) SummaryObservationsGetter(name string) func() []float64 {
+	return func() []float64 {
+		s.Lock()
+		defer s.Unlock()
+
+		value := s.summaryObservations[name]
 		return value
 	}
 }

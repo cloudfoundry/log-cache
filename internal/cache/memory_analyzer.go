@@ -27,9 +27,9 @@ type MemoryAnalyzer struct {
 // NewMemoryAnalyzer creates and returns a new MemoryAnalyzer.
 func NewMemoryAnalyzer(metrics metrics.Initializer) *MemoryAnalyzer {
 	return &MemoryAnalyzer{
-		setAvail: metrics.NewGauge("AvailableSystemMemory"),
-		setHeap:  metrics.NewGauge("HeapInUseMemory"),
-		setTotal: metrics.NewGauge("TotalSystemMemory"),
+		setAvail: metrics.NewGauge("log_cache_available_system_memory", "bytes"),
+		setHeap:  metrics.NewGauge("log_cache_heap_in_use_memory", "bytes"),
+		setTotal: metrics.NewGauge("log_cache_total_system_memory", "bytes"),
 	}
 }
 
