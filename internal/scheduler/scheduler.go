@@ -3,14 +3,10 @@ package scheduler
 import (
 	"io/ioutil"
 	"log"
-	"strconv"
 	"sync"
 	"time"
 
-	"expvar"
-
 	orchestrator "code.cloudfoundry.org/go-orchestrator"
-	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"code.cloudfoundry.org/log-cache/internal/routing"
 	rpc "code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 	"golang.org/x/net/context"
@@ -19,16 +15,13 @@ import (
 
 // Scheduler manages the routes of the Log Cache nodes.
 type Scheduler struct {
-	log                      *log.Logger
-	metrics                  metrics.Initializer
-	workerAssignmentReporter *expvar.Map
-	workerHealthReporter     *expvar.Map
-	interval                 time.Duration
-	count                    int
-	replicationFactor        int
-	logCacheOrch             *orchestrator.Orchestrator
-	dialOpts                 []grpc.DialOption
-	isLeader                 func() bool
+	log               *log.Logger
+	interval          time.Duration
+	count             int
+	replicationFactor int
+	logCacheOrch      *orchestrator.Orchestrator
+	dialOpts          []grpc.DialOption
+	isLeader          func() bool
 
 	logCacheClients []clientInfo
 }
@@ -36,27 +29,13 @@ type Scheduler struct {
 // NewScheduler returns a new Scheduler. Addrs are the addresses of the Cache
 // nodes.
 func NewScheduler(logCacheAddrs []string, opts ...SchedulerOption) *Scheduler {
-	// TODO: This is a hack to avoid test collisions. Please fix this.
-	workerAssignmentReporter := expvar.Get("WorkerAssignments")
-	workerHealthReporter := expvar.Get("WorkerHealth")
-
-	if workerAssignmentReporter == nil {
-		workerAssignmentReporter = expvar.NewMap("WorkerAssignments")
-	}
-	if workerHealthReporter == nil {
-		workerHealthReporter = expvar.NewMap("WorkerHealth")
-	}
-
 	s := &Scheduler{
-		log:                      log.New(ioutil.Discard, "", 0),
-		metrics:                  metrics.NullMetrics{},
-		workerAssignmentReporter: workerAssignmentReporter.(*expvar.Map),
-		workerHealthReporter:     workerHealthReporter.(*expvar.Map),
-		interval:                 time.Minute,
-		count:                    100,
-		replicationFactor:        1,
-		dialOpts:                 []grpc.DialOption{grpc.WithInsecure()},
-		isLeader:                 func() bool { return true },
+		log:               log.New(ioutil.Discard, "", 0),
+		interval:          time.Minute,
+		count:             100,
+		replicationFactor: 1,
+		dialOpts:          []grpc.DialOption{grpc.WithInsecure()},
+		isLeader:          func() bool { return true },
 	}
 
 	for _, o := range opts {
@@ -87,14 +66,6 @@ type SchedulerOption func(*Scheduler)
 func WithSchedulerLogger(l *log.Logger) SchedulerOption {
 	return func(s *Scheduler) {
 		s.log = l
-	}
-}
-
-// WithSchedulerMetrics returns a SchedulerOption that configures the metrics
-// for the Scheduler. It will add metrics to the given map.
-func WithSchedulerMetrics(m metrics.Initializer) SchedulerOption {
-	return func(s *Scheduler) {
-		s.metrics = m
 	}
 }
 
@@ -183,45 +154,9 @@ func (s *Scheduler) Start() {
 
 			if s.isLeader() {
 				s.setRemoteTables(s.logCacheClients, s.convertWorkerState(s.logCacheOrch.LastActual()))
-
-				lastActual := s.logCacheOrch.LastActual()
-
-				workerHealth := make(map[string]bool)
-				for _, clientInfo := range s.logCacheClients {
-					addr := clientInfo.addr
-					workerHealth[addr] = false
-				}
-				for _, worker := range lastActual {
-					addr := worker.Name.(clientInfo).addr
-					s.workerAssignmentReporter.Set(addr, stateWrapper{state: worker})
-					workerHealth[addr] = true
-				}
-				for addr, health := range workerHealth {
-					s.workerHealthReporter.Set(addr, healthWrapper{health: health})
-				}
 			}
 		}
 	}()
-}
-
-type stateWrapper struct {
-	state orchestrator.WorkerState
-}
-
-func (wrapper stateWrapper) String() string {
-	return strconv.Itoa(len(wrapper.state.Tasks))
-}
-
-type healthWrapper struct {
-	health bool
-}
-
-func (wrapper healthWrapper) String() string {
-	if wrapper.health {
-		return "1"
-	}
-
-	return "0"
 }
 
 func (s *Scheduler) setRemoteTables(clients []clientInfo, m map[string]*rpc.Ranges) {
@@ -315,7 +250,7 @@ func (c *comm) Add(ctx context.Context, worker interface{}, task interface{}) er
 	return nil
 }
 
-// Remvoe implements orchestrator.Communicator.
+// Remove implements orchestrator.Communicator.
 func (c *comm) Remove(ctx context.Context, worker interface{}, task interface{}) error {
 	if !c.isLeader() {
 		return nil

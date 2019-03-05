@@ -7,7 +7,6 @@ import (
 	"os"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
-	"code.cloudfoundry.org/log-cache/internal/metrics"
 	. "code.cloudfoundry.org/log-cache/internal/scheduler"
 	"google.golang.org/grpc"
 )
@@ -25,10 +24,8 @@ func main() {
 
 	envstruct.WriteReport(cfg)
 
-	m := metrics.New()
 	opts := []SchedulerOption{
 		WithSchedulerLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		WithSchedulerMetrics(m),
 		WithSchedulerInterval(cfg.Interval),
 		WithSchedulerCount(cfg.Count),
 		WithSchedulerReplicationFactor(cfg.ReplicationFactor),
@@ -56,9 +53,6 @@ func main() {
 
 	sched.Start()
 
-	// Register prometheus-compatible metric endpoint
-	http.Handle("/metrics", m)
-
-	// health endpoints (pprof and prometheus)
+	// health endpoints (pprof)
 	log.Printf("Health: %s", http.ListenAndServe(cfg.HealthAddr, nil))
 }
