@@ -67,6 +67,9 @@ func main() {
 
 	go nozzle.Start()
 
+	// Register prometheus-compatible metric endpoint
+	http.Handle("/metrics", m)
+
 	// health endpoints (pprof and prometheus)
 	log.Printf("Health: %s", http.ListenAndServe(cfg.HealthAddr, nil))
 }

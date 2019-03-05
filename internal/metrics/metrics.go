@@ -1,7 +1,10 @@
 package metrics
 
 import (
+	"net/http"
+
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Metrics registers Counter and Gauge metrics.
@@ -60,4 +63,8 @@ func (m *Metrics) NewGauge(name, unit string) func(value float64) {
 	m.Registry.MustRegister(prometheusGaugeMetric)
 
 	return prometheusGaugeMetric.Set
+}
+
+func (m *Metrics) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	promhttp.HandlerFor(m.Registry, promhttp.HandlerOpts{}).ServeHTTP(w, r)
 }

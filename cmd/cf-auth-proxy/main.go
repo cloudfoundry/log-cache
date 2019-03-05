@@ -91,6 +91,9 @@ func main() {
 
 	proxy.Start()
 
+	// Register prometheus-compatible metric endpoint
+	http.Handle("/metrics", metrics)
+
 	// health endpoints (pprof and prometheus)
 	log.Printf("Health: %s", http.ListenAndServe(cfg.HealthAddr, nil))
 }
