@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"log"
 
@@ -25,8 +26,9 @@ type CFAuthMiddlewareProvider struct {
 }
 
 type Oauth2ClientContext struct {
-	IsAdmin bool
-	Token   string
+	IsAdmin   bool
+	Token     string
+	ExpiresAt time.Time
 }
 
 type Oauth2ClientReader interface {

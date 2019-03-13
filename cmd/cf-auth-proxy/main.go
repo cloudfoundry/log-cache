@@ -37,12 +37,19 @@ func main() {
 
 	uaaClient := auth.NewUAAClient(
 		cfg.UAA.Addr,
-		cfg.UAA.ClientID,
-		cfg.UAA.ClientSecret,
 		buildUAAClient(cfg),
 		metrics,
 		log,
 	)
+
+	// try to get our first token key, but bail out if we can't talk to UAA
+	err = uaaClient.GetTokenKey()
+	if err != nil {
+		log.Fatalf("failed to fetch token from UAA: %s", err)
+	}
+
+	// tell our UAA client to fetch a new token key periodically
+	uaaClient.StartPeriodicTokenKeyRefresh(5 * time.Minute)
 
 	capiClient := auth.NewCAPIClient(
 		cfg.CAPI.Addr,

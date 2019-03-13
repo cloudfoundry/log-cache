@@ -1,216 +1,354 @@
 package auth_test
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"errors"
+	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
 	"code.cloudfoundry.org/log-cache/internal/auth"
 
 	"bytes"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
-	"errors"
+	"encoding/pem"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 
+	jose "github.com/dvsekhvalnov/jose2go"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("UAAClient", func() {
-	var (
-		client     *auth.UAAClient
-		httpClient *spyHTTPClient
-		metrics    *spyMetrics
-	)
+	Context("Read()", func() {
+		var tc *UAATestContext
 
-	BeforeEach(func() {
-		httpClient = newSpyHTTPClient()
-		metrics = newSpyMetrics()
-		client = auth.NewUAAClient(
-			"https://uaa.com",
-			"some-client",
-			"some-client-secret",
-			httpClient,
-			metrics,
-			log.New(ioutil.Discard, "", 0),
-		)
-	})
+		BeforeEach(func() {
+			tc = uaaSetup()
+			tc.GenerateTokenKeyResponse()
 
-	It("returns IsAdmin when scopes include doppler.firehose with correct clientID and UserID", func() {
-		data, err := json.Marshal(map[string]interface{}{
-			"scope": []string{"doppler.firehose"},
-		})
-		Expect(err).ToNot(HaveOccurred())
-
-		httpClient.resps = []response{{
-			body:   data,
-			status: http.StatusOK,
-		}}
-
-		c, err := client.Read("valid-token")
-		Expect(err).ToNot(HaveOccurred())
-		Expect(c.IsAdmin).To(BeTrue())
-		Expect(c.Token).To(Equal("valid-token"))
-	})
-
-	It("returns IsAdmin when scopes include logs.admin with correct clientID and UserID", func() {
-		data, err := json.Marshal(map[string]interface{}{
-			"scope": []string{"logs.admin"},
-		})
-		Expect(err).ToNot(HaveOccurred())
-		httpClient.resps = []response{{
-			body:   data,
-			status: http.StatusOK,
-		}}
-
-		c, err := client.Read("valid-token")
-		Expect(err).ToNot(HaveOccurred())
-		Expect(c.IsAdmin).To(BeTrue())
-		Expect(c.Token).To(Equal("valid-token"))
-	})
-
-	It("does offline token validation through caching", func() {
-		data, err := json.Marshal(map[string]interface{}{
-			"scope": []string{"logs.admin"},
-			"exp":   float64(time.Now().Add(time.Minute).UnixNano()) / 1e9,
-		})
-		Expect(err).ToNot(HaveOccurred())
-		httpClient.resps = []response{{
-			body:   data,
-			status: http.StatusOK,
-		}}
-
-		client.Read("valid-token")
-		client.Read("valid-token")
-
-		Expect(len(httpClient.requests)).To(Equal(1))
-	})
-
-	It("does not cache an expired token", func() {
-		data, err := json.Marshal(map[string]interface{}{
-			"scope": []string{"logs.admin"},
-			"exp":   float64(time.Now().Add(-time.Minute).UnixNano()) / 1e9,
-		})
-
-		Expect(err).ToNot(HaveOccurred())
-		httpClient.resps = []response{{
-			body:   data,
-			status: http.StatusOK,
-		}}
-
-		client.Read("valid-token")
-		client.Read("valid-token")
-
-		Expect(len(httpClient.requests)).To(Equal(2))
-	})
-
-	It("calls UAA correctly", func() {
-		token := "my-token"
-		client.Read(token)
-
-		r := httpClient.requests[0]
-
-		Expect(r.Method).To(Equal(http.MethodPost))
-		Expect(r.Header.Get("Content-Type")).To(
-			Equal("application/x-www-form-urlencoded"),
-		)
-		Expect(r.URL.String()).To(Equal("https://uaa.com/check_token"))
-
-		client, clientSecret, ok := r.BasicAuth()
-		Expect(ok).To(BeTrue())
-		Expect(client).To(Equal("some-client"))
-		Expect(clientSecret).To(Equal("some-client-secret"))
-
-		reqBytes, err := ioutil.ReadAll(r.Body)
-		Expect(err).ToNot(HaveOccurred())
-		urlValues, err := url.ParseQuery(string(reqBytes))
-		Expect(err).ToNot(HaveOccurred())
-		Expect(urlValues.Get("token")).To(Equal(token))
-	})
-
-	DescribeTable("handling the Bearer prefix in the Authorization header",
-		func(prefix string) {
-			token := "my-token"
-			client.Read(prefix + token)
-
-			r := httpClient.requests[0]
-
-			reqBytes, err := ioutil.ReadAll(r.Body)
+			err := tc.uaaClient.GetTokenKey()
 			Expect(err).ToNot(HaveOccurred())
-			urlValues, err := url.ParseQuery(string(reqBytes))
+		})
+
+		It("returns IsAdmin == true when scopes include doppler.firehose", func() {
+			t := time.Now().Add(time.Hour).Truncate(time.Second)
+			payload := fmt.Sprintf(`{"scope":"doppler.firehose", "exp":%d}`, t.Unix())
+			token := tc.EncodePayload(payload)
+
+			c, err := tc.uaaClient.Read(withBearer(token))
 			Expect(err).ToNot(HaveOccurred())
-			Expect(urlValues.Get("token")).To(Equal(token), "Expected prefix '"+prefix+"' to be removed from header")
-		},
-		Entry("Standard 'Bearer' prefix", "Bearer "),
-		Entry("Non-Standard 'bearer' prefix", "bearer "),
-		Entry("No prefix", ""),
-	)
-
-	It("sets the last request latency metric", func() {
-		client.Read("my-token")
-
-		Expect(metrics.m["cf_auth_proxy_last_uaa_latency"]).ToNot(BeZero())
-	})
-
-	It("returns error when token is blank", func() {
-		_, err := client.Read("")
-		Expect(err).To(HaveOccurred())
-	})
-
-	It("returns an error when UAA returns a non-200 response", func() {
-		data, err := json.Marshal(map[string]interface{}{
-			"error":             []string{"unauthorized"},
-			"error_description": []string{"An Authentication object was not found in the SecurityContext"},
+			Expect(c.IsAdmin).To(BeTrue())
+			Expect(c.Token).To(Equal(token))
+			Expect(c.ExpiresAt).To(Equal(t))
 		})
-		httpClient.resps = []response{{
-			body:   data,
-			status: http.StatusUnauthorized,
-		}}
 
-		c, err := client.Read("token")
-		Expect(err).To(HaveOccurred())
-		Expect(c.IsAdmin).To(BeFalse())
-		Expect(c.Token).To(Equal(""))
-	})
+		It("returns IsAdmin == true when scopes include logs.admin", func() {
+			t := time.Now().Add(time.Hour).Truncate(time.Second)
+			payload := fmt.Sprintf(`{"scope":"logs.admin", "exp":%d}`, t.Unix())
+			token := tc.EncodePayload(payload)
 
-	It("returns false when scopes don't include doppler.firehose or logs.admin", func() {
-		data, err := json.Marshal(map[string]interface{}{
-			"scope": []string{"some-scope"},
+			c, err := tc.uaaClient.Read(withBearer(token))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(c.IsAdmin).To(BeTrue())
+			Expect(c.Token).To(Equal(token))
+			Expect(c.ExpiresAt).To(Equal(t))
 		})
-		Expect(err).ToNot(HaveOccurred())
-		httpClient.resps = []response{{
-			body:   data,
-			status: http.StatusOK,
-		}}
 
-		c, err := client.Read("invalid-token")
-		Expect(err).ToNot(HaveOccurred())
+		It("returns IsAdmin == false when scopes include neither logs.admin nor doppler.firehose", func() {
+			t := time.Now().Add(time.Hour).Truncate(time.Second)
+			payload := fmt.Sprintf(`{"scope":"foo.bar", "exp":%d}`, t.Unix())
+			token := tc.EncodePayload(payload)
 
-		Expect(c.IsAdmin).To(BeFalse())
+			c, err := tc.uaaClient.Read(withBearer(token))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(c.IsAdmin).To(BeFalse())
+			Expect(c.Token).To(Equal(token))
+			Expect(c.ExpiresAt).To(Equal(t))
+		})
+
+		It("does offline token validation", func() {
+			numRequests := len(tc.httpClient.requests)
+
+			payload := `{"scope" : "logs.admin"}`
+			token := tc.EncodePayload(payload)
+
+			tc.uaaClient.Read(withBearer(token))
+			tc.uaaClient.Read(withBearer(token))
+
+			Expect(len(tc.httpClient.requests)).To(Equal(numRequests))
+		})
+
+		It("does not allow use of an expired token", func() {
+			tc := uaaSetup()
+			tc.GenerateTokenKeyResponse()
+
+			tc.uaaClient.GetTokenKey()
+
+			payload := fmt.Sprintf(`{
+	            "scope": "logs.admin",
+		        "exp": %d
+		    }`, time.Now().Add(-time.Minute).Unix())
+			token := tc.EncodePayload(payload)
+
+			_, err := tc.uaaClient.Read(withBearer(token))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("token is expired"))
+		})
+
+		It("returns an error when token is blank", func() {
+			_, err := tc.uaaClient.Read("")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(Equal("missing token"))
+		})
+
+		It("returns an error when the shared key is nil", func() {
+			// create a new testContext that hasn't been initialized with a key
+			tc = uaaSetup()
+
+			_, err := tc.uaaClient.Read("any-old-token")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(Equal("missing shared key from UAA"))
+		})
+
+		It("returns an error when the provided token cannot be decoded", func() {
+			_, err := tc.uaaClient.Read("any-old-token")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to decode token"))
+		})
+
+		DescribeTable("handling the Bearer prefix in the Authorization header",
+			func(prefix string) {
+				t := time.Now().Add(time.Hour).Truncate(time.Second)
+				payload := fmt.Sprintf(`{"scope":"foo.bar", "exp":%d}`, t.Unix())
+				token := tc.EncodePayload(payload)
+
+				c, err := tc.uaaClient.Read(withBearer(token))
+				Expect(err).ToNot(HaveOccurred())
+				Expect(c.IsAdmin).To(BeFalse())
+				Expect(c.Token).To(Equal(token))
+				Expect(c.ExpiresAt).To(Equal(t))
+			},
+			Entry("Standard 'Bearer' prefix", "Bearer "),
+			Entry("Non-Standard 'bearer' prefix", "bearer "),
+			Entry("No prefix", ""),
+		)
+
 	})
 
-	It("returns false when the request fails", func() {
-		httpClient.resps = []response{{
-			err: errors.New("some-err"),
-		}}
+	Context("GetTokenKey()", func() {
+		It("calls UAA correctly", func() {
+			tc := uaaSetup()
+			tc.GenerateTokenKeyResponse()
+			tc.uaaClient.GetTokenKey()
 
-		_, err := client.Read("valid-token")
-		Expect(err).To(HaveOccurred())
+			r := tc.httpClient.requests[0]
+
+			Expect(r.Method).To(Equal(http.MethodGet))
+			Expect(r.Header.Get("Content-Type")).To(Equal("application/json"))
+			Expect(r.URL.Path).To(Equal("/token_key"))
+
+			// confirm that we're not using any authentication
+			_, _, ok := r.BasicAuth()
+			Expect(ok).To(BeFalse())
+
+			Expect(r.Body).To(BeNil())
+		})
+
+		It("returns an error when UAA cannot be reached", func() {
+			tc := uaaSetup()
+			tc.httpClient.resps = []response{{
+				err: errors.New("error!"),
+			}}
+
+			err := tc.uaaClient.GetTokenKey()
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("returns an error when UAA returns a non-200 response", func() {
+			tc := uaaSetup()
+			tc.httpClient.resps = []response{{
+				body:   []byte{},
+				status: http.StatusUnauthorized,
+			}}
+
+			err := tc.uaaClient.GetTokenKey()
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("returns an error when the response from the UAA is malformed", func() {
+			tc := uaaSetup()
+			tc.httpClient.resps = []response{{
+				body:   []byte("garbage"),
+				status: http.StatusOK,
+			}}
+
+			err := tc.uaaClient.GetTokenKey()
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("returns an error when the response from the UAA has an empty key", func() {
+			tc := uaaSetup()
+			tc.GenerateEmptyTokenKeyResponse()
+
+			err := tc.uaaClient.GetTokenKey()
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("returns an error when the response from the UAA has an unparsable PEM format", func() {
+			tc := uaaSetup()
+			tc.GenerateTokenKeyResponseWithInvalidPEM()
+
+			err := tc.uaaClient.GetTokenKey()
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(Equal("failed to parse PEM block containing the public key"))
+		})
+
+		It("returns an error when the response from the UAA has an invalid key format", func() {
+			tc := uaaSetup()
+			tc.GenerateTokenKeyResponseWithInvalidKey()
+
+			err := tc.uaaClient.GetTokenKey()
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("error parsing public key"))
+		})
+	})
+	Context("StartPeriodicTokenKeyRefresh()", func() {
+		It("continues fetching new tokens in the background", func() {
+			tc := uaaSetup()
+			tc.GenerateTokenKeyResponse()
+
+			numRequests := len(tc.httpClient.requests)
+
+			tc.uaaClient.StartPeriodicTokenKeyRefresh(100 * time.Millisecond)
+
+			// wait 2.5 cycles so that we can count the number of new
+			// background http requests to UAA
+			time.Sleep(250 * time.Millisecond)
+			Expect(len(tc.httpClient.requests)).To(Equal(numRequests + 2))
+		})
 	})
 
-	It("returns false when the response from the UAA is invalid", func() {
-		httpClient.resps = []response{{
-			body:   []byte("garbage"),
-			status: http.StatusOK,
-		}}
-
-		_, err := client.Read("valid-token")
-		Expect(err).To(HaveOccurred())
-	})
 })
+
+func uaaSetup() *UAATestContext {
+	httpClient := newSpyHTTPClient()
+	metrics := newSpyMetrics()
+	privateKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+
+	uaaClient := auth.NewUAAClient(
+		"https://uaa.com",
+		httpClient,
+		metrics,
+		log.New(ioutil.Discard, "", 0),
+	)
+
+	return &UAATestContext{
+		uaaClient:  uaaClient,
+		httpClient: httpClient,
+		metrics:    metrics,
+		privateKey: privateKey,
+	}
+}
+
+type UAATestContext struct {
+	uaaClient  *auth.UAAClient
+	httpClient *spyHTTPClient
+	metrics    *spyMetrics
+	privateKey *rsa.PrivateKey
+}
+
+func (tc *UAATestContext) GenerateTokenKeyResponse() {
+	data, err := json.Marshal(map[string]string{
+		"kty":   "RSA",
+		"e":     publicKeyExponentToString(tc.privateKey),
+		"use":   "sig",
+		"kid":   "testKey",
+		"alg":   "RS256",
+		"value": publicKeyPEMToString(tc.privateKey),
+		"n":     publicKeyModulusToString(tc.privateKey),
+	})
+
+	Expect(err).ToNot(HaveOccurred())
+
+	tc.httpClient.resps = []response{{
+		body:   data,
+		status: http.StatusOK,
+	}}
+}
+
+func (tc *UAATestContext) GenerateEmptyTokenKeyResponse() {
+	data, err := json.Marshal(map[string]string{
+		"kty":   "RSA",
+		"e":     publicKeyExponentToString(tc.privateKey),
+		"use":   "sig",
+		"kid":   "testKey",
+		"alg":   "RS256",
+		"value": "",
+		"n":     publicKeyModulusToString(tc.privateKey),
+	})
+
+	Expect(err).ToNot(HaveOccurred())
+
+	tc.httpClient.resps = []response{{
+		body:   data,
+		status: http.StatusOK,
+	}}
+}
+
+func (tc *UAATestContext) GenerateTokenKeyResponseWithInvalidPEM() {
+	data, err := json.Marshal(map[string]string{
+		"kty":   "RSA",
+		"e":     publicKeyExponentToString(tc.privateKey),
+		"use":   "sig",
+		"kid":   "testKey",
+		"alg":   "RS256",
+		"value": "-- BEGIN SOMETHING --\nNOTVALIDPEM\n-- END SOMETHING --\n",
+		"n":     publicKeyModulusToString(tc.privateKey),
+	})
+
+	Expect(err).ToNot(HaveOccurred())
+
+	tc.httpClient.resps = []response{{
+		body:   data,
+		status: http.StatusOK,
+	}}
+}
+
+func (tc *UAATestContext) GenerateTokenKeyResponseWithInvalidKey() {
+	pem := publicKeyPEMToString(tc.privateKey)
+	data, err := json.Marshal(map[string]string{
+		"kty":   "RSA",
+		"e":     publicKeyExponentToString(tc.privateKey),
+		"use":   "sig",
+		"kid":   "testKey",
+		"alg":   "RS256",
+		"value": strings.Replace(pem, "MIIB", "XXXX", 1),
+		"n":     publicKeyModulusToString(tc.privateKey),
+	})
+
+	Expect(err).ToNot(HaveOccurred())
+
+	tc.httpClient.resps = []response{{
+		body:   data,
+		status: http.StatusOK,
+	}}
+}
+
+func (tc *UAATestContext) EncodePayload(payload string) string {
+	token, err := jose.Sign(payload, jose.RS256, tc.privateKey)
+	Expect(err).ToNot(HaveOccurred())
+
+	return token
+}
 
 type spyHTTPClient struct {
 	mu       sync.Mutex
@@ -275,4 +413,30 @@ func (s *spyMetrics) NewGauge(name, unit string) func(float64) {
 		defer s.mu.Unlock()
 		s.m[name] = v
 	}
+}
+
+func publicKeyExponentToString(privateKey *rsa.PrivateKey) string {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, uint64(privateKey.PublicKey.E))
+	return base64.StdEncoding.EncodeToString(b[0:3])
+}
+
+func publicKeyPEMToString(privateKey *rsa.PrivateKey) string {
+	encodedKey, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	Expect(err).ToNot(HaveOccurred())
+
+	var pemKey = &pem.Block{
+		Type:  "RSA PUBLIC KEY",
+		Bytes: encodedKey,
+	}
+
+	return string(pem.EncodeToMemory(pemKey))
+}
+
+func publicKeyModulusToString(privateKey *rsa.PrivateKey) string {
+	return base64.StdEncoding.EncodeToString(privateKey.PublicKey.N.Bytes())
+}
+
+func withBearer(token string) string {
+	return fmt.Sprintf("Bearer %s", token)
 }
