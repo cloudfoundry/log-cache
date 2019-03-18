@@ -31,6 +31,7 @@ func main() {
 		WithMetrics(metrics.New(expvar.NewMap("LogCache"))),
 		WithAddr(cfg.Addr),
 		WithMemoryLimit(cfg.MemoryLimit),
+		WithMaxPerSource(cfg.MaxPerSource),
 		WithQueryTimeout(cfg.QueryTimeout),
 		WithClustered(
 			cfg.NodeIndex,
