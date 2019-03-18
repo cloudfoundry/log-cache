@@ -41,6 +41,7 @@ func main() {
 		WithMetrics(m),
 		WithAddr(cfg.Addr),
 		WithMemoryLimit(float64(cfg.MemoryLimit)),
+		WithMaxPerSource(cfg.MaxPerSource),
 		WithQueryTimeout(cfg.QueryTimeout),
 		WithClustered(
 			cfg.NodeIndex,
