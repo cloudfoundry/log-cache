@@ -18,6 +18,12 @@ type Config struct {
 	// cache. If exceeded, the cache will prune. Default is 50%.
 	MemoryLimit float64 `env:"MEMORY_LIMIT_PERCENT, report"`
 
+	// MaxPerSource sets the maximum number of items stored per source.
+	// Because autoscaler requires a minute of data, apps with more than 1000
+	// requests per second will fill up the router logs/metrics in less than a
+	// minute. Default is 100000.
+	MaxPerSource int `env:"MAX_PER_SOURCE, report"`
+
 	// NodeIndex determines what data the node stores. It splits up the range
 	// of 0 - 18446744073709551615 evenly. If data falls out of range of the
 	// given node, it will be routed to theh correct one.
@@ -36,10 +42,11 @@ type Config struct {
 // LoadConfig creates Config object from environment variables
 func LoadConfig() (*Config, error) {
 	c := Config{
-		Addr:        ":8080",
-		HealthAddr:  "localhost:6060",
-		MinimumSize: 500000,
-		MemoryLimit: 50,
+		Addr:         ":8080",
+		HealthAddr:   "localhost:6060",
+		MinimumSize:  500000,
+		MemoryLimit:  50,
+		MaxPerSource: 100000,
 	}
 
 	if err := envstruct.Load(&c); err != nil {
