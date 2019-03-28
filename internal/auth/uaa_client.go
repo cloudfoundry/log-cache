@@ -30,7 +30,7 @@ type UAAClient struct {
 	httpClient HTTPClient
 	uaa        *url.URL
 	log        *log.Logger
-	sharedKey  *rsa.PublicKey
+	publicKey  *rsa.PublicKey
 }
 
 func NewUAAClient(
@@ -91,12 +91,12 @@ func (c *UAAClient) GetTokenKey() error {
 		return fmt.Errorf("error parsing public key: %s", err)
 	}
 
-	sharedKey, isRSAPublicKey := publicKeyInterface.(*rsa.PublicKey)
+	publicKey, isRSAPublicKey := publicKeyInterface.(*rsa.PublicKey)
 	if !isRSAPublicKey {
 		return fmt.Errorf("did not get a valid RSA key from UAA: %s", err)
 	}
 
-	c.sharedKey = sharedKey
+	c.publicKey = publicKey
 
 	return nil
 }
@@ -118,11 +118,11 @@ func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 		return Oauth2ClientContext{}, errors.New("missing token")
 	}
 
-	if c.sharedKey == nil {
+	if c.publicKey == nil {
 		return Oauth2ClientContext{}, errors.New("missing shared key from UAA")
 	}
 
-	payload, _, err := jose.Decode(trimBearer(token), c.sharedKey)
+	payload, _, err := jose.Decode(trimBearer(token), c.publicKey)
 	if err != nil {
 		return Oauth2ClientContext{}, fmt.Errorf("failed to decode token: %s", err.Error())
 	}
