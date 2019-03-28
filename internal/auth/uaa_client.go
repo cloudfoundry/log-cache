@@ -137,7 +137,7 @@ func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 	}
 
 	var isAdmin bool
-	for _, scope := range decodedToken.Scopes() {
+	for _, scope := range decodedToken.Scope {
 		if scope == "doppler.firehose" || scope == "logs.admin" {
 			isAdmin = true
 		}
@@ -171,7 +171,7 @@ func decodeTokenKey(r io.Reader) (decodedTokenKey, error) {
 
 type decodedToken struct {
 	Value   string    `json:"value"`
-	Scope   string    `json:"scope"`
+	Scope   []string  `json:"scope"`
 	Exp     float64   `json:"exp"`
 	ExpTime time.Time `json:"-"`
 }
@@ -185,8 +185,4 @@ func decodeToken(r io.Reader) (decodedToken, error) {
 	dt.ExpTime = time.Unix(int64(dt.Exp), 0)
 
 	return dt, nil
-}
-
-func (dt *decodedToken) Scopes() []string {
-	return strings.Split(dt.Scope, " ")
 }

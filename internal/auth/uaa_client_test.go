@@ -41,7 +41,7 @@ var _ = Describe("UAAClient", func() {
 
 		It("returns IsAdmin == true when scopes include doppler.firehose", func() {
 			t := time.Now().Add(time.Hour).Truncate(time.Second)
-			payload := fmt.Sprintf(`{"scope":"doppler.firehose", "exp":%d}`, t.Unix())
+			payload := fmt.Sprintf(`{"scope":["doppler.firehose"], "exp":%d}`, t.Unix())
 			token := tc.EncodePayload(payload)
 
 			c, err := tc.uaaClient.Read(withBearer(token))
@@ -53,7 +53,7 @@ var _ = Describe("UAAClient", func() {
 
 		It("returns IsAdmin == true when scopes include logs.admin", func() {
 			t := time.Now().Add(time.Hour).Truncate(time.Second)
-			payload := fmt.Sprintf(`{"scope":"logs.admin", "exp":%d}`, t.Unix())
+			payload := fmt.Sprintf(`{"scope":["logs.admin"], "exp":%d}`, t.Unix())
 			token := tc.EncodePayload(payload)
 
 			c, err := tc.uaaClient.Read(withBearer(token))
@@ -65,7 +65,7 @@ var _ = Describe("UAAClient", func() {
 
 		It("returns IsAdmin == false when scopes include neither logs.admin nor doppler.firehose", func() {
 			t := time.Now().Add(time.Hour).Truncate(time.Second)
-			payload := fmt.Sprintf(`{"scope":"foo.bar", "exp":%d}`, t.Unix())
+			payload := fmt.Sprintf(`{"scope":["foo.bar"], "exp":%d}`, t.Unix())
 			token := tc.EncodePayload(payload)
 
 			c, err := tc.uaaClient.Read(withBearer(token))
@@ -78,7 +78,7 @@ var _ = Describe("UAAClient", func() {
 		It("does offline token validation", func() {
 			numRequests := len(tc.httpClient.requests)
 
-			payload := `{"scope" : "logs.admin"}`
+			payload := `{"scope":["logs.admin"]}`
 			token := tc.EncodePayload(payload)
 
 			tc.uaaClient.Read(withBearer(token))
@@ -94,7 +94,7 @@ var _ = Describe("UAAClient", func() {
 			tc.uaaClient.GetTokenKey()
 
 			payload := fmt.Sprintf(`{
-	            "scope": "logs.admin",
+	            "scope": ["logs.admin"],
 		        "exp": %d
 		    }`, time.Now().Add(-time.Minute).Unix())
 			token := tc.EncodePayload(payload)
@@ -128,7 +128,7 @@ var _ = Describe("UAAClient", func() {
 		DescribeTable("handling the Bearer prefix in the Authorization header",
 			func(prefix string) {
 				t := time.Now().Add(time.Hour).Truncate(time.Second)
-				payload := fmt.Sprintf(`{"scope":"foo.bar", "exp":%d}`, t.Unix())
+				payload := fmt.Sprintf(`{"scope":["foo.bar"], "exp":%d}`, t.Unix())
 				token := tc.EncodePayload(payload)
 
 				c, err := tc.uaaClient.Read(withBearer(token))
