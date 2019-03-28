@@ -19,6 +19,7 @@ type CAPIClient struct {
 	tokenCache              *sync.Map
 	tokenPruningInterval    time.Duration
 	cacheExpirationInterval time.Duration
+	log                     *log.Logger
 
 	storeAppsLatency                 func(float64)
 	storeListServiceInstancesLatency func(float64)
@@ -43,6 +44,7 @@ func NewCAPIClient(
 		tokenCache:              &sync.Map{},
 		tokenPruningInterval:    time.Minute,
 		cacheExpirationInterval: time.Minute,
+		log:                     log,
 
 		storeAppsLatency:                 m.NewGauge("cf_auth_proxy_last_capiv3_apps_latency", "nanoseconds"),
 		storeListServiceInstancesLatency: m.NewGauge("cf_auth_proxy_last_capiv3_list_service_instances_latency", "nanoseconds"),
@@ -105,13 +107,13 @@ func (c *CAPIClient) AvailableSourceIDs(authToken string) []string {
 	var sourceIDs []string
 	req, err := http.NewRequest(http.MethodGet, c.addr+"/v3/apps", nil)
 	if err != nil {
-		log.Printf("failed to build authorize log access request: %s", err)
+		c.log.Printf("failed to build authorize log access request: %s", err)
 		return nil
 	}
 
 	resources, err := c.doPaginatedResourceRequest(req, authToken, c.storeAppsLatency)
 	if err != nil {
-		log.Print(err)
+		c.log.Print(err)
 		return nil
 	}
 	for _, resource := range resources {
@@ -120,13 +122,13 @@ func (c *CAPIClient) AvailableSourceIDs(authToken string) []string {
 
 	req, err = http.NewRequest(http.MethodGet, c.addr+"/v3/service_instances", nil)
 	if err != nil {
-		log.Printf("failed to build authorize service instance access request: %s", err)
+		c.log.Printf("failed to build authorize service instance access request: %s", err)
 		return nil
 	}
 
 	resources, err = c.doPaginatedResourceRequest(req, authToken, c.storeListServiceInstancesLatency)
 	if err != nil {
-		log.Print(err)
+		c.log.Print(err)
 		return nil
 	}
 	for _, resource := range resources {
@@ -143,7 +145,7 @@ func (c *CAPIClient) GetRelatedSourceIds(appNames []string, authToken string) ma
 
 	req, err := http.NewRequest(http.MethodGet, c.addr+"/v3/apps", nil)
 	if err != nil {
-		log.Printf("failed to build app list request: %s", err)
+		c.log.Printf("failed to build app list request: %s", err)
 		return map[string][]string{}
 	}
 
@@ -156,7 +158,7 @@ func (c *CAPIClient) GetRelatedSourceIds(appNames []string, authToken string) ma
 
 	resources, err := c.doPaginatedResourceRequest(req, authToken, c.storeAppsByNameLatency)
 	if err != nil {
-		log.Print(err)
+		c.log.Print(err)
 		return map[string][]string{}
 	}
 	for _, resource := range resources {
@@ -267,12 +269,12 @@ func (c *CAPIClient) doRequest(req *http.Request, authToken string, reporter fun
 	reporter(float64(time.Since(start)))
 
 	if err != nil {
-		log.Printf("CAPI request (%s) failed: %s", req.URL.Path, err)
+		c.log.Printf("CAPI request (%s) failed: %s", req.URL.Path, err)
 		return nil, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("CAPI request (%s) returned: %d", req.URL.Path, resp.StatusCode)
+		c.log.Printf("CAPI request (%s) returned: %d", req.URL.Path, resp.StatusCode)
 		cleanup(resp)
 		return resp, nil
 	}
