@@ -16,7 +16,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("CAPIClient", func() {
+var _ = FDescribe("CAPIClient", func() {
 	type testContext struct {
 		capiClient *spyHTTPClient
 		client     *auth.CAPIClient
