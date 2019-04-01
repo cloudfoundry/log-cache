@@ -122,7 +122,14 @@ func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 		return Oauth2ClientContext{}, errors.New("missing shared key from UAA")
 	}
 
-	payload, _, err := jose.Decode(trimBearer(token), c.publicKey)
+	payload, _, err := jose.Decode(trimBearer(token), func(headers map[string]interface{}, payload string) interface{} {
+		if headers["alg"] != "RS256" {
+			return fmt.Errorf("unsupported algorithm: %s", headers["alg"])
+		}
+
+		return c.publicKey
+	})
+
 	if err != nil {
 		return Oauth2ClientContext{}, fmt.Errorf("failed to decode token: %s", err.Error())
 	}

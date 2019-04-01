@@ -39,10 +39,20 @@ var _ = Describe("UAAClient", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
+		It("only accepts tokens that are signed with RS256", func() {
+			t := time.Now().Add(time.Hour).Truncate(time.Second)
+			payload := fmt.Sprintf(`{"scope":["doppler.firehose"], "exp":%d}`, t.Unix())
+			token := tc.CreateUnsignedToken(payload)
+
+			_, err := tc.uaaClient.Read(withBearer(token))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(Equal("failed to decode token: unsupported algorithm: none"))
+		})
+
 		It("returns IsAdmin == true when scopes include doppler.firehose", func() {
 			t := time.Now().Add(time.Hour).Truncate(time.Second)
 			payload := fmt.Sprintf(`{"scope":["doppler.firehose"], "exp":%d}`, t.Unix())
-			token := tc.EncodePayload(payload)
+			token := tc.CreateSignedToken(payload)
 
 			c, err := tc.uaaClient.Read(withBearer(token))
 			Expect(err).ToNot(HaveOccurred())
@@ -54,7 +64,7 @@ var _ = Describe("UAAClient", func() {
 		It("returns IsAdmin == true when scopes include logs.admin", func() {
 			t := time.Now().Add(time.Hour).Truncate(time.Second)
 			payload := fmt.Sprintf(`{"scope":["logs.admin"], "exp":%d}`, t.Unix())
-			token := tc.EncodePayload(payload)
+			token := tc.CreateSignedToken(payload)
 
 			c, err := tc.uaaClient.Read(withBearer(token))
 			Expect(err).ToNot(HaveOccurred())
@@ -66,7 +76,7 @@ var _ = Describe("UAAClient", func() {
 		It("returns IsAdmin == false when scopes include neither logs.admin nor doppler.firehose", func() {
 			t := time.Now().Add(time.Hour).Truncate(time.Second)
 			payload := fmt.Sprintf(`{"scope":["foo.bar"], "exp":%d}`, t.Unix())
-			token := tc.EncodePayload(payload)
+			token := tc.CreateSignedToken(payload)
 
 			c, err := tc.uaaClient.Read(withBearer(token))
 			Expect(err).ToNot(HaveOccurred())
@@ -79,7 +89,7 @@ var _ = Describe("UAAClient", func() {
 			numRequests := len(tc.httpClient.requests)
 
 			payload := `{"scope":["logs.admin"]}`
-			token := tc.EncodePayload(payload)
+			token := tc.CreateSignedToken(payload)
 
 			tc.uaaClient.Read(withBearer(token))
 			tc.uaaClient.Read(withBearer(token))
@@ -97,7 +107,7 @@ var _ = Describe("UAAClient", func() {
 	            "scope": ["logs.admin"],
 		        "exp": %d
 		    }`, time.Now().Add(-time.Minute).Unix())
-			token := tc.EncodePayload(payload)
+			token := tc.CreateSignedToken(payload)
 
 			_, err := tc.uaaClient.Read(withBearer(token))
 			Expect(err).To(HaveOccurred())
@@ -129,7 +139,7 @@ var _ = Describe("UAAClient", func() {
 			func(prefix string) {
 				t := time.Now().Add(time.Hour).Truncate(time.Second)
 				payload := fmt.Sprintf(`{"scope":["foo.bar"], "exp":%d}`, t.Unix())
-				token := tc.EncodePayload(payload)
+				token := tc.CreateSignedToken(payload)
 
 				c, err := tc.uaaClient.Read(withBearer(token))
 				Expect(err).ToNot(HaveOccurred())
@@ -343,8 +353,15 @@ func (tc *UAATestContext) GenerateTokenKeyResponseWithInvalidKey() {
 	}}
 }
 
-func (tc *UAATestContext) EncodePayload(payload string) string {
+func (tc *UAATestContext) CreateSignedToken(payload string) string {
 	token, err := jose.Sign(payload, jose.RS256, tc.privateKey)
+	Expect(err).ToNot(HaveOccurred())
+
+	return token
+}
+
+func (tc *UAATestContext) CreateUnsignedToken(payload string) string {
+	token, err := jose.Sign(payload, jose.NONE, nil)
 	Expect(err).ToNot(HaveOccurred())
 
 	return token
