@@ -77,7 +77,7 @@ func WithMinimumRefreshInterval(interval time.Duration) UAAOption {
 func (c *UAAClient) RefreshTokenKeys() error {
 	nextAllowedRefreshTime := c.lastQueryTime.Add(c.minimumRefreshInterval)
 	if time.Now().Before(nextAllowedRefreshTime) {
-		log.Printf(
+		c.log.Printf(
 			"UAA TokenKey refresh throttled to every %s, try again in %s",
 			c.minimumRefreshInterval,
 			time.Until(nextAllowedRefreshTime).Round(time.Millisecond),
@@ -195,14 +195,11 @@ func (c *UAAClient) GetUnknownPublicKey(keyId string) (*rsa.PublicKey, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.RefreshTokenKeys()
+
 	publicKey, ok := c.publicKeys[keyId]
 	if !ok {
-		c.RefreshTokenKeys()
-
-		publicKey, ok = c.publicKeys[keyId]
-		if !ok {
-			return nil, fmt.Errorf("using unknown token key")
-		}
+		return nil, errors.New("using unknown token key")
 	}
 
 	return publicKey, nil
