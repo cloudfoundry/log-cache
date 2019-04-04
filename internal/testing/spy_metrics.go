@@ -1,6 +1,7 @@
 package testing
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -33,6 +34,20 @@ func (s *SpyMetrics) NewCounter(name string) func(uint64) {
 		defer s.Unlock()
 
 		s.values[name] += float64(value)
+	}
+}
+
+func (s *SpyMetrics) NewPerNodeCounter(name string, nodeIndex int) func(uint64) {
+	s.Lock()
+	defer s.Unlock()
+	metricName := fmt.Sprintf("%s-node%d", name, nodeIndex)
+	s.values[metricName] = 0
+
+	return func(value uint64) {
+		s.Lock()
+		defer s.Unlock()
+
+		s.values[metricName] += float64(value)
 	}
 }
 

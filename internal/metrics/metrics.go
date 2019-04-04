@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -12,6 +13,10 @@ type Initializer interface {
 	// NewCounter returns a function to increment for the given metric.
 	NewCounter(name string) func(delta uint64)
 
+	// NewPerNodeCounter returns a function to increment for the given metric,
+	// but requires a node index for initialization.
+	NewPerNodeCounter(name string, nodeIndex int) func(delta uint64)
+
 	// NewGauge returns a function to set the value for the given metric.
 	NewGauge(name, unit string) func(value float64)
 }
@@ -20,6 +25,10 @@ type Initializer interface {
 type NullMetrics struct{}
 
 func (m NullMetrics) NewCounter(name string) func(uint64) {
+	return func(uint64) {}
+}
+
+func (m NullMetrics) NewPerNodeCounter(name string, nodeIndex int) func(uint64) {
 	return func(uint64) {}
 }
 
@@ -44,6 +53,19 @@ func New() *Metrics {
 func (m *Metrics) NewCounter(name string) func(delta uint64) {
 	prometheusCounterMetric := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: name,
+	})
+	m.Registry.MustRegister(prometheusCounterMetric)
+
+	return func(d uint64) {
+		prometheusCounterMetric.Add(float64(d))
+	}
+}
+
+// NewCounter returns a func to be used increment the counter total.
+func (m *Metrics) NewPerNodeCounter(name string, nodeIndex int) func(delta uint64) {
+	prometheusCounterMetric := prometheus.NewCounter(prometheus.CounterOpts{
+		Name:        name,
+		ConstLabels: prometheus.Labels{"nodeIndex": strconv.Itoa(nodeIndex)},
 	})
 	m.Registry.MustRegister(prometheusCounterMetric)
 

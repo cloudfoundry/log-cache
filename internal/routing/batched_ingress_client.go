@@ -23,31 +23,23 @@ type BatchedIngressClient struct {
 	log      *log.Logger
 }
 
-// Metrics registers new Counter metrics.
-type Metrics interface {
-	// NewCounter returns a func that can be used to increment a counter
-	// metric.
-	NewCounter(name string) func(delta uint64)
-}
-
 // NewBatchedIngressClient returns a new BatchedIngressClient.
 func NewBatchedIngressClient(
 	size int,
 	interval time.Duration,
 	c rpc.IngressClient,
-	m Metrics,
+	incDroppedMetric func(uint64),
 	log *log.Logger,
 ) *BatchedIngressClient {
-	dropped := m.NewCounter("Dropped")
 	b := &BatchedIngressClient{
 		c:        c,
 		size:     size,
 		interval: interval,
 		log:      log,
 
-		buffer: diodes.NewOneToOne(10000, diodes.AlertFunc(func(missed int) {
-			log.Printf("Dropped %d envelopes", missed)
-			dropped(uint64(missed))
+		buffer: diodes.NewOneToOne(10000, diodes.AlertFunc(func(dropped int) {
+			log.Printf("dropped %d envelopes", dropped)
+			incDroppedMetric(uint64(dropped))
 		})),
 	}
 

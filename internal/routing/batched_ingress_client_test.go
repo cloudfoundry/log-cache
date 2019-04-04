@@ -17,15 +17,17 @@ import (
 
 var _ = Describe("BatchedIngressClient", func() {
 	var (
-		spyMetrics    *spyMetrics
+		m             *spyMetrics
+		spyDropped    func(uint64)
 		ingressClient *spyIngressClient
 		c             *routing.BatchedIngressClient
 	)
 
 	BeforeEach(func() {
-		spyMetrics = newSpyMetrics()
+		m = newSpyMetrics()
+		spyDropped = m.NewCounter("nodeX_dropped")
 		ingressClient = newSpyIngressClient()
-		c = routing.NewBatchedIngressClient(5, time.Hour, ingressClient, spyMetrics, log.New(ioutil.Discard, "", 0))
+		c = routing.NewBatchedIngressClient(5, time.Hour, ingressClient, spyDropped, log.New(ioutil.Discard, "", 0))
 	})
 
 	It("sends envelopes with LocalOnly set to true", func() {
@@ -70,7 +72,7 @@ var _ = Describe("BatchedIngressClient", func() {
 	})
 
 	It("sends envelopes by batches because of interval", func() {
-		c = routing.NewBatchedIngressClient(5, time.Microsecond, ingressClient, spyMetrics, log.New(ioutil.Discard, "", 0))
+		c = routing.NewBatchedIngressClient(5, time.Microsecond, ingressClient, spyDropped, log.New(ioutil.Discard, "", 0))
 		_, err := c.Send(context.Background(), &rpc.SendRequest{
 			Envelopes: &loggregator_v2.EnvelopeBatch{
 				Batch: []*loggregator_v2.Envelope{
@@ -104,7 +106,7 @@ var _ = Describe("BatchedIngressClient", func() {
 			})
 		}
 
-		Eventually(spyMetrics.GetDelta("Dropped")).ShouldNot(BeZero())
+		Eventually(m.GetDelta("nodeX_dropped")).ShouldNot(BeZero())
 	})
 })
 

@@ -39,7 +39,7 @@ func main() {
 	m := metrics.New()
 	loggr := log.New(os.Stderr, "[LOGGR] ", log.LstdFlags)
 
-	dropped := m.NewCounter("Dropped")
+	dropped := m.NewCounter("nozzle_dropped")
 
 	streamConnector := loggregator.NewEnvelopeStreamConnector(
 		cfg.LogProviderAddr,
