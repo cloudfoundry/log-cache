@@ -350,7 +350,7 @@ func uaaSetup(opts ...auth.UAAOption) *UAATestContext {
 	tokenKey := generateLegitTokenKey("testKey1")
 
 	// default the minimumRefreshInterval in tests to 0
-	opts = append([]auth.UAAOption{auth.WithMinimumRefreshInterval(0 * time.Nanosecond)}, opts...)
+	opts = append([]auth.UAAOption{auth.WithMinimumRefreshInterval(0)}, opts...)
 
 	uaaClient := auth.NewUAAClient(
 		"https://uaa.com",
