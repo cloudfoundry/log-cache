@@ -28,11 +28,13 @@ type HTTPClient interface {
 }
 
 type UAAClient struct {
-	httpClient HTTPClient
-	uaa        *url.URL
-	log        *log.Logger
-	publicKeys map[string]*rsa.PublicKey
-	mu         sync.Mutex
+	httpClient             HTTPClient
+	uaa                    *url.URL
+	log                    *log.Logger
+	publicKeys             map[string]*rsa.PublicKey
+	minimumRefreshInterval time.Duration
+	lastQueryTime          time.Time
+	mu                     sync.Mutex
 }
 
 func NewUAAClient(
@@ -40,6 +42,7 @@ func NewUAAClient(
 	httpClient HTTPClient,
 	m Metrics,
 	log *log.Logger,
+	opts ...UAAOption,
 ) *UAAClient {
 	u, err := url.Parse(uaaAddr)
 	if err != nil {
@@ -48,15 +51,36 @@ func NewUAAClient(
 
 	u.Path = "token_keys"
 
-	return &UAAClient{
-		uaa:        u,
-		httpClient: httpClient,
-		log:        log,
-		publicKeys: make(map[string]*rsa.PublicKey),
+	c := &UAAClient{
+		uaa:                    u,
+		httpClient:             httpClient,
+		log:                    log,
+		publicKeys:             make(map[string]*rsa.PublicKey),
+		minimumRefreshInterval: 30 * time.Second,
+	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c
+}
+
+type UAAOption func(c *UAAClient)
+
+func WithMinimumRefreshInterval(interval time.Duration) UAAOption {
+	return func(c *UAAClient) {
+		c.minimumRefreshInterval = interval
 	}
 }
 
 func (c *UAAClient) RefreshTokenKeys() error {
+	nextAllowedRefreshTime := c.lastQueryTime.Add(c.minimumRefreshInterval)
+	if c.lastQueryTime.After(time.Unix(0, 0)) && time.Now().Before(nextAllowedRefreshTime) {
+		return nil
+	}
+	c.lastQueryTime = time.Now()
+
 	req, err := http.NewRequest("GET", c.uaa.String(), nil)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create request to UAA: %s", err))
@@ -82,7 +106,6 @@ func (c *UAAClient) RefreshTokenKeys() error {
 
 	newPublicKeyMap := make(map[string]*rsa.PublicKey)
 
-	// TODO: mutex?
 	for _, tokenKey := range tokenKeys {
 		if tokenKey.Value == "" {
 			return fmt.Errorf("received an empty token key from UAA")

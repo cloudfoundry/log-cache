@@ -306,6 +306,24 @@ var _ = Describe("UAAClient", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("error parsing public key"))
 		})
+
+		It("rate limits UAA TokenKey refreshes", func() {
+			tc := uaaSetup(auth.WithMinimumRefreshInterval(200 * time.Millisecond))
+			tc.GenerateSingleTokenKeyResponse()
+
+			initialRequestCount := len(tc.httpClient.requests)
+
+			tc.uaaClient.RefreshTokenKeys()
+			Expect(len(tc.httpClient.requests)).To(Equal(initialRequestCount + 1))
+
+			time.Sleep(100 * time.Millisecond)
+			tc.uaaClient.RefreshTokenKeys()
+			Expect(len(tc.httpClient.requests)).To(Equal(initialRequestCount + 1))
+
+			time.Sleep(101 * time.Millisecond)
+			tc.uaaClient.RefreshTokenKeys()
+			Expect(len(tc.httpClient.requests)).To(Equal(initialRequestCount + 2))
+		})
 	})
 })
 
@@ -326,16 +344,20 @@ func generateLegitTokenKey(keyId string) mockTokenKey {
 	}
 }
 
-func uaaSetup() *UAATestContext {
+func uaaSetup(opts ...auth.UAAOption) *UAATestContext {
 	httpClient := newSpyHTTPClient()
 	metrics := newSpyMetrics()
 	tokenKey := generateLegitTokenKey("testKey1")
+
+	// default the minimumRefreshInterval in tests to 0
+	opts = append([]auth.UAAOption{auth.WithMinimumRefreshInterval(0 * time.Nanosecond)}, opts...)
 
 	uaaClient := auth.NewUAAClient(
 		"https://uaa.com",
 		httpClient,
 		metrics,
 		log.New(ioutil.Discard, "", 0),
+		opts...,
 	)
 
 	return &UAATestContext{
