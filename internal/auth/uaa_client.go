@@ -77,6 +77,11 @@ func WithMinimumRefreshInterval(interval time.Duration) UAAOption {
 func (c *UAAClient) RefreshTokenKeys() error {
 	nextAllowedRefreshTime := c.lastQueryTime.Add(c.minimumRefreshInterval)
 	if c.lastQueryTime.After(time.Unix(0, 0)) && time.Now().Before(nextAllowedRefreshTime) {
+		log.Printf(
+			"UAA TokenKey refresh throttled to every %s, try again in %s",
+			c.minimumRefreshInterval,
+			time.Until(nextAllowedRefreshTime).Round(time.Millisecond),
+		)
 		return nil
 	}
 	c.lastQueryTime = time.Now()
