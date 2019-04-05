@@ -34,7 +34,7 @@ type UAAClient struct {
 	publicKeys             map[string]*rsa.PublicKey
 	minimumRefreshInterval time.Duration
 	lastQueryTime          time.Time
-	mu                     sync.Mutex
+	mu                     sync.RWMutex
 }
 
 func NewUAAClient(
@@ -75,6 +75,9 @@ func WithMinimumRefreshInterval(interval time.Duration) UAAOption {
 }
 
 func (c *UAAClient) RefreshTokenKeys() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	nextAllowedRefreshTime := c.lastQueryTime.Add(c.minimumRefreshInterval)
 	if time.Now().Before(nextAllowedRefreshTime) {
 		c.log.Printf(
@@ -155,7 +158,7 @@ func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 		if !ok {
 			var err error
 
-			publicKey, err = c.GetUnknownPublicKey(keyId)
+			publicKey, err = c.getMissingPublicKey(keyId)
 			if err != nil {
 				return err
 			}
@@ -191,12 +194,11 @@ func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 	}, err
 }
 
-func (c *UAAClient) GetUnknownPublicKey(keyId string) (*rsa.PublicKey, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+func (c *UAAClient) getMissingPublicKey(keyId string) (*rsa.PublicKey, error) {
 	c.RefreshTokenKeys()
 
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	publicKey, ok := c.publicKeys[keyId]
 	if !ok {
 		return nil, errors.New("using unknown token key")
@@ -228,15 +230,6 @@ func unmarshalTokenKeys(r io.Reader) ([]tokenKey, error) {
 	}
 
 	return dtks.Keys, nil
-}
-
-func unmarshalTokenKey(r io.Reader) (tokenKey, error) {
-	var dtk tokenKey
-	if err := json.NewDecoder(r).Decode(&dtk); err != nil {
-		return tokenKey{}, fmt.Errorf("unable to decode json token key from UAA: %s", err)
-	}
-
-	return dtk, nil
 }
 
 type decodedToken struct {
