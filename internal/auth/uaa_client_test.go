@@ -231,6 +231,33 @@ var _ = Describe("UAAClient", func() {
 	})
 
 	Context("RefreshTokenKeys()", func() {
+		It("handles concurrent refreshes", func() {
+			tc := uaaSetup()
+			tc.GenerateSingleTokenKeyResponse()
+			tc.uaaClient.RefreshTokenKeys()
+
+			payload := tc.BuildValidPayload("logs.admin")
+			token := tc.CreateSignedToken(payload)
+
+			numRequests := len(tc.httpClient.requests)
+
+			var wg sync.WaitGroup
+
+			for n := 0; n < 4; n++ {
+				wg.Add(1)
+				go func(wg *sync.WaitGroup) {
+					tc.uaaClient.Read(withBearer(token))
+					tc.uaaClient.RefreshTokenKeys()
+					tc.uaaClient.Read(withBearer(token))
+					wg.Done()
+				}(&wg)
+			}
+
+			wg.Wait()
+
+			Expect(len(tc.httpClient.requests)).To(Equal(numRequests + 4))
+		})
+
 		It("calls UAA correctly", func() {
 			tc := uaaSetup()
 			tc.GenerateSingleTokenKeyResponse()
@@ -349,7 +376,8 @@ func uaaSetup(opts ...auth.UAAOption) *UAATestContext {
 	metrics := newSpyMetrics()
 	tokenKey := generateLegitTokenKey("testKey1")
 
-	// default the minimumRefreshInterval in tests to 0
+	// default the minimumRefreshInterval in tests to 0, but make sure we
+	// apply user-provided options afterwards
 	opts = append([]auth.UAAOption{auth.WithMinimumRefreshInterval(0)}, opts...)
 
 	uaaClient := auth.NewUAAClient(
@@ -416,10 +444,10 @@ func (tc *UAATestContext) GenerateTokenKeyResponse(mockTokenKeys []mockTokenKey)
 
 	Expect(err).ToNot(HaveOccurred())
 
-	tc.httpClient.resps = []response{{
+	tc.httpClient.resps = append(tc.httpClient.resps, response{
 		body:   data,
 		status: http.StatusOK,
-	}}
+	})
 }
 
 func (tc *UAATestContext) GenerateSingleTokenKeyResponse() {
