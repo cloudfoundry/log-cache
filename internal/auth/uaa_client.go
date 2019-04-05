@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dvsekhvalnov/jose2go"
@@ -31,10 +32,9 @@ type UAAClient struct {
 	httpClient             HTTPClient
 	uaa                    *url.URL
 	log                    *log.Logger
-	publicKeys             map[string]*rsa.PublicKey
+	publicKeys             sync.Map
 	minimumRefreshInterval time.Duration
-	lastQueryTime          time.Time
-	mu                     sync.RWMutex
+	lastQueryTime          int64
 }
 
 func NewUAAClient(
@@ -55,7 +55,7 @@ func NewUAAClient(
 		uaa:                    u,
 		httpClient:             httpClient,
 		log:                    log,
-		publicKeys:             make(map[string]*rsa.PublicKey),
+		publicKeys:             sync.Map{},
 		minimumRefreshInterval: 30 * time.Second,
 	}
 
@@ -75,10 +75,8 @@ func WithMinimumRefreshInterval(interval time.Duration) UAAOption {
 }
 
 func (c *UAAClient) RefreshTokenKeys() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	nextAllowedRefreshTime := c.lastQueryTime.Add(c.minimumRefreshInterval)
+	lastQueryTime := atomic.LoadInt64(&c.lastQueryTime)
+	nextAllowedRefreshTime := time.Unix(0, lastQueryTime).Add(c.minimumRefreshInterval)
 	if time.Now().Before(nextAllowedRefreshTime) {
 		c.log.Printf(
 			"UAA TokenKey refresh throttled to every %s, try again in %s",
@@ -87,7 +85,7 @@ func (c *UAAClient) RefreshTokenKeys() error {
 		)
 		return nil
 	}
-	c.lastQueryTime = time.Now()
+	atomic.CompareAndSwapInt64(&c.lastQueryTime, lastQueryTime, time.Now().UnixNano())
 
 	req, err := http.NewRequest("GET", c.uaa.String(), nil)
 	if err != nil {
@@ -112,7 +110,12 @@ func (c *UAAClient) RefreshTokenKeys() error {
 		return err
 	}
 
-	newPublicKeyMap := make(map[string]*rsa.PublicKey)
+	currentKeyIds := make(map[string]struct{})
+
+	c.publicKeys.Range(func(keyId, publicKey interface{}) bool {
+		currentKeyIds[keyId.(string)] = struct{}{}
+		return true
+	})
 
 	for _, tokenKey := range tokenKeys {
 		if tokenKey.Value == "" {
@@ -134,10 +137,16 @@ func (c *UAAClient) RefreshTokenKeys() error {
 			return fmt.Errorf("did not get a valid RSA key from UAA: %s", err)
 		}
 
-		newPublicKeyMap[tokenKey.KeyId] = publicKey
+		c.publicKeys.LoadOrStore(tokenKey.KeyId, publicKey)
+
+		// update list of previously-known keys so that we can prune them
+		// if UAA no longer considers them valid
+		delete(currentKeyIds, tokenKey.KeyId)
 	}
 
-	c.publicKeys = newPublicKeyMap
+	for keyId := range currentKeyIds {
+		c.publicKeys.Delete(keyId)
+	}
 
 	return nil
 }
@@ -154,14 +163,9 @@ func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 
 		keyId := headers["kid"].(string)
 
-		publicKey, ok := c.publicKeys[keyId]
-		if !ok {
-			var err error
-
-			publicKey, err = c.getMissingPublicKey(keyId)
-			if err != nil {
-				return err
-			}
+		publicKey, err := c.loadOrFetchPublicKey(keyId)
+		if err != nil {
+			return err
 		}
 
 		return publicKey
@@ -194,17 +198,20 @@ func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 	}, err
 }
 
-func (c *UAAClient) getMissingPublicKey(keyId string) (*rsa.PublicKey, error) {
-	c.RefreshTokenKeys()
-
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	publicKey, ok := c.publicKeys[keyId]
-	if !ok {
-		return nil, errors.New("using unknown token key")
+func (c *UAAClient) loadOrFetchPublicKey(keyId string) (*rsa.PublicKey, error) {
+	publicKey, ok := c.publicKeys.Load(keyId)
+	if ok {
+		return (publicKey.(*rsa.PublicKey)), nil
 	}
 
-	return publicKey, nil
+	c.RefreshTokenKeys()
+
+	publicKey, ok = c.publicKeys.Load(keyId)
+	if ok {
+		return (publicKey.(*rsa.PublicKey)), nil
+	}
+
+	return nil, errors.New("using unknown token key")
 }
 
 var bearerRE = regexp.MustCompile(`(?i)^bearer\s+`)
