@@ -143,7 +143,7 @@ var _ = Describe("UAAClient", func() {
 
 				_, err := tc.uaaClient.Read(withBearer(token))
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(Equal("failed to decode token: using unknown token key"))
+				Expect(err.Error()).To(ContainSubstring("failed to decode token: using unknown token key"))
 
 				Expect(len(tc.httpClient.requests)).To(Equal(initialRequestCount + 1))
 			})
@@ -164,7 +164,7 @@ var _ = Describe("UAAClient", func() {
 
 				_, err = tc.uaaClient.Read(withBearer(tokenSignedWithExpiredPrivateKey))
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(Equal("failed to decode token: using unknown token key"))
+				Expect(err.Error()).To(ContainSubstring("failed to decode token: using unknown token key"))
 
 				Expect(len(tc.httpClient.requests)).To(Equal(initialRequestCount + 2))
 			})
@@ -203,7 +203,7 @@ var _ = Describe("UAAClient", func() {
 
 			_, err := tc.uaaClient.Read(withBearer(tokenSignedWithUnknownPrivateKey))
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal("failed to decode token: using unknown token key"))
+			Expect(err.Error()).To(ContainSubstring("failed to decode token: using unknown token key"))
 
 			Expect(len(tc.httpClient.requests)).To(Equal(initialRequestCount + 1))
 		})
@@ -333,6 +333,52 @@ var _ = Describe("UAAClient", func() {
 			Expect(err.Error()).To(ContainSubstring("error parsing public key"))
 		})
 
+		It("overwrites a pre-existing keyId with the new key", func() {
+			tc := uaaSetup()
+			tc.PrimePublicKeyCache()
+
+			payload := tc.BuildValidPayload("doppler.firehose")
+			token := tc.CreateSignedToken(payload)
+
+			_, err := tc.uaaClient.Read(withBearer(token))
+			Expect(err).NotTo(HaveOccurred())
+
+			tokenKey := generateLegitTokenKey("testKey1")
+			tc.GenerateTokenKeyResponse([]mockTokenKey{tokenKey})
+			tc.uaaClient.RefreshTokenKeys()
+
+			_, err = tc.uaaClient.Read(withBearer(token))
+			Expect(err).To(HaveOccurred())
+
+			newToken := tc.CreateSignedTokenUsingPrivateKey(payload, tokenKey)
+			_, err = tc.uaaClient.Read(withBearer(newToken))
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("overwrites a pre-existing keyId with the new key", func() {
+			tc := uaaSetup()
+			tc.PrimePublicKeyCache()
+
+			payload := tc.BuildValidPayload("doppler.firehose")
+			token := tc.CreateSignedToken(payload)
+
+			_, err := tc.uaaClient.Read(withBearer(token))
+			Expect(err).NotTo(HaveOccurred())
+
+			tokenKey := generateLegitTokenKey("testKey1")
+			tc.GenerateTokenKeyResponse([]mockTokenKey{tokenKey})
+			newToken := tc.CreateSignedTokenUsingPrivateKey(payload, tokenKey)
+
+			Eventually(func() bool {
+				_, err = tc.uaaClient.Read(withBearer(newToken))
+				return err == nil
+			}).Should(BeTrue())
+
+			_, err = tc.uaaClient.Read(withBearer(token))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("crypto/rsa: verification error"))
+		})
+
 		It("rate limits UAA TokenKey refreshes", func() {
 			tc := uaaSetup(auth.WithMinimumRefreshInterval(200 * time.Millisecond))
 			tc.GenerateSingleTokenKeyResponse()
@@ -443,10 +489,10 @@ func (tc *UAATestContext) GenerateTokenKeyResponse(mockTokenKeys []mockTokenKey)
 
 	Expect(err).ToNot(HaveOccurred())
 
-	tc.httpClient.resps = append(tc.httpClient.resps, response{
+	tc.httpClient.resps = []response{{
 		body:   data,
 		status: http.StatusOK,
-	})
+	}}
 }
 
 func (tc *UAATestContext) GenerateSingleTokenKeyResponse() {

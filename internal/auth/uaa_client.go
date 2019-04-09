@@ -137,7 +137,11 @@ func (c *UAAClient) RefreshTokenKeys() error {
 			return fmt.Errorf("did not get a valid RSA key from UAA: %s", err)
 		}
 
-		c.publicKeys.LoadOrStore(tokenKey.KeyId, publicKey)
+		// always overwrite the key stored at keyId because:
+		// if you manually delete the UAA signing key from Credhub, UAA will
+		// generate a new key with the same (default) keyId, which is something
+		// along the lines of `key-1`
+		c.publicKeys.Store(tokenKey.KeyId, publicKey)
 
 		// update list of previously-known keys so that we can prune them
 		// if UAA no longer considers them valid
@@ -151,6 +155,22 @@ func (c *UAAClient) RefreshTokenKeys() error {
 	return nil
 }
 
+type AlgorithmError struct {
+	Alg string
+}
+
+func (e AlgorithmError) Error() string {
+	return fmt.Sprintf("unsupported algorithm: %s", e.Alg)
+}
+
+type UnknownTokenKeyError struct {
+	Kid string
+}
+
+func (e UnknownTokenKeyError) Error() string {
+	return fmt.Sprintf("using unknown token key: %s", e.Kid)
+}
+
 func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 	if token == "" {
 		return Oauth2ClientContext{}, errors.New("missing token")
@@ -158,7 +178,7 @@ func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 
 	payload, _, err := jose.Decode(trimBearer(token), func(headers map[string]interface{}, payload string) interface{} {
 		if headers["alg"] != "RS256" {
-			return fmt.Errorf("unsupported algorithm: %s", headers["alg"])
+			return AlgorithmError{Alg: headers["alg"].(string)}
 		}
 
 		keyId := headers["kid"].(string)
@@ -172,6 +192,17 @@ func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 	})
 
 	if err != nil {
+		switch err.(type) {
+		case AlgorithmError, UnknownTokenKeyError:
+			// no-op
+		default:
+			// we're specifically trying to catch "crypto/rsa: verification error",
+			// which generally means we've tried to decode a token with the
+			// wrong private key. just in case UAA has rolled the key, but
+			// kept the same keyId, let's renew our keys.
+			go c.RefreshTokenKeys()
+		}
+
 		return Oauth2ClientContext{}, fmt.Errorf("failed to decode token: %s", err.Error())
 	}
 
@@ -211,7 +242,7 @@ func (c *UAAClient) loadOrFetchPublicKey(keyId string) (*rsa.PublicKey, error) {
 		return (publicKey.(*rsa.PublicKey)), nil
 	}
 
-	return nil, errors.New("using unknown token key")
+	return nil, UnknownTokenKeyError{Kid: keyId}
 }
 
 var bearerRE = regexp.MustCompile(`(?i)^bearer\s+`)
