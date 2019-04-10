@@ -12,6 +12,8 @@ type Config struct {
 	Addr         string `env:"ADDR, required, report"`
 	LogCacheAddr string `env:"LOG_CACHE_ADDR, required, report"`
 	HealthAddr   string `env:"HEALTH_ADDR, report"`
+	CertPath     string `env:"EXTERNAL_CERT, required, report"`
+	KeyPath      string `env:"EXTERNAL_KEY, required, report"`
 	Version      string `env:"-, report"`
 
 	TLS tls.TLS

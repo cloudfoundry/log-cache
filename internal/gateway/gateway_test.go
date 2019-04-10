@@ -1,6 +1,7 @@
 package gateway_test
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -38,7 +39,9 @@ var _ = Describe("Gateway", func() {
 
 		gw = NewGateway(
 			logCacheAddr,
-			"127.0.0.1:0",
+			"localhost:0",
+			testing.Cert("localhost.crt"),
+			testing.Cert("localhost.key"),
 			WithGatewayLogCacheDialOpts(
 				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 			),
@@ -48,10 +51,10 @@ var _ = Describe("Gateway", func() {
 		gw.Start()
 	})
 
-	DescribeTable("upgrades HTTP requests for LogCache into gRPC requests", func(pathSourceID, expectedSourceID string) {
+	DescribeTable("upgrades HTTPS requests for LogCache into gRPC requests", func(pathSourceID, expectedSourceID string) {
 		path := fmt.Sprintf("api/v1/read/%s?start_time=99&end_time=101&limit=103&envelope_types=LOG&envelope_types=GAUGE", pathSourceID)
-		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
-		resp, err := http.Get(URL)
+		URL := fmt.Sprintf("%s/%s", gw.Addr(), path)
+		resp, err := makeTLSReq("https", URL)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -68,11 +71,10 @@ var _ = Describe("Gateway", func() {
 		Entry("with dash", "some-source-id", "some-source-id"),
 	)
 
-	It("adds newlines to the end of HTTP responses", func() {
+	It("adds newlines to the end of HTTPS responses", func() {
 		path := `api/v1/meta`
-		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
-		req, _ := http.NewRequest("GET", URL, nil)
-		resp, err := http.DefaultClient.Do(req)
+		URL := fmt.Sprintf("%s/%s", gw.Addr(), path)
+		resp, err := makeTLSReq("https", URL)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -80,11 +82,10 @@ var _ = Describe("Gateway", func() {
 		Expect(string(respBytes)).To(MatchRegexp(`\n$`))
 	})
 
-	It("upgrades HTTP requests for instant queries via PromQLQuerier GETs into gRPC requests", func() {
+	It("upgrades HTTPS requests for instant queries via PromQLQuerier GETs into gRPC requests", func() {
 		path := `api/v1/query?query=metric{source_id="some-id"}&time=1234.000`
-		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
-		req, _ := http.NewRequest("GET", URL, nil)
-		resp, err := http.DefaultClient.Do(req)
+		URL := fmt.Sprintf("%s/%s", gw.Addr(), path)
+		resp, err := makeTLSReq("https", URL)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -94,11 +95,10 @@ var _ = Describe("Gateway", func() {
 		Expect(reqs[0].Time).To(Equal("1234.000"))
 	})
 
-	It("upgrades HTTP requests for range queries via PromQLQuerier GETs into gRPC requests", func() {
+	It("upgrades HTTPS requests for range queries via PromQLQuerier GETs into gRPC requests", func() {
 		path := `api/v1/query_range?query=metric{source_id="some-id"}&start=1234.000&end=5678.000&step=30s`
-		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
-		req, _ := http.NewRequest("GET", URL, nil)
-		resp, err := http.DefaultClient.Do(req)
+		URL := fmt.Sprintf("%s/%s", gw.Addr(), path)
+		resp, err := makeTLSReq("https", URL)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -112,11 +112,10 @@ var _ = Describe("Gateway", func() {
 
 	It("outputs json with zero-value points and correct Prometheus API fields", func() {
 		path := `api/v1/query?query=metric{source_id="some-id"}&time=1234`
-		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
-		req, _ := http.NewRequest("GET", URL, nil)
+		URL := fmt.Sprintf("%s/%s", gw.Addr(), path)
 		spyLogCache.SetValue(0)
 
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := makeTLSReq("https", URL)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -126,9 +125,8 @@ var _ = Describe("Gateway", func() {
 
 	It("returns version information from an info endpoint", func() {
 		path := `api/v1/info`
-		URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
-		req, _ := http.NewRequest("GET", URL, nil)
-		resp, err := http.DefaultClient.Do(req)
+		URL := fmt.Sprintf("%s/%s", gw.Addr(), path)
+		resp, err := makeTLSReq("https", URL)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -142,14 +140,19 @@ var _ = Describe("Gateway", func() {
 		Expect(strings.HasSuffix(string(respBytes), "\n")).To(BeTrue())
 	})
 
+	It("does not accept unencrypted connections", func() {
+		resp, err := makeTLSReq("http", fmt.Sprintf("%s/api/v1/info", gw.Addr()))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+	})
+
 	Context("errors", func() {
 		It("passes through content-type correctly on errors", func() {
 			path := `api/v1/query?query=metric{source_id="some-id"}&time=1234`
 			spyLogCache.QueryError = errors.New("expected error")
-			URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
-			req, _ := http.NewRequest("GET", URL, nil)
+			URL := fmt.Sprintf("%s/%s", gw.Addr(), path)
 
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := makeTLSReq("https", URL)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusInternalServerError))
 			Expect(resp.Header).To(HaveKeyWithValue("Content-Type", []string{"application/json"}))
@@ -158,10 +161,9 @@ var _ = Describe("Gateway", func() {
 		It("adds necessary fields to match Prometheus API", func() {
 			path := `api/v1/query?query=metric{source_id="some-id"}&time=1234`
 			spyLogCache.QueryError = errors.New("expected error")
-			URL := fmt.Sprintf("http://%s/%s", gw.Addr(), path)
-			req, _ := http.NewRequest("GET", URL, nil)
+			URL := fmt.Sprintf("%s/%s", gw.Addr(), path)
 
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := makeTLSReq("https", URL)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusInternalServerError))
 
@@ -175,3 +177,15 @@ var _ = Describe("Gateway", func() {
 		})
 	})
 })
+
+func makeTLSReq(scheme, addr string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s://%s", scheme, addr), nil)
+	Expect(err).ToNot(HaveOccurred())
+
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: tr}
+
+	return client.Do(req)
+}
