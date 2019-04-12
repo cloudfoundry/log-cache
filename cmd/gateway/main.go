@@ -22,7 +22,7 @@ func main() {
 		log.Fatalf("invalid configuration: %s", err)
 	}
 
-	gateway := NewGateway(cfg.LogCacheAddr, cfg.Addr, cfg.CertPath, cfg.KeyPath,
+	gateway := NewGateway(cfg.LogCacheAddr, cfg.Addr, cfg.ProxyCertPath, cfg.ProxyKeyPath,
 		WithGatewayLogger(log.New(os.Stderr, "[GATEWAY] ", log.LstdFlags)),
 		WithGatewayLogCacheDialOpts(
 			grpc.WithTransportCredentials(cfg.TLS.Credentials("log-cache")),
