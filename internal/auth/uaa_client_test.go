@@ -51,7 +51,7 @@ var _ = Describe("UAAClient", func() {
 
 			c, err := tc.uaaClient.Read(withBearer(token))
 			Expect(err).ToNot(HaveOccurred())
-			Expect(c.Token).To(Equal(token))
+			Expect(c.Token).To(Equal(withBearer(token)))
 			Expect(c.IsAdmin).To(BeTrue())
 		})
 
@@ -61,7 +61,7 @@ var _ = Describe("UAAClient", func() {
 
 			c, err := tc.uaaClient.Read(withBearer(token))
 			Expect(err).ToNot(HaveOccurred())
-			Expect(c.Token).To(Equal(token))
+			Expect(c.Token).To(Equal(withBearer(token)))
 			Expect(c.IsAdmin).To(BeTrue())
 		})
 
@@ -71,7 +71,7 @@ var _ = Describe("UAAClient", func() {
 
 			c, err := tc.uaaClient.Read(withBearer(token))
 			Expect(err).ToNot(HaveOccurred())
-			Expect(c.Token).To(Equal(token))
+			Expect(c.Token).To(Equal(withBearer(token)))
 			Expect(c.IsAdmin).To(BeFalse())
 		})
 
@@ -82,7 +82,7 @@ var _ = Describe("UAAClient", func() {
 
 			c, err := tc.uaaClient.Read(withBearer(token))
 			Expect(err).ToNot(HaveOccurred())
-			Expect(c.Token).To(Equal(token))
+			Expect(c.Token).To(Equal(withBearer(token)))
 			Expect(c.ExpiresAt).To(Equal(t))
 		})
 
@@ -129,7 +129,7 @@ var _ = Describe("UAAClient", func() {
 
 				c, err := tc.uaaClient.Read(withBearer(token))
 				Expect(err).ToNot(HaveOccurred())
-				Expect(c.Token).To(Equal(token))
+				Expect(c.Token).To(Equal(withBearer(token)))
 
 				Expect(len(tc.httpClient.requests)).To(Equal(initialRequestCount + 1))
 			})
@@ -221,7 +221,7 @@ var _ = Describe("UAAClient", func() {
 
 				c, err := tc.uaaClient.Read(withBearer(token))
 				Expect(err).ToNot(HaveOccurred())
-				Expect(c.Token).To(Equal(token))
+				Expect(c.Token).To(Equal(withBearer(token)))
 			},
 			Entry("Standard 'Bearer' prefix", "Bearer "),
 			Entry("Non-Standard 'bearer' prefix", "bearer "),
