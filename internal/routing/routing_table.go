@@ -1,151 +1,70 @@
 package routing
 
 import (
-	"context"
-	"sort"
-	"sync"
+	"errors"
 
-	rpc "code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
+	"github.com/benbjohnson/jmphash"
+	"github.com/cespare/xxhash"
 )
 
 // RoutingTable makes decisions for where a item should be routed.
 type RoutingTable struct {
-	mu         sync.RWMutex
-	addrs      map[string]int
-	h          func(string) uint64
-	latestTerm uint64
-
-	table []rangeInfo
+	addresses         map[string]int
+	replicationFactor uint
+	hasher            *jmphash.Hasher
+	table             []hostRange
 }
 
 // NewRoutingTable returns a new RoutingTable.
-func NewRoutingTable(addrs []string, hasher func(string) uint64) *RoutingTable {
-	a := make(map[string]int)
-	for i, addr := range addrs {
-		a[addr] = i
+func NewRoutingTable(addrs []string, replicationFactor uint) (*RoutingTable, error) {
+	if replicationFactor == 0 {
+		return nil, errors.New("replication factor must be greater than 0")
 	}
 
-	return &RoutingTable{
-		addrs: a,
-		h:     hasher,
+	if replicationFactor > uint(len(addrs)) {
+		return nil, errors.New("replication factor cannot exceed number of available hosts")
 	}
+
+	addresses := make(map[string]int)
+	for i, addr := range addrs {
+		addresses[addr] = i
+	}
+
+	t := &RoutingTable{
+		addresses:         addresses,
+		replicationFactor: replicationFactor,
+		hasher:            jmphash.NewHasher(len(addrs)),
+	}
+
+	return t, nil
 }
 
-// Lookup takes a item, hash it and determine what node it should be
+// Lookup takes a item, hash it and determine what node(s) it should be
 // routed to.
 func (t *RoutingTable) Lookup(item string) []int {
-	h := t.h(item)
-	t.mu.RLock()
-	defer t.mu.RUnlock()
+
+	hashValue := xxhash.Sum64String(item)
+	node := t.hasher.Hash(hashValue)
 
 	var result []int
+	for n := 0; n < int(t.replicationFactor); n++ {
+		result = append(result, (node+n*int(t.replicationFactor))%len(t.addresses))
+	}
 	for _, r := range t.table {
-		if h < r.r.Start || h > r.r.End {
-			// Outside of range
-			continue
+		if hashValue >= r.start && hashValue <= r.end {
+			result = append(result, r.hostIndex)
 		}
-		result = append(result, r.idx)
 	}
 
 	return result
-}
-
-// LookupAll returns every index that has a range where the item would
-// fall under.
-func (t *RoutingTable) LookupAll(item string) []int {
-	h := t.h(item)
-
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-
-	var result []int
-	ranges := t.table
-
-	for {
-		i := t.findRange(h, ranges)
-		if i < 0 {
-			break
-		}
-		result = append(result, ranges[i].idx)
-		ranges = ranges[i+1:]
-	}
-
-	return result
-}
-
-// SetRanges sets the routing table.
-func (t *RoutingTable) SetRanges(ctx context.Context, in *rpc.SetRangesRequest) (*rpc.SetRangesResponse, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	t.table = nil
-	for addr, ranges := range in.Ranges {
-		for _, r := range ranges.Ranges {
-			var sr Range
-			sr.CloneRpcRange(r)
-
-			t.table = append(t.table, rangeInfo{
-				idx: t.addrs[addr],
-				r:   sr,
-			})
-		}
-	}
-
-	sort.Sort(rangeInfos(t.table))
-
-	return &rpc.SetRangesResponse{}, nil
-}
-
-func (t *RoutingTable) findRange(h uint64, rs []rangeInfo) int {
-	for i, r := range rs {
-		if h < r.r.Start || h > r.r.End {
-			// Outside of range
-			continue
-		}
-		return i
-	}
-
-	return -1
-}
-
-type Range struct {
-	Start uint64
-	End   uint64
-}
-
-func (sr *Range) CloneRpcRange(r *rpc.Range) {
-	sr.Start = r.Start
-	sr.End = r.End
-}
-
-func (sr *Range) ToRpcRange() *rpc.Range {
-	return &rpc.Range{
-		Start: sr.Start,
-		End:   sr.End,
-	}
 }
 
 type rangeInfo struct {
-	r   Range
-	idx int
+	start uint64
+	end   uint64
 }
 
-type rangeInfos []rangeInfo
-
-func (r rangeInfos) Len() int {
-	return len(r)
-}
-
-func (r rangeInfos) Less(i, j int) bool {
-	if r[i].r.Start == r[j].r.Start {
-		return r[i].idx > r[j].idx
-	}
-
-	return r[i].r.Start < r[j].r.Start
-}
-
-func (r rangeInfos) Swap(i, j int) {
-	tmp := r[i]
-	r[i] = r[j]
-	r[j] = tmp
+type hostRange struct {
+	hostIndex int
+	rangeInfo
 }

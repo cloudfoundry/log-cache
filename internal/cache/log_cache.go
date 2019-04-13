@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"hash/crc64"
 	"io/ioutil"
 	"log"
 	"net"
@@ -173,11 +172,6 @@ func (c *LogCache) Close() error {
 }
 
 func (c *LogCache) setupRouting(s *store.Store) {
-	tableECMA := crc64.MakeTable(crc64.ECMA)
-	hasher := func(s string) uint64 {
-		return crc64.Checksum([]byte(s), tableECMA)
-	}
-
 	// gRPC
 	lis, err := net.Listen("tcp", c.addr)
 	if err != nil {
@@ -190,8 +184,7 @@ func (c *LogCache) setupRouting(s *store.Store) {
 		c.extAddr = c.lis.Addr().String()
 	}
 
-	lookup := routing.NewRoutingTable(c.nodeAddrs, hasher)
-	orchestratorAgent := routing.NewOrchestratorAgent(lookup)
+	lookup, _ := routing.NewRoutingTable(c.nodeAddrs, 1)
 
 	var (
 		ingressClients []logcache_v1.IngressClient
@@ -251,7 +244,6 @@ func (c *LogCache) setupRouting(s *store.Store) {
 	go func() {
 		logcache_v1.RegisterIngressServer(c.server, ingressReverseProxy)
 		logcache_v1.RegisterEgressServer(c.server, egressReverseProxy)
-		logcache_v1.RegisterOrchestrationServer(c.server, orchestratorAgent)
 		logcache_v1.RegisterPromQLQuerierServer(c.server, promQL)
 		if err := c.server.Serve(lis); err != nil && atomic.LoadInt64(&c.closing) == 0 {
 			c.log.Fatalf("failed to serve gRPC ingress server: %s %#v", err, err)

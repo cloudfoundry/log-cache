@@ -1,108 +1,40 @@
 package routing_test
 
 import (
-	"context"
-
 	"code.cloudfoundry.org/log-cache/internal/routing"
-	rpc "code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("RoutingTable", func() {
-	var (
-		spyHasher *spyHasher
-		r         *routing.RoutingTable
-	)
-
-	BeforeEach(func() {
-		spyHasher = newSpyHasher()
-		r = routing.NewRoutingTable([]string{"a", "b", "c", "d"}, spyHasher.Hash)
-	})
-
 	It("returns the correct index for the node", func() {
-		r.SetRanges(context.Background(), &rpc.SetRangesRequest{
-			Ranges: map[string]*rpc.Ranges{
-				"a": {
-					Ranges: []*rpc.Range{
-						{Start: 0, End: 100},
-					},
-				},
-				"b": {
-					Ranges: []*rpc.Range{
-						{Start: 101, End: 200},
-					},
-				},
-				"c": {
-					Ranges: []*rpc.Range{
-						{Start: 201, End: 300},
-					},
-				},
-				"d": {
-					Ranges: []*rpc.Range{
-						{Start: 101, End: 200},
-					},
-				},
-			},
-		})
+		r, err := routing.NewRoutingTable([]string{"10.0.1.1", "10.0.1.2", "10.0.1.3", "10.0.1.4"}, 1)
+		Expect(err).ToNot(HaveOccurred())
 
-		spyHasher.results = []uint64{200}
+		// Explanation of hash outputs:
+		// "0"   -> xxHash -> 7148434200721666028  -> jmpHash(4) -> 3
+		// "200" -> xxHash -> 2685111111418367100  -> jmpHash(4) -> 3
+		// "400" -> xxHash -> 11111781720710347155 -> jmpHash(4) -> 0
 
-		i := r.Lookup("some-id")
-		Expect(spyHasher.ids).To(ConsistOf("some-id"))
-		Expect(i).To(Equal([]int{3, 1}))
+		Expect(r.Lookup("0")).To(ConsistOf(3))
+		Expect(r.Lookup("200")).To(ConsistOf(3))
+		Expect(r.Lookup("400")).To(ConsistOf(0))
 	})
 
-	It("returns the correct index for the node", func() {
-		r.SetRanges(context.Background(), &rpc.SetRangesRequest{
-			Ranges: map[string]*rpc.Ranges{
-				"a": {
-					Ranges: []*rpc.Range{
-						{Start: 0, End: 100},
-						{Start: 101, End: 200},
-					},
-				},
-				"b": {
-					Ranges: []*rpc.Range{
-						{Start: 101, End: 200},
-					},
-				},
-				"c": {
-					Ranges: []*rpc.Range{
-						{Start: 201, End: 300},
-					},
-				},
-			},
-		})
+	It("returns the correct index with overlapping nodes", func() {
+		r, err := routing.NewRoutingTable([]string{"10.0.1.1", "10.0.1.2", "10.0.1.3", "10.0.1.4"}, 3)
+		Expect(err).ToNot(HaveOccurred())
 
-		spyHasher.results = []uint64{200}
-
-		i := r.LookupAll("some-id")
-		Expect(spyHasher.ids).To(ConsistOf("some-id"))
-		Expect(i).To(Equal([]int{1, 0}))
+		Expect(r.Lookup("200")).To(ConsistOf(3, 2, 1))
+		Expect(r.Lookup("400")).To(ConsistOf(0, 3, 2))
 	})
 
-	It("returns an empty slice for a non-routable hash", func() {
-		i := r.Lookup("some-id")
-		Expect(i).To(BeEmpty())
-	})
+	It("returns an error if replication factor is invalid", func() {
+		_, err := routing.NewRoutingTable([]string{"10.0.1.1", "10.0.1.2", "10.0.1.3", "10.0.1.4"}, 0)
+		Expect(err).To(HaveOccurred())
 
-	It("survives the race detector", func() {
-		go func(r *routing.RoutingTable) {
-			for i := 0; i < 100; i++ {
-				r.Lookup("a")
-			}
-		}(r)
-
-		go func(r *routing.RoutingTable) {
-			for i := 0; i < 100; i++ {
-				r.LookupAll("a")
-			}
-		}(r)
-
-		for i := 0; i < 100; i++ {
-			r.SetRanges(context.Background(), &rpc.SetRangesRequest{})
-		}
+		_, err = routing.NewRoutingTable([]string{"10.0.1.1", "10.0.1.2", "10.0.1.3", "10.0.1.4"}, 5)
+		Expect(err).To(HaveOccurred())
 	})
 })
