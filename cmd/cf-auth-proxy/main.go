@@ -65,11 +65,14 @@ func main() {
 		capiClient,
 	)
 
+	proxyCACertPool := loadCA(cfg.ProxyCAPath)
+
 	proxy := NewCFAuthProxy(
 		cfg.LogCacheGatewayAddr,
 		cfg.Addr,
 		cfg.CertPath,
 		cfg.KeyPath,
+		proxyCACertPool,
 		WithAuthMiddleware(middlewareProvider.Middleware),
 	)
 
