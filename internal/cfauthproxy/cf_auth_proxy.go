@@ -113,10 +113,14 @@ func (p *CFAuthProxy) Addr() string {
 
 func (p *CFAuthProxy) reverseProxy() *httputil.ReverseProxy {
 	proxy := httputil.NewSingleHostReverseProxy(p.gatewayURL)
+	proxy.Transport = NewTransportWithRootCA(p.proxyCACertPool)
+	return proxy
+}
 
+func NewTransportWithRootCA(rootCACertPool *x509.CertPool) *http.Transport {
 	// Aside from the Root CA for the gateway, these values are defaults
 	// from Golang's http.DefaultTransport
-	proxy.Transport = &http.Transport{
+	return &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
@@ -128,9 +132,7 @@ func (p *CFAuthProxy) reverseProxy() *httputil.ReverseProxy {
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		TLSClientConfig: &tls.Config{
-			RootCAs: p.proxyCACertPool,
+			RootCAs: rootCACertPool,
 		},
 	}
-
-	return proxy
 }

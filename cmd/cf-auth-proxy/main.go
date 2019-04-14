@@ -55,7 +55,20 @@ func main() {
 		log,
 	)
 
-	metaFetcher := client.NewClient(cfg.LogCacheGatewayAddr)
+	proxyCACertPool := loadCA(cfg.ProxyCAPath)
+
+	// Calls to /api/v1/meta get sent to the gateway, but not through the
+	// reverse proxy like everything else. As a result, we also need to set
+	// the Transport here to ensure the correct root CA is available.
+	metaHTTPClient := &http.Client{
+		Timeout:   5 * time.Second,
+		Transport: NewTransportWithRootCA(proxyCACertPool),
+	}
+
+	metaFetcher := client.NewClient(
+		cfg.LogCacheGatewayAddr,
+		client.WithHTTPClient(metaHTTPClient),
+	)
 
 	middlewareProvider := auth.NewCFAuthMiddlewareProvider(
 		uaaClient,
@@ -64,8 +77,6 @@ func main() {
 		promql.ExtractSourceIds,
 		capiClient,
 	)
-
-	proxyCACertPool := loadCA(cfg.ProxyCAPath)
 
 	proxy := NewCFAuthProxy(
 		cfg.LogCacheGatewayAddr,
