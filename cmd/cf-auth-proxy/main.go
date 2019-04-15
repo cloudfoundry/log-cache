@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof"
+	"net/url"
 	"os"
 	"time"
 
@@ -48,6 +49,15 @@ func main() {
 		log.Fatalf("failed to fetch token from UAA: %s", err)
 	}
 
+	gatewayURL, err := url.Parse(cfg.LogCacheGatewayAddr)
+	if err != nil {
+		log.Fatalf("failed to parse gateway address: %s", err)
+	}
+
+	// Force communication with the gateway to happen via HTTPS, regardless of
+	// the scheme provided in the config
+	gatewayURL.Scheme = "https"
+
 	capiClient := auth.NewCAPIClient(
 		cfg.CAPI.Addr,
 		buildCAPIClient(cfg),
@@ -66,7 +76,7 @@ func main() {
 	}
 
 	metaFetcher := client.NewClient(
-		cfg.LogCacheGatewayAddr,
+		gatewayURL.String(),
 		client.WithHTTPClient(metaHTTPClient),
 	)
 
@@ -79,7 +89,7 @@ func main() {
 	)
 
 	proxy := NewCFAuthProxy(
-		cfg.LogCacheGatewayAddr,
+		gatewayURL.String(),
 		cfg.Addr,
 		cfg.CertPath,
 		cfg.KeyPath,

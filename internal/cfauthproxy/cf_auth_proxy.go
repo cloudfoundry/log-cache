@@ -3,6 +3,7 @@ package cfauthproxy
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -30,12 +31,8 @@ type CFAuthProxy struct {
 func NewCFAuthProxy(gatewayAddr, addr, certPath, keyPath string, proxyCACertPool *x509.CertPool, opts ...CFAuthProxyOption) *CFAuthProxy {
 	gatewayURL, err := url.Parse(gatewayAddr)
 	if err != nil {
-		log.Fatalf("failed to parse gateway address: %s", err)
+		panic(fmt.Sprintf("Couldn't parse gateway address: %s", err))
 	}
-
-	// Force communication with the gateway to happen via HTTPS, regardless of
-	// the scheme provided in the config
-	gatewayURL.Scheme = "https"
 
 	p := &CFAuthProxy{
 		gatewayURL:      gatewayURL,
