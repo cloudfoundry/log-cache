@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -33,5 +34,5 @@ func main() {
 	gateway.Start()
 
 	// health endpoints (pprof)
-	log.Printf("Health: %s", http.ListenAndServe(cfg.HealthAddr, nil))
+	log.Printf("Health: %s", http.ListenAndServe(fmt.Sprintf("localhost:%d", cfg.HealthPort), nil))
 }

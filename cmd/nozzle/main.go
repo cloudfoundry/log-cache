@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -71,5 +72,5 @@ func main() {
 	http.Handle("/metrics", m)
 
 	// health endpoints (pprof and prometheus)
-	log.Printf("Health: %s", http.ListenAndServe(cfg.HealthAddr, nil))
+	log.Printf("Health: %s", http.ListenAndServe(fmt.Sprintf("localhost:%d", cfg.HealthPort), nil))
 }

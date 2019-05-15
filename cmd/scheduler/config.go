@@ -9,7 +9,7 @@ import (
 
 // Config is the configuration for a Scheduler.
 type Config struct {
-	HealthAddr string `env:"HEALTH_ADDR, report"`
+	HealthPort int `env:"HEALTH_PORT, report"`
 
 	Interval          time.Duration `env:"INTERVAL, report"`
 	Count             int           `env:"COUNT, report"`
@@ -28,7 +28,7 @@ type Config struct {
 // LoadConfig creates Config object from environment variables
 func LoadConfig() (*Config, error) {
 	c := Config{
-		HealthAddr:        "localhost:6064",
+		HealthPort:        6064,
 		Count:             100,
 		ReplicationFactor: 1,
 		Interval:          time.Minute,

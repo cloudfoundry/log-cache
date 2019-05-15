@@ -11,7 +11,7 @@ var buildVersion string
 type Config struct {
 	Addr          string `env:"ADDR, required, report"`
 	LogCacheAddr  string `env:"LOG_CACHE_ADDR, required, report"`
-	HealthAddr    string `env:"HEALTH_ADDR, report"`
+	HealthPort    int    `env:"HEALTH_PORT, report"`
 	ProxyCertPath string `env:"PROXY_CERT_PATH, required, report"`
 	ProxyKeyPath  string `env:"PROXY_KEY_PATH, required, report"`
 	Version       string `env:"-, report"`
@@ -23,7 +23,7 @@ type Config struct {
 func LoadConfig() (*Config, error) {
 	c := Config{
 		Addr:         ":8081",
-		HealthAddr:   "localhost:6063",
+		HealthPort:   6063,
 		LogCacheAddr: "localhost:8080",
 	}
 

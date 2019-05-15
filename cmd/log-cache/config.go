@@ -10,7 +10,7 @@ import (
 // Config is the configuration for a LogCache.
 type Config struct {
 	Addr       string `env:"ADDR, required, report"`
-	HealthAddr string `env:"HEALTH_ADDR, report"`
+	HealthPort int    `env:"HEALTH_PORT, report"`
 
 	// QueryTimeout sets the maximum allowed runtime for a single PromQL query.
 	// Smaller timeouts are recommended.
@@ -45,7 +45,7 @@ type Config struct {
 func LoadConfig() (*Config, error) {
 	c := Config{
 		Addr:         ":8080",
-		HealthAddr:   "localhost:6060",
+		HealthPort:   6060,
 		QueryTimeout: 10 * time.Second,
 		MemoryLimit:  50,
 		MaxPerSource: 100000,

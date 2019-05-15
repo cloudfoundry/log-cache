@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
@@ -123,7 +124,7 @@ func main() {
 	http.Handle("/metrics", metrics)
 
 	// health endpoints (pprof and prometheus)
-	log.Printf("Health: %s", http.ListenAndServe(cfg.HealthAddr, nil))
+	log.Printf("Health: %s", http.ListenAndServe(fmt.Sprintf("localhost:%d", cfg.HealthPort), nil))
 }
 
 func buildUAAClient(cfg *Config) *http.Client {

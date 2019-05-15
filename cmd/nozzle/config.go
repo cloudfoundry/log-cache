@@ -11,7 +11,7 @@ type Config struct {
 	LogsProviderTLS LogsProviderTLS
 
 	LogCacheAddr string   `env:"LOG_CACHE_ADDR, required, report"`
-	HealthAddr   string   `env:"HEALTH_ADDR, report"`
+	HealthPort   int      `env:"HEALTH_PORT, report"`
 	ShardId      string   `env:"SHARD_ID, required, report"`
 	Selectors    []string `env:"SELECTORS, required, report"`
 
@@ -29,7 +29,7 @@ type LogsProviderTLS struct {
 func LoadConfig() (*Config, error) {
 	c := Config{
 		LogCacheAddr: ":8080",
-		HealthAddr:   "localhost:6061",
+		HealthPort:   6061,
 		ShardId:      "log-cache",
 		Selectors:    []string{"log", "gauge", "counter", "timer", "event"},
 	}
