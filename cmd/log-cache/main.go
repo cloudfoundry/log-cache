@@ -11,6 +11,7 @@ import (
 	envstruct "code.cloudfoundry.org/go-envstruct"
 	. "code.cloudfoundry.org/log-cache/internal/cache"
 	"code.cloudfoundry.org/log-cache/internal/metrics"
+	"code.cloudfoundry.org/log-cache/pkg/ingress"
 	"google.golang.org/grpc"
 )
 
@@ -55,6 +56,9 @@ func main() {
 	)
 
 	cache.Start()
+
+	syslog := ingress.NewSyslogServer(cache, "syslog_ingress")
+	go syslog.Start("8888")
 
 	// Register prometheus-compatible metric endpoint
 	http.Handle("/metrics", m)

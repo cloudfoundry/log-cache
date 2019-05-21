@@ -11,6 +11,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
+	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/cache/store"
 	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"code.cloudfoundry.org/log-cache/internal/promql"
@@ -46,6 +47,8 @@ type LogCache struct {
 	// externally and instead will store all of it.
 	nodeAddrs []string
 	nodeIndex int
+
+	store *store.Store
 }
 
 // NewLogCache creates a new LogCache.
@@ -161,8 +164,12 @@ func WithMetrics(m metrics.Initializer) LogCacheOption {
 // and therefore does not block.
 func (c *LogCache) Start() {
 	p := store.NewPruneConsultant(2, c.memoryLimitPercent, NewMemoryAnalyzer(c.metrics))
-	store := store.NewStore(c.maxPerSource, p, c.metrics)
-	c.setupRouting(store)
+	c.store = store.NewStore(c.maxPerSource, p, c.metrics)
+	c.setupRouting(c.store)
+}
+
+func (c *LogCache) Put(env *loggregator_v2.Envelope, source_id string) {
+	c.store.Put(env, source_id)
 }
 
 // Close will shutdown the gRPC server
