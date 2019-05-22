@@ -57,7 +57,7 @@ func main() {
 
 	cache.Start()
 
-	syslog := ingress.NewSyslogServer(cache, "syslog_ingress")
+	syslog := ingress.NewSyslogServer(cache, m)
 	go syslog.Start("8888")
 
 	// Register prometheus-compatible metric endpoint

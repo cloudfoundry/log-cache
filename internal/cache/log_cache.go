@@ -168,8 +168,8 @@ func (c *LogCache) Start() {
 	c.setupRouting(c.store)
 }
 
-func (c *LogCache) Put(env *loggregator_v2.Envelope, source_id string) {
-	c.store.Put(env, source_id)
+func (c *LogCache) Put(env *loggregator_v2.Envelope, sourceId string) {
+	c.store.Put(env, sourceId)
 }
 
 // Close will shutdown the gRPC server

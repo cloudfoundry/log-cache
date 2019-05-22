@@ -1,34 +1,36 @@
 package ingress
 
 import (
+	"code.cloudfoundry.org/log-cache/internal/metrics"
+	"code.cloudfoundry.org/rfc5424"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/cache"
-	"github.com/influxdata/go-syslog"
-	"github.com/influxdata/go-syslog/rfc5424"
 )
 
-type rfc5424Parser interface {
-	Parse(input []byte) (syslog.Message, error)
-}
-
 type SysLog struct {
-	cache     *cache.LogCache
-	source_id string
-	parser    rfc5424Parser
+	cache        *cache.LogCache
+	incIngress   func(delta uint64)
+	setConnCount func(value float64)
+	connCount    *int64
 }
 
-func NewSyslogServer(cache *cache.LogCache, source_id string) *SysLog {
+func NewSyslogServer(cache *cache.LogCache, m *metrics.Metrics) *SysLog {
+	incIngress := m.NewCounter("syslog_ingress")
+	setConnCount := m.NewGauge("syslog_connections", "connections")
+	connCount := int64(0)
 	return &SysLog{
-		cache:     cache,
-		source_id: source_id,
-		parser:    rfc5424.NewParser(),
+		cache:        cache,
+		incIngress:   incIngress,
+		setConnCount: setConnCount,
+		connCount:    &connCount,
 	}
 }
 
@@ -48,50 +50,56 @@ func (r *SysLog) Start(port string) {
 			log.Fatalf("failed to accept: %s", err)
 		}
 
-		r.handleConn(conn)
+		count := atomic.AddInt64(r.connCount, 1)
+		r.setConnCount(float64(count))
+		go r.handleConn(conn)
 	}
 }
 
 func (r *SysLog) handleConn(conn net.Conn) {
-	defer conn.Close()
+	defer func() {
+		conn.Close()
+		count := atomic.AddInt64(r.connCount, -1)
+		r.setConnCount(float64(count))
+	}()
 	conn.SetReadDeadline(time.Now().Add(time.Minute))
 
-	buffer := make([]byte, 1024)
-	var msgBuff []byte
 	for {
-		readcount, err := conn.Read(buffer)
-		if err == io.EOF {
-			break
+		var msg rfc5424.Message
+		_, err := msg.ReadFrom(conn)
+		if err != nil {
+			if err == io.EOF {
+				log.Println("Got EOF")
+				return
+			}
+			log.Printf("ReadFrom err: %s", err)
+			return
+		}
+		r.incIngress(1)
+
+		log.Printf("msg: %+v\n", msg)
+		sourceType, instanceId := getSourceTypeInstIdFromPID(msg.ProcessID)
+
+		env := &loggregator_v2.Envelope{
+			SourceId:   "syslog_" + msg.AppName,
+			Timestamp:  msg.Timestamp.UnixNano(),
+			InstanceId: instanceId,
+			Message: &loggregator_v2.Envelope_Log{
+				Log: &loggregator_v2.Log{
+					Payload: []byte(msg.Message),
+					Type:    getTypeFromPriority(int(msg.Priority)),
+				},
+			},
+			Tags: map[string]string{
+				"source_type": sourceType,
+			},
 		}
 
-		msgBuff = append(msgBuff, buffer[:readcount]...)
+		r.cache.Put(env, "syslog_"+msg.AppName)
 	}
-
-	msg, err := r.parser.Parse(msgBuff)
-	if err != nil {
-		log.Printf("Failed to parse rfc5424 msg: %s", msg)
-	}
-
-	sourceType, instanceId := getSourceTypeInstIdFromPID(*msg.ProcID())
-
-	env := &loggregator_v2.Envelope{
-		Timestamp:  msg.Timestamp().Unix(),
-		InstanceId: instanceId,
-		Message: &loggregator_v2.Envelope_Log{
-			Log: &loggregator_v2.Log{
-				Payload: []byte(*msg.Message()),
-				Type:    getTypeFromPriority(*msg.Priority()),
-			},
-		},
-		Tags: map[string]string{
-			"source_type": sourceType,
-		},
-	}
-
-	r.cache.Put(env, r.source_id)
 }
 
-func getTypeFromPriority(priority uint8) loggregator_v2.Log_Type {
+func getTypeFromPriority(priority int) loggregator_v2.Log_Type {
 	if priority == 11 {
 		return loggregator_v2.Log_ERR
 	}
@@ -106,7 +114,9 @@ func getSourceTypeInstIdFromPID(pid string) (sourceType, instanceId string) {
 	sourceType = pidToks[0]
 
 	if len(pidToks) > 1 {
-		instanceId = pidToks[1]
+		instanceId = pidToks[len(pidToks)-1]
+	} else {
+		instanceId = "UNKNOWN"
 	}
 
 	return
