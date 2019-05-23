@@ -168,8 +168,8 @@ func (c *LogCache) Start() {
 	c.setupRouting(c.store)
 }
 
-func (c *LogCache) Put(env *loggregator_v2.Envelope, sourceId string) {
-	c.store.Put(env, sourceId)
+func (c *LogCache) Put(envs []*loggregator_v2.Envelope, sourceId string) {
+	c.store.Put(envs, sourceId)
 }
 
 // Close will shutdown the gRPC server
@@ -234,7 +234,7 @@ func (c *LogCache) setupRouting(s *store.Store) {
 		localIdx = i
 		ingressClients = append(ingressClients, routing.IngressClientFunc(func(ctx context.Context, r *logcache_v1.SendRequest, opts ...grpc.CallOption) (*logcache_v1.SendResponse, error) {
 			for _, e := range r.GetEnvelopes().GetBatch() {
-				s.Put(e, e.GetSourceId())
+				s.Put([]*loggregator_v2.Envelope{e}, e.GetSourceId())
 			}
 
 			return &logcache_v1.SendResponse{}, nil

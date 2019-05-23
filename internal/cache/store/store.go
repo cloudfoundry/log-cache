@@ -106,34 +106,40 @@ func (store *Store) getOrInitializeStorage(sourceId string) (*storage, bool) {
 	return envelopeStorage.(*storage), newStorage
 }
 
-func (storage *storage) insertOrSwap(store *Store, e *loggregator_v2.Envelope) {
+func (storage *storage) insertOrSwap(store *Store, envs []*loggregator_v2.Envelope) {
 	storage.Lock()
 	defer storage.Unlock()
 
 	// If we're at our maximum capacity, remove an envelope before inserting
-	if storage.Size() >= store.maxPerSource {
-		oldestTimestamp := storage.Left().Key.(int64)
-		storage.Remove(oldestTimestamp)
-		storage.meta.Expired++
-		store.metrics.incExpired(1)
+	if storage.Size() + len(envs) > store.maxPerSource {
+		numToRemove := storage.Size() + len(envs) - store.maxPerSource
+		for i := 0; i < numToRemove; i++ {
+			oldestTimestamp := storage.Left().Key.(int64)
+			storage.Remove(oldestTimestamp)
+		}
+
+		storage.meta.Expired += int64(numToRemove)
+		store.metrics.incExpired(uint64(numToRemove))
 	} else {
-		atomic.AddInt64(&store.count, 1)
+		atomic.AddInt64(&store.count, int64(len(envs)))
 		store.metrics.setStoreSize(float64(atomic.LoadInt64(&store.count)))
 	}
 
-	var timestampFudge int64
-	for timestampFudge = 0; timestampFudge < store.maxTimestampFudge; timestampFudge++ {
-		_, exists := storage.Get(e.Timestamp + timestampFudge)
+	for _, e := range envs {
+		var timestampFudge int64
+		for timestampFudge = 0; timestampFudge < store.maxTimestampFudge; timestampFudge++ {
+			_, exists := storage.Get(e.Timestamp + timestampFudge)
 
-		if !exists {
-			break
+			if !exists {
+				break
+			}
 		}
-	}
 
-	storage.Put(e.Timestamp+timestampFudge, e)
+		storage.Put(e.Timestamp+timestampFudge, e)
 
-	if e.Timestamp > storage.meta.NewestTimestamp {
-		storage.meta.NewestTimestamp = e.Timestamp
+		if e.Timestamp > storage.meta.NewestTimestamp {
+			storage.meta.NewestTimestamp = e.Timestamp
+		}
 	}
 
 	oldestTimestamp := storage.Left().Key.(int64)
@@ -177,11 +183,11 @@ func (store *Store) truncationLoop(runInterval time.Duration) {
 	}
 }
 
-func (store *Store) Put(envelope *loggregator_v2.Envelope, sourceId string) {
-	store.metrics.incIngress(1)
+func (store *Store) Put(envelopes []*loggregator_v2.Envelope, sourceId string) {
+	store.metrics.incIngress(uint64(len(envelopes)))
 
 	envelopeStorage, _ := store.getOrInitializeStorage(sourceId)
-	envelopeStorage.insertOrSwap(store, envelope)
+	envelopeStorage.insertOrSwap(store, envelopes)
 }
 
 func (store *Store) BuildExpirationHeap() *ExpirationHeap {
