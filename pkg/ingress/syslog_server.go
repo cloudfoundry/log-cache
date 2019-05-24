@@ -2,10 +2,10 @@ package ingress
 
 import (
 	"code.cloudfoundry.org/log-cache/internal/metrics"
-	"code.cloudfoundry.org/rfc5424"
 	"fmt"
+	"github.com/influxdata/go-syslog"
+	"github.com/influxdata/go-syslog/octetcounting"
 	"github.com/prometheus/client_golang/prometheus"
-	"io"
 	"log"
 	"net"
 	"strings"
@@ -87,44 +87,48 @@ func (r *SysLog) readToChannel(conn net.Conn, envs chan *loggregator_v2.Envelope
 		count := atomic.AddInt64(r.connCount, -1)
 		r.setConnCount(float64(count))
 	}()
-	conn.SetReadDeadline(time.Now().Add(time.Minute))
 
-	for {
-		var msg rfc5424.Message
-		var err error
-		duration(readDuration, func() error {
-			_, err = msg.ReadFrom(conn)
-			return err
-		})
+	start := time.Now()
+	end := time.Now()
 
-		if err != nil {
-			if err == io.EOF {
-				log.Println("Got EOF")
-				return
-			}
-			log.Printf("ReadFrom err: %s", err)
-			return
+	emit := func(result *syslog.Result) {
+		end = time.Now()
+		readDuration.Observe(end.Sub(start).Seconds())
+
+		conn.SetReadDeadline(time.Now().Add(time.Minute))
+		if result.Error != nil {
+			log.Printf("ReadFrom err: %s", result.Error)
 		}
 
-		if len(envs) > 1000 {
-			log.Printf("channel is filling up %d", len(envs))
+		if len(envs) > 1010 {
+			log.Printf("approaching length of envelope buffer: %d\n", len(envs))
 		}
-
-		envs <- convertSyslogToEnvelope(msg)
+		envs <- convertSyslogToEnvelope(result.Message)
 		r.incIngress(1)
+
+		start = time.Now()
 	}
+
+	// Create parser options
+	opts := []syslog.ParserOption{
+		syslog.WithListener(emit),
+	}
+
+	p := octetcounting.NewParser(opts...)
+	p.Parse(conn)
+	conn.SetReadDeadline(time.Now().Add(time.Minute))
 }
 
-func convertSyslogToEnvelope(msg rfc5424.Message) *loggregator_v2.Envelope {
-	sourceType, instanceId := getSourceTypeInstIdFromPID(msg.ProcessID)
+func convertSyslogToEnvelope(msg syslog.Message) *loggregator_v2.Envelope {
+	sourceType, instanceId := getSourceTypeInstIdFromPID(*msg.ProcID())
 	return &loggregator_v2.Envelope{
-		SourceId:   "syslog_" + msg.AppName,
-		Timestamp:  msg.Timestamp.UnixNano(),
+		SourceId:   "syslog_" + *msg.Appname(),
+		Timestamp:  msg.Timestamp().UnixNano(),
 		InstanceId: instanceId,
 		Message: &loggregator_v2.Envelope_Log{
 			Log: &loggregator_v2.Log{
-				Payload: []byte(msg.Message),
-				Type:    getTypeFromPriority(int(msg.Priority)),
+				Payload: []byte(*msg.Message()),
+				Type:    getTypeFromPriority(int(*msg.Priority())),
 			},
 		},
 		Tags: map[string]string{
@@ -217,16 +221,6 @@ func getSourceTypeInstIdFromPID(pid string) (sourceType, instanceId string) {
 	}
 
 	return
-}
-
-func duration(h prometheus.Histogram, f func() error) {
-	start := time.Now()
-	err := f()
-	end := time.Now()
-
-	if err == nil {
-		h.Observe(end.Sub(start).Seconds())
-	}
 }
 
 func multiDuration(h prometheus.Histogram, f func() int) {
