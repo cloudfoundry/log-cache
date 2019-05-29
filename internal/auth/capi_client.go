@@ -109,7 +109,6 @@ func (c *CAPIClient) AvailableSourceIDs(authToken string) []string {
 		return nil
 	}
 
-	preserveScheme, preserveHost := req.URL.Scheme, req.URL.Host
 	for {
 		resources, nextPageURL, err := c.doResourceRequest(req, authToken, c.storeAppsLatency)
 		if err != nil {
@@ -126,7 +125,6 @@ func (c *CAPIClient) AvailableSourceIDs(authToken string) []string {
 		}
 
 		req.URL = nextPageURL
-		req.URL.Scheme, req.URL.Host = preserveScheme, preserveHost
 	}
 
 	req, err = http.NewRequest(http.MethodGet, c.externalCapi+"/v3/service_instances", nil)
@@ -237,6 +235,7 @@ func (c *CAPIClient) doResourceRequest(req *http.Request, authToken string, metr
 		if err != nil {
 			return apps.Resources, nextPageURL, fmt.Errorf("failed to parse URL %s: %s", apps.Pagination.Next.Href, err)
 		}
+		nextPageURL.Scheme, nextPageURL.Host = req.URL.Scheme, req.URL.Host
 	}
 
 	return apps.Resources, nextPageURL, nil
