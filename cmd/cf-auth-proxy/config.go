@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	envstruct "code.cloudfoundry.org/go-envstruct"
 )
 
@@ -18,14 +20,16 @@ type UAA struct {
 }
 
 type Config struct {
-	LogCacheGatewayAddr string `env:"LOG_CACHE_GATEWAY_ADDR, required, report"`
-	Addr                string `env:"ADDR, required, report"`
-	InternalIP          string `env:"INTERNAL_IP, report"`
-	HealthAddr          string `env:"HEALTH_ADDR, report"`
-	CertPath            string `env:"EXTERNAL_CERT, required, report"`
-	KeyPath             string `env:"EXTERNAL_KEY, required, report"`
-	SkipCertVerify      bool   `env:"SKIP_CERT_VERIFY, report"`
-	SecurityEventLog    string `env:"SECURITY_EVENT_LOG, report"`
+	LogCacheGatewayAddr     string        `env:"LOG_CACHE_GATEWAY_ADDR, required, report"`
+	Addr                    string        `env:"ADDR, required, report"`
+	InternalIP              string        `env:"INTERNAL_IP, report"`
+	HealthAddr              string        `env:"HEALTH_ADDR, report"`
+	CertPath                string        `env:"EXTERNAL_CERT, required, report"`
+	KeyPath                 string        `env:"EXTERNAL_KEY, required, report"`
+	SkipCertVerify          bool          `env:"SKIP_CERT_VERIFY, report"`
+	SecurityEventLog        string        `env:"SECURITY_EVENT_LOG, report"`
+	TokenPruningInterval    time.Duration `env:"TOKEN_PRUNING_INTERVAL, report"`
+	CacheExpirationInterval time.Duration `env:"CACHE_EXPIRATION_INTERVAL, report"`
 
 	CAPI CAPI
 	UAA  UAA
@@ -33,11 +37,13 @@ type Config struct {
 
 func LoadConfig() (*Config, error) {
 	cfg := Config{
-		SkipCertVerify:      false,
-		Addr:                ":8083",
-		InternalIP:          "0.0.0.0",
-		HealthAddr:          "localhost:6065",
-		LogCacheGatewayAddr: "localhost:8081",
+		SkipCertVerify:          false,
+		Addr:                    ":8083",
+		InternalIP:              "0.0.0.0",
+		HealthAddr:              "localhost:6065",
+		LogCacheGatewayAddr:     "localhost:8081",
+		TokenPruningInterval:    time.Minute,
+		CacheExpirationInterval: time.Minute,
 	}
 
 	err := envstruct.Load(&cfg)

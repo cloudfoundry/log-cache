@@ -50,6 +50,8 @@ func main() {
 		buildCAPIClient(cfg),
 		metrics,
 		log,
+		auth.WithTokenPruningInterval(cfg.TokenPruningInterval),
+		auth.WithCacheExpirationInterval(cfg.CacheExpirationInterval),
 	)
 
 	metaFetcher := client.NewClient(cfg.LogCacheGatewayAddr)
