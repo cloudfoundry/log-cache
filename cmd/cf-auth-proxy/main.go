@@ -17,7 +17,7 @@ import (
 	. "code.cloudfoundry.org/log-cache/internal/cfauthproxy"
 	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"code.cloudfoundry.org/log-cache/internal/promql"
-	logtls "code.cloudfoundry.org/log-cache/internal/tls"
+	sharedtls "code.cloudfoundry.org/log-cache/internal/tls"
 	"code.cloudfoundry.org/log-cache/pkg/client"
 )
 
@@ -95,7 +95,7 @@ func main() {
 }
 
 func buildUAAClient(cfg *Config) *http.Client {
-	tlsConfig := logtls.NewBaseTLSConfig()
+	tlsConfig := sharedtls.NewBaseTLSConfig()
 	tlsConfig.InsecureSkipVerify = cfg.SkipCertVerify
 
 	tlsConfig.RootCAs = loadCA(cfg.UAA.CAPath)
@@ -113,7 +113,7 @@ func buildUAAClient(cfg *Config) *http.Client {
 }
 
 func buildCAPIClient(cfg *Config) *http.Client {
-	tlsConfig := logtls.NewBaseTLSConfig()
+	tlsConfig := sharedtls.NewBaseTLSConfig()
 	tlsConfig.ServerName = cfg.CAPI.CommonName
 
 	tlsConfig.RootCAs = loadCA(cfg.CAPI.CAPath)
