@@ -8,6 +8,7 @@ import (
 	"net/url"
 
 	"code.cloudfoundry.org/log-cache/internal/auth"
+	sharedtls "code.cloudfoundry.org/log-cache/internal/tls"
 )
 
 type CFAuthProxy struct {
@@ -85,7 +86,8 @@ func (p *CFAuthProxy) Start() {
 	p.ln = ln
 
 	server := http.Server{
-		Handler: p.accessMiddleware(p.authMiddleware(p.reverseProxy())),
+		Handler:   p.accessMiddleware(p.authMiddleware(p.reverseProxy())),
+		TLSConfig: sharedtls.NewBaseTLSConfig(),
 	}
 
 	if p.blockOnStart {
