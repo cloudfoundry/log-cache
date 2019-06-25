@@ -15,17 +15,20 @@ type Config struct {
 	BatchSize     int           `env:"LOGCACHE_WRITE_BATCH_SIZE, report"`
 	BatchInterval time.Duration `env:"LOGCACHE_WRITE_BATCH_INTERVAL, report"`
 
-	LogCacheTLS             tls.TLS
+	LogCacheTLS       tls.TLS
 	SyslogTLSCertPath string `env:"SYSLOG_TLS_CERT_PATH, required, report"`
 	SyslogTLSKeyPath  string `env:"SYSLOG_TLS_KEY_PATH, required, report"`
+
+	SyslogIdleTimeout time.Duration `env:"SYSLOG_IDLE_TIMEOUT, report"`
 }
 
 // LoadConfig creates Config object from environment variables
 func LoadConfig() (*Config, error) {
 	c := Config{
-		LogCacheAddr: ":8080",
-		SyslogPort:   8888,
-		HealthPort:   6061,
+		LogCacheAddr:      ":8080",
+		SyslogPort:        8888,
+		HealthPort:        6061,
+		SyslogIdleTimeout: 2 * time.Minute,
 	}
 
 	if err := envstruct.Load(&c); err != nil {

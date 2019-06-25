@@ -13,6 +13,7 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
+	"io"
 	"log"
 	"net"
 	"sync"
@@ -42,13 +43,62 @@ var _ = Describe("Syslog", func() {
 		)
 
 		go server.Start()
-		for server.Addr() == "" {
-			continue //Wait for the server to start
-		}
+		waitForServerToStart(server)
 	})
 
 	AfterEach(func() {
 		server.Stop()
+	})
+
+	It("closes connection after idle timeout", func() {
+		timeoutServer := syslog.NewServer(
+			loggr,
+			logCache,
+			spyMetrics,
+			testing.Cert("log-cache.crt"),
+			testing.Cert("log-cache.key"),
+			syslog.WithServerPort(0),
+			syslog.WithIdleTimeout(100*time.Millisecond),
+		)
+
+		go timeoutServer.Start()
+		waitForServerToStart(timeoutServer)
+
+		tlsConfig := buildClientTLSConfig(tls.VersionTLS12, tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384)
+		conn, err := tlsClientConnection(timeoutServer.Addr(), tlsConfig)
+		Expect(err).ToNot(HaveOccurred())
+
+		readErrs := make(chan error, 1)
+		go func() {
+			_, err = conn.Read(make([]byte, 1024))
+			readErrs <- err
+		}()
+
+		Eventually(readErrs).Should(Receive(MatchError(io.EOF)))
+	})
+
+	It("keeps the connection open if writes are occurring", func() {
+		timeoutServer := syslog.NewServer(
+			loggr,
+			logCache,
+			spyMetrics,
+			testing.Cert("log-cache.crt"),
+			testing.Cert("log-cache.key"),
+			syslog.WithServerPort(0),
+			syslog.WithIdleTimeout(100*time.Millisecond),
+		)
+
+		go timeoutServer.Start()
+		waitForServerToStart(timeoutServer)
+
+		tlsConfig := buildClientTLSConfig(tls.VersionTLS12, tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384)
+		conn, err := tlsClientConnection(timeoutServer.Addr(), tlsConfig)
+		Expect(err).ToNot(HaveOccurred())
+
+		Consistently(func() error {
+			_, err = fmt.Fprint(conn, "89 <14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [APP/2] - - just a test\n")
+			return err
+		}, 1).Should(Succeed())
 	})
 
 	It("counts incoming messages", func() {
@@ -234,6 +284,10 @@ var _ = Describe("Syslog", func() {
 		)
 	})
 })
+
+func waitForServerToStart(server *syslog.Server) {
+	Eventually(server.Addr, "1s", "100ms").ShouldNot(BeEmpty())
+}
 
 const counterFormat = "%d <14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [1] - [counter@47450 name=\"some-counter\" total=\"%s\" delta=\"%s\"] \n"
 const gaugeFormat = "%d <14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [1] - [gauge@47450 name=\"cpu\" value=\"%s\" %s] \n"

@@ -11,6 +11,7 @@ import (
 	"github.com/influxdata/go-syslog"
 	"github.com/influxdata/go-syslog/octetcounting"
 	"log"
+	"time"
 
 	"golang.org/x/net/context"
 	"net"
@@ -29,6 +30,7 @@ type Server struct {
 	logCache       logcache_v1.IngressClient
 	syslogCert     string
 	syslogKey      string
+	idleTimeout    time.Duration
 }
 
 type ServerOption func(s *Server)
@@ -42,10 +44,11 @@ func NewServer(
 	opts ...ServerOption,
 ) *Server {
 	s := &Server{
-		logCache:   logCache,
-		loggr:      loggr,
-		syslogCert: cert,
-		syslogKey:  key,
+		logCache:    logCache,
+		loggr:       loggr,
+		syslogCert:  cert,
+		syslogKey:   key,
+		idleTimeout: 2 * time.Minute,
 	}
 
 	for _, o := range opts {
@@ -64,6 +67,12 @@ func WithServerPort(p int) ServerOption {
 	}
 }
 
+func WithIdleTimeout(d time.Duration) ServerOption {
+	return func(s *Server) {
+		s.idleTimeout = d
+	}
+}
+
 func (s *Server) Start() {
 	tlsConfig := s.buildTLSConfig()
 	l, err := tls.Listen("tcp", fmt.Sprintf(":%d", s.port), tlsConfig)
@@ -71,7 +80,10 @@ func (s *Server) Start() {
 		s.loggr.Fatalf("unable to start syslog server: %s", err)
 	}
 	defer s.Stop()
+
+	s.Lock()
 	s.l = l
+	s.Unlock()
 
 	for {
 		c, err := s.l.Accept()
@@ -83,10 +95,27 @@ func (s *Server) Start() {
 	}
 }
 
-func (s *Server) handleConnection(c net.Conn) {
+func (s *Server) handleConnection(conn net.Conn) {
+	defer conn.Close()
+	s.setReadDeadline(conn)
+
 	p := octetcounting.NewParser()
-	p.WithListener(s.parseListener)
-	p.Parse(c)
+	p.WithListener(s.parseListenerForConnection(conn))
+	p.Parse(conn)
+}
+
+func (s *Server) parseListenerForConnection(conn net.Conn) syslog.ParserListener {
+	return func(res *syslog.Result) {
+		s.parseListener(res)
+		s.setReadDeadline(conn)
+	}
+}
+
+func (s *Server) setReadDeadline(conn net.Conn) {
+	err := conn.SetReadDeadline(time.Now().Add(s.idleTimeout))
+	if err != nil {
+		s.loggr.Printf("syslog server could not set deadline on connection: %s", err)
+	}
 }
 
 func (s *Server) parseListener(res *syslog.Result) {

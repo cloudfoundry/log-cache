@@ -47,6 +47,8 @@ func main() {
 		m,
 		cfg.SyslogTLSCertPath,
 		cfg.SyslogTLSKeyPath,
+		syslog.WithServerPort(cfg.SyslogPort),
+		syslog.WithIdleTimeout(cfg.SyslogIdleTimeout),
 	)
 
 	go server.Start()
