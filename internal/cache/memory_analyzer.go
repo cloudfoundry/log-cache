@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"code.cloudfoundry.org/log-cache/internal/metrics"
-	"github.com/cloudfoundry/gosigar"
+	sigar "github.com/cloudfoundry/gosigar"
 )
 
 // MemoryAnalyzer reports the available and total memory.

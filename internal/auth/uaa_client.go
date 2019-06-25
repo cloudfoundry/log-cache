@@ -17,7 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dvsekhvalnov/jose2go"
+	jose "github.com/dvsekhvalnov/jose2go"
 )
 
 type Metrics interface {
