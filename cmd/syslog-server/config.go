@@ -12,9 +12,6 @@ type Config struct {
 	SyslogPort   int    `env:"SYSLOG_PORT, required, report"`
 	HealthPort   int    `env:"HEALTH_PORT, report"`
 
-	BatchSize     int           `env:"LOGCACHE_WRITE_BATCH_SIZE, report"`
-	BatchInterval time.Duration `env:"LOGCACHE_WRITE_BATCH_INTERVAL, report"`
-
 	LogCacheTLS       tls.TLS
 	SyslogTLSCertPath string `env:"SYSLOG_TLS_CERT_PATH, required, report"`
 	SyslogTLSKeyPath  string `env:"SYSLOG_TLS_KEY_PATH, required, report"`

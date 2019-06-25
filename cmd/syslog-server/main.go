@@ -9,10 +9,16 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"time"
 
 	"code.cloudfoundry.org/go-envstruct"
 	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"google.golang.org/grpc"
+)
+
+const (
+	BATCH_FLUSH_INTERVAL = 500 * time.Millisecond
+	BATCH_CHANNEL_SIZE   = 512
 )
 
 func main() {
@@ -43,7 +49,7 @@ func main() {
 
 	server := syslog.NewServer(
 		loggr,
-		routing.NewBatchedIngressClient(cfg.BatchSize, cfg.BatchInterval, client, egressDropped, loggr),
+		routing.NewBatchedIngressClient(BATCH_CHANNEL_SIZE, BATCH_FLUSH_INTERVAL, client, egressDropped, loggr),
 		m,
 		cfg.SyslogTLSCertPath,
 		cfg.SyslogTLSKeyPath,
