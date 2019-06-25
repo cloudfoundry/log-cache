@@ -7,9 +7,9 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"syscall"
 
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
+	"github.com/shirou/gopsutil/host"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
@@ -168,10 +168,8 @@ func (g *Gateway) handleInfoEndpoint(w http.ResponseWriter, r *http.Request) {
 }
 
 func uptimeInSeconds() int64 {
-	info := syscall.Sysinfo_t{}
-	syscall.Sysinfo(&info)
-
-	return info.Uptime
+	hostStats, _ := host.Info()
+	return int64(hostStats.Uptime)
 }
 
 type errorBody struct {
