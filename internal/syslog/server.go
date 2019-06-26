@@ -145,6 +145,7 @@ func (s *Server) parseListener(res *syslog.Result) {
 	s.ingress(1)
 }
 
+//TODO pull out functions for each env type
 func (s *Server) convertToEnvelope(msg syslog.Message) (*loggregator_v2.Envelope, error) {
 	sourceType, instanceId := s.sourceTypeInstIdFromPID(*msg.ProcID())
 	env := &loggregator_v2.Envelope{
@@ -176,7 +177,7 @@ func (s *Server) convertToEnvelope(msg syslog.Message) (*loggregator_v2.Envelope
 			case strings.HasPrefix(envType, "gauge"):
 				unit, ok := payload["unit"]
 				if !ok {
-					return nil, errors.New("Expected unit not found in gauge")
+					return nil, errors.New("expected unit not found in gauge")
 				}
 				value, err := strconv.ParseFloat(payload["value"], 64)
 				if err != nil {
@@ -215,6 +216,8 @@ func (s *Server) typeFromPriority(priority int) loggregator_v2.Log_Type {
 	return loggregator_v2.Log_OUT
 }
 
+//TODO is this how we should get source type
+// check what the syslog drain emits
 func (s *Server) sourceTypeInstIdFromPID(pid string) (sourceType, instanceId string) {
 	pid = strings.Trim(pid, "[]")
 
