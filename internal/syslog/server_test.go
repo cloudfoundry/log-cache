@@ -63,6 +63,7 @@ var _ = Describe("Syslog", func() {
 
 		go timeoutServer.Start()
 		waitForServerToStart(timeoutServer)
+		defer timeoutServer.Stop()
 
 		tlsConfig := buildClientTLSConfig(tls.VersionTLS12, tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384)
 		conn, err := tlsClientConnection(timeoutServer.Addr(), tlsConfig)
@@ -211,6 +212,17 @@ var _ = Describe("Syslog", func() {
 		Eventually(func() float64 {
 			return spyMetrics.Get("ingress")
 		}).Should(Equal(1.0))
+	})
+
+	It("does not send invalid envelopes to log cache", func(){
+		tlsConfig := buildClientTLSConfig(tls.VersionTLS12, tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384)
+		conn, err := tlsClientConnection(server.Addr(), tlsConfig)
+		Expect(err).ToNot(HaveOccurred())
+
+		_, err = fmt.Fprint(conn, fmt.Sprintf(counterFormat, 129, "99", "d"))
+
+		Consistently(logCache.envelopes).Should(HaveLen(0))
+
 	})
 
 	DescribeTable("increments invalid ingress on invalid envelope data", func(rfc5424Log string) {

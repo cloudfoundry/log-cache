@@ -128,6 +128,7 @@ func (s *Server) parseListener(res *syslog.Result) {
 	env, err := s.convertToEnvelope(msg)
 	if err != nil {
 		s.invalidIngress(1)
+		return
 	}
 
 	_, err = s.logCache.Send(
@@ -145,7 +146,6 @@ func (s *Server) parseListener(res *syslog.Result) {
 	s.ingress(1)
 }
 
-//TODO pull out functions for each env type
 func (s *Server) convertToEnvelope(msg syslog.Message) (*loggregator_v2.Envelope, error) {
 	sourceType, instanceId := s.sourceTypeInstIdFromPID(*msg.ProcID())
 	env := &loggregator_v2.Envelope{
@@ -158,42 +158,9 @@ func (s *Server) convertToEnvelope(msg syslog.Message) (*loggregator_v2.Envelope
 		for envType, payload := range *msg.StructuredData() {
 			switch {
 			case strings.HasPrefix(envType, "counter"):
-				delta, err := strconv.ParseUint(payload["delta"], 10, 64)
-				if err != nil {
-					return nil, err
-				}
-				total, err := strconv.ParseUint(payload["total"], 10, 64)
-				if err != nil {
-					return nil, err
-				}
-				env.Message = &loggregator_v2.Envelope_Counter{
-					Counter: &loggregator_v2.Counter{
-						Name:  payload["name"],
-						Delta: delta,
-						Total: total,
-					},
-				}
-				return env, nil
+				return convertCounter(env, payload)
 			case strings.HasPrefix(envType, "gauge"):
-				unit, ok := payload["unit"]
-				if !ok {
-					return nil, errors.New("expected unit not found in gauge")
-				}
-				value, err := strconv.ParseFloat(payload["value"], 64)
-				if err != nil {
-					return nil, err
-				}
-				env.Message = &loggregator_v2.Envelope_Gauge{
-					Gauge: &loggregator_v2.Gauge{
-						Metrics: map[string]*loggregator_v2.GaugeValue{
-							payload["name"]: {
-								Unit:  unit,
-								Value: value,
-							},
-						},
-					},
-				}
-				return env, nil
+				return convertGauge(env, payload)
 			}
 		}
 	}
@@ -208,6 +175,47 @@ func (s *Server) convertToEnvelope(msg syslog.Message) (*loggregator_v2.Envelope
 	return env, nil
 }
 
+func convertCounter(env *loggregator_v2.Envelope, msg map[string]string) (*loggregator_v2.Envelope, error) {
+	delta, err := strconv.ParseUint(msg["delta"], 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	total, err := strconv.ParseUint(msg["total"], 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	env.Message = &loggregator_v2.Envelope_Counter{
+		Counter: &loggregator_v2.Counter{
+			Name:  msg["name"],
+			Delta: delta,
+			Total: total,
+		},
+	}
+	return env, nil
+}
+
+func convertGauge(env *loggregator_v2.Envelope, msg map[string]string) (*loggregator_v2.Envelope, error) {
+	unit, ok := msg["unit"]
+	if !ok {
+		return nil, errors.New("expected unit not found in gauge")
+	}
+	value, err := strconv.ParseFloat(msg["value"], 64)
+	if err != nil {
+		return nil, err
+	}
+	env.Message = &loggregator_v2.Envelope_Gauge{
+		Gauge: &loggregator_v2.Gauge{
+			Metrics: map[string]*loggregator_v2.GaugeValue{
+				msg["name"]: {
+					Unit:  unit,
+					Value: value,
+				},
+			},
+		},
+	}
+	return env, nil
+}
+
 func (s *Server) typeFromPriority(priority int) loggregator_v2.Log_Type {
 	if priority == 11 {
 		return loggregator_v2.Log_ERR
@@ -216,8 +224,6 @@ func (s *Server) typeFromPriority(priority int) loggregator_v2.Log_Type {
 	return loggregator_v2.Log_OUT
 }
 
-//TODO is this how we should get source type
-// check what the syslog drain emits
 func (s *Server) sourceTypeInstIdFromPID(pid string) (sourceType, instanceId string) {
 	pid = strings.Trim(pid, "[]")
 
