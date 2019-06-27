@@ -86,7 +86,7 @@ func (s *Server) Start() {
 	s.Unlock()
 
 	for {
-		c, err := s.l.Accept()
+		c, err := l.Accept()
 		if err != nil {
 			s.loggr.Printf("syslog server no longer accepting connections: %s", err)
 			return
