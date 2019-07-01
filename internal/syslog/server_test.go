@@ -20,6 +20,8 @@ import (
 	"time"
 )
 
+const defaultLogMessage = "89 <14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [APP/2] - - just a test\n"
+
 var _ = Describe("Syslog", func() {
 	var (
 		server     *syslog.Server
@@ -97,7 +99,7 @@ var _ = Describe("Syslog", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		Consistently(func() error {
-			_, err = fmt.Fprint(conn, "89 <14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [APP/2] - - just a test\n")
+			_, err = fmt.Fprint(conn, defaultLogMessage)
 			return err
 		}, 1).Should(Succeed())
 	})
@@ -107,10 +109,10 @@ var _ = Describe("Syslog", func() {
 		conn, err := tlsClientConnection(server.Addr(), tlsConfig)
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = fmt.Fprint(conn, "89 <14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [APP/2] - - just a test\n")
+		_, err = fmt.Fprint(conn, defaultLogMessage)
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = fmt.Fprint(conn, "89 <14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [APP/2] - - just a test\n")
+		_, err = fmt.Fprint(conn, defaultLogMessage)
 		Expect(err).ToNot(HaveOccurred())
 
 		Eventually(func() float64 {
@@ -123,7 +125,7 @@ var _ = Describe("Syslog", func() {
 		conn, err := tlsClientConnection(server.Addr(), tlsConfig)
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = fmt.Fprint(conn, "89 <14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [APP/2] - - just a test\n")
+		_, err = fmt.Fprint(conn, defaultLogMessage)
 		Expect(err).ToNot(HaveOccurred())
 
 		Eventually(logCache.envelopes).Should(ContainElement(
@@ -149,7 +151,7 @@ var _ = Describe("Syslog", func() {
 		conn, err := tlsClientConnection(server.Addr(), tlsConfig)
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = fmt.Fprint(conn, "129 <14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [1] - [counter@47450 name=\"some-counter\" total=\"99\" delta=\"1\"] \n")
+		_, err = fmt.Fprint(conn, buildSyslog(fmt.Sprintf(counterDataFormat, "some-counter", "99", "1")))
 		Expect(err).ToNot(HaveOccurred())
 
 		Eventually(logCache.envelopes).Should(ContainElement(
@@ -174,7 +176,7 @@ var _ = Describe("Syslog", func() {
 		conn, err := tlsClientConnection(server.Addr(), tlsConfig)
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = fmt.Fprint(conn, "128 <14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [1] - [gauge@47450 name=\"cpu\" value=\"0.23\" unit=\"percentage\"] \n")
+		_, err = fmt.Fprint(conn, buildSyslog(fmt.Sprintf(gaugeDataFormat, "cpu", "0.23", `unit="percentage"`)))
 		Expect(err).ToNot(HaveOccurred())
 
 		Eventually(logCache.envelopes).Should(ContainElement(
@@ -187,6 +189,53 @@ var _ = Describe("Syslog", func() {
 						Metrics: map[string]*loggregator_v2.GaugeValue{
 							"cpu": {Unit: "percentage", Value: 0.23},
 						},
+					},
+				},
+			},
+		))
+	})
+
+	It("sends event messages to log cache", func() {
+		tlsConfig := buildClientTLSConfig(tls.VersionTLS12, tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384)
+		conn, err := tlsClientConnection(server.Addr(), tlsConfig)
+		Expect(err).ToNot(HaveOccurred())
+
+		_, err = fmt.Fprint(conn, buildSyslog(`event@47450 title="event-title" body="event-body"`))
+		Expect(err).ToNot(HaveOccurred())
+
+		Eventually(logCache.envelopes).Should(ContainElement(
+			&loggregator_v2.Envelope{
+				InstanceId: "1",
+				Timestamp:  12345000,
+				SourceId:   "test-app-id",
+				Message: &loggregator_v2.Envelope_Event{
+					Event: &loggregator_v2.Event{
+						Title: "event-title",
+						Body:  "event-body",
+					},
+				},
+			},
+		))
+	})
+
+	It("sends timer messages to log cache", func() {
+		tlsConfig := buildClientTLSConfig(tls.VersionTLS12, tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384)
+		conn, err := tlsClientConnection(server.Addr(), tlsConfig)
+		Expect(err).ToNot(HaveOccurred())
+
+		_, err = fmt.Fprint(conn, buildSyslog(`timer@47450 name="some-name" start="10" stop="20"`))
+		Expect(err).ToNot(HaveOccurred())
+
+		Eventually(logCache.envelopes).Should(ContainElement(
+			&loggregator_v2.Envelope{
+				InstanceId: "1",
+				Timestamp:  12345000,
+				SourceId:   "test-app-id",
+				Message: &loggregator_v2.Envelope_Timer{
+					Timer: &loggregator_v2.Timer{
+						Name:  "some-name",
+						Start: 10,
+						Stop:  20,
 					},
 				},
 			},
@@ -214,12 +263,12 @@ var _ = Describe("Syslog", func() {
 		}).Should(Equal(1.0))
 	})
 
-	It("does not send invalid envelopes to log cache", func(){
+	It("does not send invalid envelopes to log cache", func() {
 		tlsConfig := buildClientTLSConfig(tls.VersionTLS12, tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384)
 		conn, err := tlsClientConnection(server.Addr(), tlsConfig)
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = fmt.Fprint(conn, fmt.Sprintf(counterFormat, 129, "99", "d"))
+		_, err = fmt.Fprint(conn, buildSyslog(buildSyslog(fmt.Sprintf(counterDataFormat, "some-counter", "99", "d"))))
 
 		Consistently(logCache.envelopes).Should(HaveLen(0))
 
@@ -237,10 +286,10 @@ var _ = Describe("Syslog", func() {
 			return spyMetrics.Get("invalid_ingress")
 		}).Should(Equal(1.0))
 	},
-		Entry("Counter - invalid delta", fmt.Sprintf(counterFormat, 129, "99", "d")),
-		Entry("Counter - invalid total", fmt.Sprintf(counterFormat, 129, "dd", "9")),
-		Entry("Gauge - no unit provided", fmt.Sprintf(gaugeFormat, 128, "0.23", "blah=\"percentage\"")),
-		Entry("Gauge - invalid value", fmt.Sprintf(gaugeFormat, 128, "dddd", "unit=\"percentage\"")),
+		Entry("Counter - invalid delta", buildSyslog(fmt.Sprintf(counterDataFormat, "some-counter", "99", "d"))),
+		Entry("Counter - invalid total", buildSyslog(fmt.Sprintf(counterDataFormat, "some-counter", "dd", "9"))),
+		Entry("Gauge - no unit provided", buildSyslog(fmt.Sprintf(gaugeDataFormat, "cpu", "0.23", "blah=\"percentage\""))),
+		Entry("Gauge - invalid value", buildSyslog(fmt.Sprintf(gaugeDataFormat, "cpu", "dddd", "unit=\"percentage\""))),
 	)
 
 	Describe("TLS security", func() {
@@ -297,12 +346,17 @@ var _ = Describe("Syslog", func() {
 	})
 })
 
+func buildSyslog(structuredData string) string {
+	msg := fmt.Sprintf("<14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [1] - [%s] \n", structuredData)
+	return fmt.Sprintf("%d %s", len(msg), msg)
+}
+
 func waitForServerToStart(server *syslog.Server) {
 	Eventually(server.Addr, "1s", "100ms").ShouldNot(BeEmpty())
 }
 
-const counterFormat = "%d <14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [1] - [counter@47450 name=\"some-counter\" total=\"%s\" delta=\"%s\"] \n"
-const gaugeFormat = "%d <14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [1] - [gauge@47450 name=\"cpu\" value=\"%s\" %s] \n"
+const counterDataFormat = `counter@47450 name="%s" total="%s" delta="%s"`
+const gaugeDataFormat = `gauge@47450 name="%s" value="%s" %s`
 
 func newSpyLogCacheClient() *spyLogCacheClient {
 	return &spyLogCacheClient{}
@@ -339,7 +393,7 @@ func buildClientTLSConfig(maxVersion, cipherSuite uint16) *tls.Config {
 			testing.Cert("log-cache.crt"),
 			testing.Cert("log-cache.key"),
 		),
-	).Client(tlsconfig.WithAuthorityFromFile(testing.Cert("log-cache-ca.crt")))
+	).Client()
 	Expect(err).ToNot(HaveOccurred())
 
 	tlsConf.MaxVersion = uint16(maxVersion)
