@@ -1,6 +1,8 @@
 package cache
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
+	"fmt"
 	"hash/crc64"
 	"io/ioutil"
 	"log"
@@ -12,7 +14,6 @@ import (
 	"google.golang.org/grpc"
 
 	"code.cloudfoundry.org/log-cache/internal/cache/store"
-	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"code.cloudfoundry.org/log-cache/internal/promql"
 	"code.cloudfoundry.org/log-cache/internal/promql/data_reader"
 	"code.cloudfoundry.org/log-cache/internal/routing"
@@ -28,7 +29,7 @@ type LogCache struct {
 	server *grpc.Server
 
 	serverOpts []grpc.ServerOption
-	metrics    metrics.Initializer
+	metrics    *metrics.Registry
 	closing    int64
 
 	maxPerSource       int
@@ -50,9 +51,11 @@ type LogCache struct {
 
 // NewLogCache creates a new LogCache.
 func New(opts ...LogCacheOption) *LogCache {
+
+	logger := log.New(ioutil.Discard, "", 0)
 	cache := &LogCache{
-		log:                log.New(ioutil.Discard, "", 0),
-		metrics:            metrics.NullMetrics{},
+		log:                logger,
+		metrics:            metrics.NewRegistry(logger),
 		maxPerSource:       100000,
 		memoryLimitPercent: 50,
 		queryTimeout:       10 * time.Second,
@@ -151,7 +154,7 @@ func WithExternalAddr(addr string) LogCacheOption {
 
 // WithMetrics returns a LogCacheOption that configures the metrics for the
 // LogCache. It will add metrics to the given map.
-func WithMetrics(m metrics.Initializer) LogCacheOption {
+func WithMetrics(m *metrics.Registry) LogCacheOption {
 	return func(c *LogCache) {
 		c.metrics = m
 	}
@@ -214,7 +217,9 @@ func (c *LogCache) setupRouting(s *store.Store) {
 				100,
 				250*time.Millisecond,
 				logcache_v1.NewIngressClient(conn),
-				c.metrics.NewPerNodeCounter("ingress_dropped", i),
+				c.metrics.NewCounter("ingress_dropped", metrics.WithMetricTags(map[string]string{
+					"nodeIndex": fmt.Sprint(i),
+				})),
 				c.log,
 			)
 

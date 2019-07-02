@@ -1,8 +1,8 @@
 package syslog
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 	"code.cloudfoundry.org/tlsconfig"
 	"crypto/tls"
@@ -25,8 +25,8 @@ type Server struct {
 	port           int
 	l              net.Listener
 	loggr          *log.Logger
-	ingress        func(uint64)
-	invalidIngress func(uint64)
+	ingress        metrics.Counter
+	invalidIngress metrics.Counter
 	logCache       logcache_v1.IngressClient
 	syslogCert     string
 	syslogKey      string
@@ -35,10 +35,15 @@ type Server struct {
 
 type ServerOption func(s *Server)
 
+type Metrics interface {
+	NewGauge(name string, opts ...metrics.MetricOption) metrics.Gauge
+	NewCounter(name string, opts ...metrics.MetricOption) metrics.Counter
+}
+
 func NewServer(
 	loggr *log.Logger,
 	logCache logcache_v1.IngressClient,
-	metrics metrics.Initializer,
+	metrics Metrics,
 	cert string,
 	key string,
 	opts ...ServerOption,
@@ -121,13 +126,13 @@ func (s *Server) setReadDeadline(conn net.Conn) {
 func (s *Server) parseListener(res *syslog.Result) {
 	msg := res.Message
 	if res.Error != nil {
-		s.invalidIngress(1)
+		s.invalidIngress.Add(1)
 		return
 	}
 
 	env, err := s.convertToEnvelope(msg)
 	if err != nil {
-		s.invalidIngress(1)
+		s.invalidIngress.Add(1)
 		return
 	}
 
@@ -143,7 +148,7 @@ func (s *Server) parseListener(res *syslog.Result) {
 		s.loggr.Println("syslog server dropped messages to log cache")
 		return
 	}
-	s.ingress(1)
+	s.ingress.Add(1)
 }
 
 func (s *Server) convertToEnvelope(msg syslog.Message) (*loggregator_v2.Envelope, error) {

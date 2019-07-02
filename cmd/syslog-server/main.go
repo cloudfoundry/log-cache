@@ -1,10 +1,12 @@
 package main
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
 	"code.cloudfoundry.org/log-cache/internal/routing"
 	"code.cloudfoundry.org/log-cache/internal/syslog"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -12,7 +14,6 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/go-envstruct"
-	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"google.golang.org/grpc"
 )
 
@@ -34,8 +35,8 @@ func main() {
 
 	envstruct.WriteReport(cfg)
 
-	m := metrics.New()
 	loggr := log.New(os.Stderr, "[LOGGR] ", log.LstdFlags)
+	m := metrics.NewRegistry(loggr)
 
 	egressDropped := m.NewCounter("egress_dropped")
 	conn, err := grpc.Dial(
@@ -57,6 +58,7 @@ func main() {
 		syslog.WithIdleTimeout(cfg.SyslogIdleTimeout),
 	)
 
+	http.Handle("/metrics", promhttp.Handler())
 	go server.Start()
 
 	// Register prometheus-compatible metric endpoint

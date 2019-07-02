@@ -23,13 +23,13 @@ import (
 var _ = Describe("Syslog", func() {
 	var (
 		server     *syslog.Server
-		spyMetrics *testing.SpyMetrics
+		spyMetrics *testing.SpyMetricClient
 		logCache   *spyLogCacheClient
 		loggr      *log.Logger
 	)
 
 	BeforeEach(func() {
-		spyMetrics = testing.NewSpyMetrics()
+		spyMetrics = testing.NewMetricClient()
 		logCache = newSpyLogCacheClient()
 		loggr = log.New(GinkgoWriter, "", log.LstdFlags)
 
@@ -113,9 +113,12 @@ var _ = Describe("Syslog", func() {
 		_, err = fmt.Fprint(conn, "89 <14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [APP/2] - - just a test\n")
 		Expect(err).ToNot(HaveOccurred())
 
-		Eventually(func() float64 {
-			return spyMetrics.Get("ingress")
-		}).Should(Equal(2.0))
+		Eventually(func() bool {
+			return spyMetrics.HasMetric("ingress", nil)
+		}).Should(BeTrue())
+
+		ingressMetric := spyMetrics.GetMetric("ingress", nil)
+		Eventually(ingressMetric.Value).Should(BeNumerically("==", 2))
 	})
 
 	It("sends log messages to log cache", func() {
@@ -205,13 +208,19 @@ var _ = Describe("Syslog", func() {
 		_, err = fmt.Fprint(conn, "128 <14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [1] - [gauge@47450 name=\"cpu\" value=\"0.23\" unit=\"percentage\"] \n")
 		Expect(err).ToNot(HaveOccurred())
 
-		Eventually(func() float64 {
-			return spyMetrics.Get("invalid_ingress")
-		}).Should(Equal(1.0))
+		Eventually(func() bool {
+			return spyMetrics.HasMetric("invalid_ingress", nil)
+		}).Should(BeTrue())
 
-		Eventually(func() float64 {
-			return spyMetrics.Get("ingress")
-		}).Should(Equal(1.0))
+		invalidIngressMetric := spyMetrics.GetMetric("invalid_ingress", nil)
+		Eventually(invalidIngressMetric.Value).Should(BeNumerically("==", 1))
+
+		Eventually(func() bool {
+			return spyMetrics.HasMetric("ingress", nil)
+		}).Should(BeTrue())
+
+		ingressMetric := spyMetrics.GetMetric("ingress", nil)
+		Eventually(ingressMetric.Value).Should(BeNumerically("==", 1))
 	})
 
 	It("does not send invalid envelopes to log cache", func(){
@@ -233,9 +242,8 @@ var _ = Describe("Syslog", func() {
 		_, err = fmt.Fprint(conn, rfc5424Log)
 		Expect(err).ToNot(HaveOccurred())
 
-		Eventually(func() float64 {
-			return spyMetrics.Get("invalid_ingress")
-		}).Should(Equal(1.0))
+		invalidIngressMetric := spyMetrics.GetMetric("invalid_ingress", nil)
+		Eventually(invalidIngressMetric.Value).Should(BeNumerically("==", 1))
 	},
 		Entry("Counter - invalid delta", fmt.Sprintf(counterFormat, 129, "99", "d")),
 		Entry("Counter - invalid total", fmt.Sprintf(counterFormat, 129, "dd", "9")),
