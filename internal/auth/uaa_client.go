@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
@@ -21,7 +22,7 @@ import (
 )
 
 type Metrics interface {
-	NewGauge(name, unit string) func(value float64)
+	NewGauge(name string, opts ...metrics.MetricOption) metrics.Gauge
 }
 
 type HTTPClient interface {

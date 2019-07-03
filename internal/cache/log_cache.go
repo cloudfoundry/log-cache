@@ -1,10 +1,11 @@
 package cache
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
 	"hash/crc64"
-	"io/ioutil"
 	"log"
 	"net"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -12,13 +13,17 @@ import (
 	"google.golang.org/grpc"
 
 	"code.cloudfoundry.org/log-cache/internal/cache/store"
-	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"code.cloudfoundry.org/log-cache/internal/promql"
 	"code.cloudfoundry.org/log-cache/internal/promql/data_reader"
 	"code.cloudfoundry.org/log-cache/internal/routing"
 	"code.cloudfoundry.org/log-cache/pkg/client"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 )
+
+type Metrics interface {
+	NewCounter(name string, opts ...metrics.MetricOption) metrics.Counter
+	NewGauge(name string, opts ...metrics.MetricOption) metrics.Gauge
+}
 
 // LogCache is a in memory cache for Loggregator envelopes.
 type LogCache struct {
@@ -28,7 +33,7 @@ type LogCache struct {
 	server *grpc.Server
 
 	serverOpts []grpc.ServerOption
-	metrics    metrics.Initializer
+	metrics    Metrics
 	closing    int64
 
 	maxPerSource       int
@@ -49,10 +54,10 @@ type LogCache struct {
 }
 
 // NewLogCache creates a new LogCache.
-func New(opts ...LogCacheOption) *LogCache {
+func New(m Metrics, logger *log.Logger, opts ...LogCacheOption) *LogCache {
 	cache := &LogCache{
-		log:                log.New(ioutil.Discard, "", 0),
-		metrics:            metrics.NullMetrics{},
+		log:                logger,
+		metrics:            m,
 		maxPerSource:       100000,
 		memoryLimitPercent: 50,
 		queryTimeout:       10 * time.Second,
@@ -75,13 +80,6 @@ func New(opts ...LogCacheOption) *LogCache {
 // LogCacheOption configures a LogCache.
 type LogCacheOption func(*LogCache)
 
-// WithLogger returns a LogCacheOption that configures the logger used for
-// the LogCache. Defaults to silent logger.
-func WithLogger(l *log.Logger) LogCacheOption {
-	return func(c *LogCache) {
-		c.log = l
-	}
-}
 
 // WithMaxPerSource returns a LogCacheOption that configures the store's
 // memory size as number of envelopes for a specific sourceID. Defaults to
@@ -149,14 +147,6 @@ func WithExternalAddr(addr string) LogCacheOption {
 	}
 }
 
-// WithMetrics returns a LogCacheOption that configures the metrics for the
-// LogCache. It will add metrics to the given map.
-func WithMetrics(m metrics.Initializer) LogCacheOption {
-	return func(c *LogCache) {
-		c.metrics = m
-	}
-}
-
 // Start starts the LogCache. It has an internal go-routine that it creates
 // and therefore does not block.
 func (c *LogCache) Start() {
@@ -214,7 +204,9 @@ func (c *LogCache) setupRouting(s *store.Store) {
 				100,
 				250*time.Millisecond,
 				logcache_v1.NewIngressClient(conn),
-				c.metrics.NewPerNodeCounter("ingress_dropped", i),
+				c.metrics.NewCounter("ingress_dropped", metrics.WithMetricTags(map[string]string{
+					"nodeIndex": strconv.Itoa(i),
+				})),
 				c.log,
 			)
 

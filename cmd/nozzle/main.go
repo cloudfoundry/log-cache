@@ -1,6 +1,7 @@
 package main
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
-	"code.cloudfoundry.org/log-cache/internal/metrics"
 	. "code.cloudfoundry.org/log-cache/internal/nozzle"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
@@ -39,8 +39,8 @@ func main() {
 		log.Fatalf("invalid LogsProviderTLS configuration: %s", err)
 	}
 
-	m := metrics.New()
 	loggr := log.New(os.Stderr, "[LOGGR] ", log.LstdFlags)
+	m := metrics.NewRegistry(loggr)
 
 	dropped := m.NewCounter("nozzle_dropped")
 
@@ -50,7 +50,7 @@ func main() {
 		loggregator.WithEnvelopeStreamLogger(loggr),
 		loggregator.WithEnvelopeStreamBuffer(10000, func(missed int) {
 			loggr.Printf("dropped %d envelope batches", missed)
-			dropped(uint64(missed))
+			dropped.Add(float64(missed))
 		}),
 		loggregator.WithEnvelopeStreamConnectorDialOptions(grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                10 * time.Second,
@@ -63,8 +63,8 @@ func main() {
 		streamConnector,
 		cfg.LogCacheAddr,
 		cfg.ShardId,
-		WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		WithMetrics(m),
+		m,
+		loggr,
 		WithDialOpts(
 			grpc.WithTransportCredentials(
 				cfg.LogCacheTLS.Credentials("log-cache"),
@@ -74,9 +74,6 @@ func main() {
 	)
 
 	go nozzle.Start()
-
-	// Register prometheus-compatible metric endpoint
-	http.Handle("/metrics", m)
 
 	// health endpoints (pprof and prometheus)
 	log.Printf("Health: %s", http.ListenAndServe(fmt.Sprintf("localhost:%d", cfg.HealthPort), nil))

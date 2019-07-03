@@ -1,6 +1,7 @@
 package main
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -16,7 +17,6 @@ import (
 	envstruct "code.cloudfoundry.org/go-envstruct"
 	"code.cloudfoundry.org/log-cache/internal/auth"
 	. "code.cloudfoundry.org/log-cache/internal/cfauthproxy"
-	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"code.cloudfoundry.org/log-cache/internal/promql"
 	sharedtls "code.cloudfoundry.org/log-cache/internal/tls"
 	"code.cloudfoundry.org/log-cache/pkg/client"
@@ -25,34 +25,34 @@ import (
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
-	log := log.New(os.Stderr, "", log.LstdFlags)
-	log.Print("Starting Log Cache CF Auth Reverse Proxy...")
-	defer log.Print("Closing Log Cache CF Auth Reverse Proxy.")
+	loggr := log.New(os.Stderr, "", log.LstdFlags)
+	loggr.Print("Starting Log Cache CF Auth Reverse Proxy...")
+	defer loggr.Print("Closing Log Cache CF Auth Reverse Proxy.")
 
 	cfg, err := LoadConfig()
 	if err != nil {
-		log.Fatalf("failed to load config: %s", err)
+		loggr.Fatalf("failed to load config: %s", err)
 	}
 	envstruct.WriteReport(cfg)
 
-	metrics := metrics.New()
+	metrics := metrics.NewRegistry(loggr)
 
 	uaaClient := auth.NewUAAClient(
 		cfg.UAA.Addr,
-		buildUAAClient(cfg),
+		buildUAAClient(cfg, loggr),
 		metrics,
-		log,
+		loggr,
 	)
 
 	// try to get our first token key, but bail out if we can't talk to UAA
 	err = uaaClient.RefreshTokenKeys()
 	if err != nil {
-		log.Fatalf("failed to fetch token from UAA: %s", err)
+		loggr.Fatalf("failed to fetch token from UAA: %s", err)
 	}
 
 	gatewayURL, err := url.Parse(cfg.LogCacheGatewayAddr)
 	if err != nil {
-		log.Fatalf("failed to parse gateway address: %s", err)
+		loggr.Fatalf("failed to parse gateway address: %s", err)
 	}
 
 	// Force communication with the gateway to happen via HTTPS, regardless of
@@ -61,14 +61,14 @@ func main() {
 
 	capiClient := auth.NewCAPIClient(
 		cfg.CAPI.Addr,
-		buildCAPIClient(cfg),
+		buildCAPIClient(cfg, loggr),
 		metrics,
-		log,
+		loggr,
 		auth.WithTokenPruningInterval(cfg.TokenPruningInterval),
 		auth.WithCacheExpirationInterval(cfg.CacheExpirationInterval),
 	)
 
-	proxyCACertPool := loadCA(cfg.ProxyCAPath)
+	proxyCACertPool := loadCA(cfg.ProxyCAPath, loggr)
 
 	// Calls to /api/v1/meta get sent to the gateway, but not through the
 	// reverse proxy like everything else. As a result, we also need to set
@@ -103,7 +103,7 @@ func main() {
 	if cfg.SecurityEventLog != "" {
 		accessLog, err := os.OpenFile(cfg.SecurityEventLog, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
 		if err != nil {
-			log.Panicf("Unable to open access log: %s", err)
+			loggr.Panicf("Unable to open access log: %s", err)
 		}
 		defer func() {
 			accessLog.Sync()
@@ -112,7 +112,7 @@ func main() {
 
 		_, localPort, err := net.SplitHostPort(cfg.Addr)
 		if err != nil {
-			log.Panicf("Unable to determine local port: %s", err)
+			loggr.Panicf("Unable to determine local port: %s", err)
 		}
 
 		accessLogger := auth.NewAccessLogger(accessLog)
@@ -122,18 +122,15 @@ func main() {
 
 	proxy.Start()
 
-	// Register prometheus-compatible metric endpoint
-	http.Handle("/metrics", metrics)
-
 	// health endpoints (pprof and prometheus)
-	log.Printf("Health: %s", http.ListenAndServe(fmt.Sprintf("localhost:%d", cfg.HealthPort), nil))
+	loggr.Printf("Health: %s", http.ListenAndServe(fmt.Sprintf("localhost:%d", cfg.HealthPort), nil))
 }
 
-func buildUAAClient(cfg *Config) *http.Client {
+func buildUAAClient(cfg *Config, loggr *log.Logger) *http.Client {
 	tlsConfig := sharedtls.NewBaseTLSConfig()
 	tlsConfig.InsecureSkipVerify = cfg.SkipCertVerify
 
-	tlsConfig.RootCAs = loadCA(cfg.UAA.CAPath)
+	tlsConfig.RootCAs = loadCA(cfg.UAA.CAPath, loggr)
 
 	transport := &http.Transport{
 		TLSHandshakeTimeout: 10 * time.Second,
@@ -147,11 +144,11 @@ func buildUAAClient(cfg *Config) *http.Client {
 	}
 }
 
-func buildCAPIClient(cfg *Config) *http.Client {
+func buildCAPIClient(cfg *Config, loggr *log.Logger) *http.Client {
 	tlsConfig := sharedtls.NewBaseTLSConfig()
 	tlsConfig.ServerName = cfg.CAPI.CommonName
 
-	tlsConfig.RootCAs = loadCA(cfg.CAPI.CAPath)
+	tlsConfig.RootCAs = loadCA(cfg.CAPI.CAPath, loggr)
 
 	tlsConfig.InsecureSkipVerify = cfg.SkipCertVerify
 	transport := &http.Transport{
@@ -166,16 +163,16 @@ func buildCAPIClient(cfg *Config) *http.Client {
 	}
 }
 
-func loadCA(caCertPath string) *x509.CertPool {
+func loadCA(caCertPath string, loggr *log.Logger) *x509.CertPool {
 	caCert, err := ioutil.ReadFile(caCertPath)
 	if err != nil {
-		log.Fatalf("failed to read CA certificate: %s", err)
+		loggr.Fatalf("failed to read CA certificate: %s", err)
 	}
 
 	certPool := x509.NewCertPool()
 	ok := certPool.AppendCertsFromPEM(caCert)
 	if !ok {
-		log.Fatal("failed to parse CA certificate.")
+		loggr.Fatal("failed to parse CA certificate.")
 	}
 
 	return certPool

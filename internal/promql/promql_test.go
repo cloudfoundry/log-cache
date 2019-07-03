@@ -1,6 +1,7 @@
 package promql_test
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics/testhelpers"
 	"context"
 	"errors"
 	"io/ioutil"
@@ -19,14 +20,14 @@ import (
 
 var _ = Describe("PromQL", func() {
 	var (
-		spyMetrics    *testing.SpyMetrics
+		spyMetrics    *testhelpers.SpyMetricsRegistry
 		spyDataReader *spyDataReader
 		q             *promql.PromQL
 	)
 
 	BeforeEach(func() {
 		spyDataReader = newSpyDataReader()
-		spyMetrics = testing.NewSpyMetrics()
+		spyMetrics = testhelpers.NewMetricsRegistry()
 
 		q = promql.New(
 			spyDataReader,
@@ -735,7 +736,9 @@ var _ = Describe("PromQL", func() {
 
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(spyMetrics.Get("log_cache_promql_instant_query_time")).ToNot(BeZero())
+			Eventually(func() float64 {
+				return spyMetrics.GetMetricValue("log_cache_promql_instant_query_time", nil)
+			}).ShouldNot(BeZero())
 		})
 
 		It("expands requests filtered for multiple source IDs", func() {
@@ -826,7 +829,9 @@ var _ = Describe("PromQL", func() {
 			)
 			Expect(err).To(HaveOccurred())
 
-			Expect(spyMetrics.Get("log_cache_promql_timeout")).To(Equal(1.0))
+			Eventually(func() float64 {
+				return spyMetrics.GetMetricValue("log_cache_promql_timeout", nil)
+			}).Should(Equal(1.0))
 		})
 
 		It("returns an error for a cancelled context", func() {
@@ -1228,7 +1233,9 @@ var _ = Describe("PromQL", func() {
 
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(spyMetrics.Get("log_cache_promql_range_query_time")).ToNot(BeZero())
+			Expect(func() float64 {
+				return spyMetrics.GetMetricValue("log_cache_promql_range_query_time", nil)
+			}).ShouldNot(BeZero())
 		})
 
 		It("returns an error for an invalid query", func() {
@@ -1273,7 +1280,9 @@ var _ = Describe("PromQL", func() {
 			)
 			Expect(err).To(HaveOccurred())
 
-			Expect(spyMetrics.Get("log_cache_promql_timeout")).To(Equal(1.0))
+			Eventually(func() float64 {
+				return spyMetrics.GetMetricValue("log_cache_promql_timeout", nil)
+			}).Should(Equal(1.0))
 		})
 
 		It("returns an error for a cancelled context", func() {

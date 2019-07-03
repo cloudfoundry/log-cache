@@ -1,6 +1,7 @@
 package promql
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
 	"context"
 	"fmt"
 	"log"
@@ -21,9 +22,9 @@ type PromQL struct {
 	log          *log.Logger
 	queryTimeout time.Duration
 
-	failureCounter    func(uint64)
-	instantQueryTimer func(float64)
-	rangeQueryTimer   func(float64)
+	failureCounter    metrics.Counter
+	instantQueryTimer metrics.Gauge
+	rangeQueryTimer   metrics.Gauge
 	failures          int
 
 	result int64
@@ -34,8 +35,8 @@ type DataReader interface {
 }
 
 type Metrics interface {
-	NewCounter(name string) func(delta uint64)
-	NewGauge(name, unit string) func(value float64)
+	NewCounter(name string, opts ...metrics.MetricOption) metrics.Counter
+	NewGauge(name string, opts ...metrics.MetricOption) metrics.Gauge
 }
 
 func New(
@@ -49,8 +50,8 @@ func New(
 		log:               log,
 		queryTimeout:      queryTimeout,
 		failureCounter:    m.NewCounter("log_cache_promql_timeout"),
-		instantQueryTimer: m.NewGauge("log_cache_promql_instant_query_time", "milliseconds"),
-		rangeQueryTimer:   m.NewGauge("log_cache_promql_range_query_time", "milliseconds"),
+		instantQueryTimer: m.NewGauge("log_cache_promql_instant_query_time", metrics.WithMetricTags(map[string]string{"unit":"milliseconds"})),
+		rangeQueryTimer:   m.NewGauge("log_cache_promql_range_query_time", metrics.WithMetricTags(map[string]string{"unit":"milliseconds"})),
 		result:            1,
 	}
 
@@ -91,10 +92,10 @@ func (q *PromQL) InstantQuery(ctx context.Context, req *logcache_v1.PromQL_Insta
 
 	queryStartTime := time.Now()
 	r := qq.Exec(ctx)
-	q.instantQueryTimer(float64(time.Since(queryStartTime) / time.Millisecond))
+	q.instantQueryTimer.Set(float64(time.Since(queryStartTime) / time.Millisecond))
 
 	if closureErr != nil {
-		q.failureCounter(1)
+		q.failureCounter.Add(1)
 		return nil, closureErr
 	}
 
@@ -215,10 +216,10 @@ func (q *PromQL) RangeQuery(ctx context.Context, req *logcache_v1.PromQL_RangeQu
 
 	queryStartTime := time.Now()
 	r := qq.Exec(ctx)
-	q.rangeQueryTimer(float64(time.Since(queryStartTime) / time.Millisecond))
+	q.rangeQueryTimer.Set(float64(time.Since(queryStartTime) / time.Millisecond))
 
 	if closureErr != nil {
-		q.failureCounter(1)
+		q.failureCounter.Add(1)
 		return nil, closureErr
 	}
 

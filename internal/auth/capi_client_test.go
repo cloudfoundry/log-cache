@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics/testhelpers"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -20,12 +21,12 @@ var _ = Describe("CAPIClient", func() {
 	type testContext struct {
 		capiClient *spyHTTPClient
 		client     *auth.CAPIClient
-		metrics    *spyMetrics
+		metrics    *testhelpers.SpyMetricsRegistry
 	}
 
 	var setup = func(capiOpts ...auth.CAPIOption) *testContext {
 		capiClient := newSpyHTTPClient()
-		metrics := newSpyMetrics()
+		metrics := testhelpers.NewMetricsRegistry()
 		client := auth.NewCAPIClient(
 			"http://internal.capi.com",
 			capiClient,
@@ -348,8 +349,12 @@ var _ = Describe("CAPIClient", func() {
 			}
 			tc.client.AvailableSourceIDs("my-token")
 
-			Expect(tc.metrics.m["cf_auth_proxy_last_capiv3_apps_latency"]).ToNot(BeZero())
-			Expect(tc.metrics.m["cf_auth_proxy_last_capiv3_list_service_instances_latency"]).ToNot(BeZero())
+			Eventually(func() float64 {
+				return tc.metrics.GetMetricValue("cf_auth_proxy_last_capiv3_apps_latency", nil)
+			}).ShouldNot(BeZero())
+			Eventually(func() float64 {
+				return tc.metrics.GetMetricValue("cf_auth_proxy_last_capiv3_list_service_instances_latency", nil)
+			}).ShouldNot(BeZero())
 		})
 
 		It("is goroutine safe", func() {
@@ -477,7 +482,9 @@ var _ = Describe("CAPIClient", func() {
 			}
 			tc.client.GetRelatedSourceIds([]string{"app-name"}, "some-token")
 
-			Expect(tc.metrics.m["cf_auth_proxy_last_capiv3_apps_by_name_latency"]).ToNot(BeZero())
+			Eventually(func() float64 {
+				return tc.metrics.GetMetricValue("cf_auth_proxy_last_capiv3_apps_by_name_latency", nil)
+			}).ShouldNot(BeZero())
 		})
 
 		It("returns no source IDs when the request fails", func() {
