@@ -1,6 +1,7 @@
 package syslog_test
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics/testhelpers"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/syslog"
 	"code.cloudfoundry.org/log-cache/internal/testing"
@@ -25,13 +26,13 @@ const defaultLogMessage = "89 <14>1 1970-01-01T00:00:00.012345+00:00 test-hostna
 var _ = Describe("Syslog", func() {
 	var (
 		server     *syslog.Server
-		spyMetrics *testing.SpyMetrics
+		spyMetrics *testhelpers.SpyMetricsRegistry
 		logCache   *spyLogCacheClient
 		loggr      *log.Logger
 	)
 
 	BeforeEach(func() {
-		spyMetrics = testing.NewSpyMetrics()
+		spyMetrics = testhelpers.NewMetricsRegistry()
 		logCache = newSpyLogCacheClient()
 		loggr = log.New(GinkgoWriter, "", log.LstdFlags)
 
@@ -115,8 +116,12 @@ var _ = Describe("Syslog", func() {
 		_, err = fmt.Fprint(conn, defaultLogMessage)
 		Expect(err).ToNot(HaveOccurred())
 
+		Eventually(func() bool {
+			return spyMetrics.HasMetric("ingress", nil)
+		}).Should(BeTrue())
+
 		Eventually(func() float64 {
-			return spyMetrics.Get("ingress")
+			return spyMetrics.GetMetric("ingress", nil).Value()
 		}).Should(Equal(2.0))
 	})
 
@@ -254,12 +259,20 @@ var _ = Describe("Syslog", func() {
 		_, err = fmt.Fprint(conn, "128 <14>1 1970-01-01T00:00:00.012345+00:00 test-hostname test-app-id [1] - [gauge@47450 name=\"cpu\" value=\"0.23\" unit=\"percentage\"] \n")
 		Expect(err).ToNot(HaveOccurred())
 
-		Eventually(func() float64 {
-			return spyMetrics.Get("invalid_ingress")
-		}).Should(Equal(1.0))
+		Eventually(func() bool {
+			return spyMetrics.HasMetric("invalid_ingress", nil)
+		}).Should(BeTrue())
 
 		Eventually(func() float64 {
-			return spyMetrics.Get("ingress")
+			return spyMetrics.GetMetric("invalid_ingress", nil).Value()
+		}).Should(Equal(1.0))
+
+		Eventually(func() bool {
+			return spyMetrics.HasMetric("ingress", nil)
+		}).Should(BeTrue())
+
+		Eventually(func() float64 {
+			return spyMetrics.GetMetric("ingress", nil).Value()
 		}).Should(Equal(1.0))
 	})
 
@@ -282,8 +295,12 @@ var _ = Describe("Syslog", func() {
 		_, err = fmt.Fprint(conn, rfc5424Log)
 		Expect(err).ToNot(HaveOccurred())
 
+		Eventually(func() bool {
+			return spyMetrics.HasMetric("invalid_ingress", nil)
+		}).Should(BeTrue())
+
 		Eventually(func() float64 {
-			return spyMetrics.Get("invalid_ingress")
+			return spyMetrics.GetMetric("invalid_ingress", nil).Value()
 		}).Should(Equal(1.0))
 	},
 		Entry("Counter - invalid delta", buildSyslog(fmt.Sprintf(counterDataFormat, "some-counter", "99", "d"))),
