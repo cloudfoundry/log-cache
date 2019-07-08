@@ -7,12 +7,10 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"time"
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
 	. "code.cloudfoundry.org/log-cache/internal/nozzle"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/keepalive"
 
 	loggregator "code.cloudfoundry.org/go-loggregator"
 )
@@ -52,11 +50,6 @@ func main() {
 			loggr.Printf("dropped %d envelope batches", missed)
 			dropped.Add(float64(missed))
 		}),
-		loggregator.WithEnvelopeStreamConnectorDialOptions(grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                10 * time.Second,
-			Timeout:             30 * time.Second,
-			PermitWithoutStream: true,
-		})),
 	)
 
 	nozzle := NewNozzle(
