@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
 	"context"
 	"fmt"
 	"math/rand"
@@ -186,12 +187,19 @@ func benchBuildLog(appID string, ts int64) *loggregator_v2.Envelope {
 
 type nopMetrics struct{}
 
-func (n nopMetrics) NewCounter(string) func(delta uint64) {
-	return func(uint64) {}
+type nopCounter struct {}
+func (nc *nopCounter) Add(float64) {}
+
+type nopGauge struct {}
+func (ng *nopGauge) Add(float64) {}
+func (ng *nopGauge) Set(float64) {}
+
+func (n nopMetrics) NewCounter(name string, opts ...metrics.MetricOption) metrics.Counter {
+	return &nopCounter{}
 }
 
-func (n nopMetrics) NewGauge(string, string) func(value float64) {
-	return func(float64) {}
+func (n nopMetrics) NewGauge(name string, opts ...metrics.MetricOption) metrics.Gauge {
+	return &nopGauge{}
 }
 
 type staticPruner struct {
@@ -202,4 +210,4 @@ func (s *staticPruner) GetQuantityToPrune(int64) int {
 	return s.size
 }
 
-func (s *staticPruner) SetMemoryReporter(_ func(float64)) {}
+func (s *staticPruner) SetMemoryReporter(metrics.Gauge) {}

@@ -1,6 +1,8 @@
 package store_test
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
+	"code.cloudfoundry.org/go-loggregator/metrics/testhelpers"
 	"regexp"
 	"strconv"
 	"sync"
@@ -8,7 +10,6 @@ import (
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/cache/store"
-	"code.cloudfoundry.org/log-cache/internal/testing"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 
 	. "github.com/onsi/ginkgo"
@@ -19,13 +20,13 @@ import (
 var _ = Describe("Store", func() {
 	var (
 		s  *store.Store
-		sm *testing.SpyMetrics
+		sm *testhelpers.SpyMetricsRegistry
 		sp *spyPruner
 	)
 
 	BeforeEach(func() {
 		sp = newSpyPruner()
-		sm = testing.NewSpyMetrics()
+		sm = testhelpers.NewMetricsRegistry()
 		s = store.NewStore(5, sp, sm)
 	})
 
@@ -49,7 +50,9 @@ var _ = Describe("Store", func() {
 			Expect(e.SourceId).To(Equal("a"))
 		}
 
-		Expect(sm.Get("log_cache_expired")).To(Equal(0.0))
+		Eventually(func() float64{
+			return sm.GetMetricValue("log_cache_expired", nil)
+		}).Should(Equal(0.0))
 	})
 
 	It("returns a maximum number of envelopes in ascending order", func() {
@@ -358,8 +361,13 @@ var _ = Describe("Store", func() {
 			Expect(e.Timestamp).To(Equal(int64(3)))
 		}
 
-		Expect(sm.Get("log_cache_expired")).To(Equal(3.0))
-		Expect(sm.Get("log_cache_store_size")).To(Equal(5.0))
+		Eventually(func() float64{
+			return sm.GetMetricValue("log_cache_expired", nil)
+		}).Should(Equal(3.0))
+
+		Eventually(func() float64{
+			return sm.GetMetricValue("log_cache_store_size", map[string]string{"unit":"entries"})
+		}).Should(Equal(5.0))
 
 		// Ensure b was removed fully
 		for s := range s.Meta() {
@@ -391,7 +399,9 @@ var _ = Describe("Store", func() {
 		envelopes = s.Get("b", start, end, nil, nil, 10, false)
 		Expect(envelopes).To(HaveLen(1))
 
-		Expect(sm.Get("log_cache_expired")).To(Equal(1.0))
+		Eventually(func() float64{
+			return sm.GetMetricValue("log_cache_expired", nil)
+		}).Should(Equal(1.0))
 	})
 
 	// It("sets (via metrics) the store's period in milliseconds", func() {
@@ -594,4 +604,4 @@ func (sp *spyPruner) GetQuantityToPrune(int64) int {
 	return sp.numberToPrune
 }
 
-func (sp *spyPruner) SetMemoryReporter(_ func(float64)) {}
+func (sp *spyPruner) SetMemoryReporter(metrics.Gauge) {}

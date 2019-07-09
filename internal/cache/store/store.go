@@ -1,6 +1,7 @@
 package store
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
 	"container/heap"
 	"regexp"
 	"sync"
@@ -13,9 +14,9 @@ import (
 	"github.com/emirpasic/gods/utils"
 )
 
-type MetricsInitializer interface {
-	NewCounter(name string) func(delta uint64)
-	NewGauge(name, unit string) func(value float64)
+type MetricsRegistry interface {
+	NewCounter(name string, opts ...metrics.MetricOption) metrics.Counter
+	NewGauge(name string, opts ...metrics.MetricOption) metrics.Gauge
 }
 
 // MemoryConsultant is used to determine if the store should prune.
@@ -23,7 +24,7 @@ type MemoryConsultant interface {
 	// Prune returns the number of envelopes to prune.
 	GetQuantityToPrune(int64) int
 	// setMemoryReporter accepts a reporting function for Memory Utilization
-	SetMemoryReporter(func(float64))
+	SetMemoryReporter(metrics.Gauge)
 }
 
 const MIN_INT64 = int64(^uint64(0) >> 1)
@@ -50,16 +51,16 @@ type Store struct {
 }
 
 type Metrics struct {
-	incExpired            func(delta uint64)
-	setCachePeriod        func(value float64)
-	incIngress            func(delta uint64)
-	incEgress             func(delta uint64)
-	setStoreSize          func(value float64)
-	setTruncationDuration func(value float64)
-	setMemoryUtilization  func(value float64)
+	incExpired            metrics.Counter
+	setCachePeriod        metrics.Gauge
+	incIngress            metrics.Counter
+	incEgress             metrics.Counter
+	setStoreSize          metrics.Gauge
+	setTruncationDuration metrics.Gauge
+	setMemoryUtilization  metrics.Gauge
 }
 
-func NewStore(maxPerSource int, mc MemoryConsultant, m MetricsInitializer) *Store {
+func NewStore(maxPerSource int, mc MemoryConsultant, m MetricsRegistry) *Store {
 	store := &Store{
 		maxPerSource:      maxPerSource,
 		maxTimestampFudge: 4000,
@@ -67,12 +68,12 @@ func NewStore(maxPerSource int, mc MemoryConsultant, m MetricsInitializer) *Stor
 
 		metrics: Metrics{
 			incExpired:            m.NewCounter("log_cache_expired"),
-			setCachePeriod:        m.NewGauge("log_cache_cache_period", "milliseconds"),
+			setCachePeriod:        m.NewGauge("log_cache_cache_period", metrics.WithMetricTags(map[string]string{"unit": "milliseconds"})),
 			incIngress:            m.NewCounter("log_cache_ingress"),
 			incEgress:             m.NewCounter("log_cache_egress"),
-			setStoreSize:          m.NewGauge("log_cache_store_size", "entries"),
-			setTruncationDuration: m.NewGauge("log_cache_truncation_duration", "milliseconds"),
-			setMemoryUtilization:  m.NewGauge("log_cache_memory_utilization", "percentage"),
+			setStoreSize:          m.NewGauge("log_cache_store_size", metrics.WithMetricTags(map[string]string{"unit": "entries"})),
+			setTruncationDuration: m.NewGauge("log_cache_truncation_duration", metrics.WithMetricTags(map[string]string{"unit": "milliseconds"})),
+			setMemoryUtilization:  m.NewGauge("log_cache_memory_utilization", metrics.WithMetricTags(map[string]string{"unit": "percentage"})),
 		},
 
 		mc:                  mc,
@@ -115,10 +116,10 @@ func (storage *storage) insertOrSwap(store *Store, e *loggregator_v2.Envelope) {
 		oldestTimestamp := storage.Left().Key.(int64)
 		storage.Remove(oldestTimestamp)
 		storage.meta.Expired++
-		store.metrics.incExpired(1)
+		store.metrics.incExpired.Add(1)
 	} else {
 		atomic.AddInt64(&store.count, 1)
-		store.metrics.setStoreSize(float64(atomic.LoadInt64(&store.count)))
+		store.metrics.setStoreSize.Set(float64(atomic.LoadInt64(&store.count)))
 	}
 
 	var timestampFudge int64
@@ -146,7 +147,7 @@ func (storage *storage) insertOrSwap(store *Store, e *loggregator_v2.Envelope) {
 	}
 
 	cachePeriod := calculateCachePeriod(storeOldestTimestamp)
-	store.metrics.setCachePeriod(float64(cachePeriod))
+	store.metrics.setCachePeriod.Set(float64(cachePeriod))
 }
 
 func (store *Store) WaitForTruncationToComplete() bool {
@@ -173,12 +174,12 @@ func (store *Store) truncationLoop(runInterval time.Duration) {
 		startTime := time.Now()
 		store.truncate()
 		t.Reset(runInterval)
-		store.metrics.setTruncationDuration(float64(time.Since(startTime) / time.Millisecond))
+		store.metrics.setTruncationDuration.Set(float64(time.Since(startTime) / time.Millisecond))
 	}
 }
 
 func (store *Store) Put(envelope *loggregator_v2.Envelope, sourceId string) {
-	store.metrics.incIngress(1)
+	store.metrics.incIngress.Add(1)
 
 	envelopeStorage, _ := store.getOrInitializeStorage(sourceId)
 	envelopeStorage.insertOrSwap(store, envelope)
@@ -229,7 +230,7 @@ func (store *Store) truncate() {
 
 	// Always update our store size metric and close out the channel when we return
 	defer func() {
-		store.metrics.setStoreSize(float64(atomic.LoadInt64(&store.count)))
+		store.metrics.setStoreSize.Set(float64(atomic.LoadInt64(&store.count)))
 		store.sendTruncationCompleted(true)
 	}()
 
@@ -237,7 +238,7 @@ func (store *Store) truncate() {
 	// reset everything to default values and bail out
 	if expirationHeap.Len() == 0 {
 		atomic.StoreInt64(&store.oldestTimestamp, MIN_INT64)
-		store.metrics.setCachePeriod(0)
+		store.metrics.setCachePeriod.Set(0)
 		return
 	}
 
@@ -245,7 +246,7 @@ func (store *Store) truncate() {
 	if oldest := expirationHeap.Pop(); oldest.(storageExpiration).tree != nil {
 		atomic.StoreInt64(&store.oldestTimestamp, oldest.(storageExpiration).timestamp)
 		cachePeriod := calculateCachePeriod(oldest.(storageExpiration).timestamp)
-		store.metrics.setCachePeriod(float64(cachePeriod))
+		store.metrics.setCachePeriod.Set(float64(cachePeriod))
 	}
 }
 
@@ -258,7 +259,7 @@ func (store *Store) removeOldestEnvelope(treeToPrune *storage, sourceId string) 
 	}
 
 	atomic.AddInt64(&store.count, -1)
-	store.metrics.incExpired(1)
+	store.metrics.incExpired.Add(1)
 
 	oldestEnvelope := treeToPrune.Left()
 
@@ -317,7 +318,7 @@ func (store *Store) Get(
 		return len(res) >= limit
 	})
 
-	store.metrics.incEgress(uint64(len(res)))
+	store.metrics.incEgress.Add(float64(len(res)))
 	return res
 }
 

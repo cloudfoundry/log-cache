@@ -1,14 +1,16 @@
 package store_test
 
 import (
+
+	"code.cloudfoundry.org/go-loggregator/metrics/testhelpers"
 	"fmt"
+
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	"code.cloudfoundry.org/log-cache/internal/cache/store"
-	"code.cloudfoundry.org/log-cache/internal/metrics"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
@@ -21,7 +23,7 @@ var _ = Describe("store under high concurrent load", func() {
 
 		sp := newSpyPruner()
 		sp.numberToPrune = 128
-		sm := metrics.New()
+		sm := testhelpers.NewMetricsRegistry()
 
 		loadStore := store.NewStore(2500, sp, sm)
 		start := time.Now()

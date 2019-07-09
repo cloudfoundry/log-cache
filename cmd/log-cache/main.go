@@ -1,6 +1,7 @@
 package main
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,7 +11,6 @@ import (
 
 	envstruct "code.cloudfoundry.org/go-envstruct"
 	. "code.cloudfoundry.org/log-cache/internal/cache"
-	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"google.golang.org/grpc"
 )
 
@@ -27,19 +27,26 @@ func main() {
 
 	envstruct.WriteReport(cfg)
 
-	m := metrics.New()
-	uptimeFn := m.NewGauge("log_cache_uptime", "seconds")
+	logger := log.New(os.Stderr, "", log.LstdFlags)
+
+	m := metrics.NewRegistry(logger)
+	uptimeFn := m.NewGauge(
+		"log_cache_uptime",
+		metrics.WithMetricTags(map[string]string{
+			"unit": "seconds",
+		}),
+	)
 
 	t := time.NewTicker(time.Second)
 	go func(start time.Time) {
 		for range t.C {
-			uptimeFn(float64(time.Since(start) / time.Second))
+			uptimeFn.Set(float64(time.Since(start) / time.Second))
 		}
 	}(time.Now())
 
 	cache := New(
-		WithLogger(log.New(os.Stderr, "", log.LstdFlags)),
-		WithMetrics(m),
+		m,
+		logger,
 		WithAddr(cfg.Addr),
 		WithMemoryLimit(float64(cfg.MemoryLimit)),
 		WithMaxPerSource(cfg.MaxPerSource),
@@ -55,9 +62,6 @@ func main() {
 	)
 
 	cache.Start()
-
-	// Register prometheus-compatible metric endpoint
-	http.Handle("/metrics", m)
 
 	// health endpoints (pprof and prometheus)
 	log.Printf("Health: %s", http.ListenAndServe(fmt.Sprintf("localhost:%d", cfg.HealthPort), nil))

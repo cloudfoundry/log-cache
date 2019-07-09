@@ -1,9 +1,10 @@
 package routing_test
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
+	"code.cloudfoundry.org/go-loggregator/metrics/testhelpers"
 	"io/ioutil"
 	"log"
-	"sync"
 	"time"
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
@@ -17,14 +18,14 @@ import (
 
 var _ = Describe("BatchedIngressClient", func() {
 	var (
-		m             *spyMetrics
-		spyDropped    func(uint64)
+		m             *testhelpers.SpyMetricsRegistry
+		spyDropped    metrics.Counter
 		ingressClient *spyIngressClient
 		c             *routing.BatchedIngressClient
 	)
 
 	BeforeEach(func() {
-		m = newSpyMetrics()
+		m = testhelpers.NewMetricsRegistry()
 		spyDropped = m.NewCounter("nodeX_dropped")
 		ingressClient = newSpyIngressClient()
 		c = routing.NewBatchedIngressClient(5, time.Hour, ingressClient, spyDropped, log.New(ioutil.Discard, "", 0))
@@ -106,33 +107,8 @@ var _ = Describe("BatchedIngressClient", func() {
 			})
 		}
 
-		Eventually(m.GetDelta("nodeX_dropped")).ShouldNot(BeZero())
+		Eventually(func() float64 {
+			return m.GetMetricValue("nodeX_dropped", nil)
+		}).ShouldNot(BeZero())
 	})
 })
-
-type spyMetrics struct {
-	mu      sync.Mutex
-	metrics map[string]uint64
-}
-
-func newSpyMetrics() *spyMetrics {
-	return &spyMetrics{
-		metrics: make(map[string]uint64),
-	}
-}
-
-func (s *spyMetrics) NewCounter(name string) func(uint64) {
-	return func(delta uint64) {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		s.metrics[name] += delta
-	}
-}
-
-func (s *spyMetrics) GetDelta(name string) func() uint64 {
-	return func() uint64 {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		return s.metrics[name]
-	}
-}

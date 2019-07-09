@@ -1,7 +1,7 @@
 package nozzle
 
 import (
-	"io/ioutil"
+	"code.cloudfoundry.org/go-loggregator/metrics"
 	"log"
 	"runtime"
 	"time"
@@ -9,20 +9,28 @@ import (
 	diodes "code.cloudfoundry.org/go-diodes"
 	"code.cloudfoundry.org/go-loggregator"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
-	"code.cloudfoundry.org/log-cache/internal/metrics"
 	"code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 
+type Metrics interface {
+	NewCounter(name string, opts ...metrics.MetricOption) metrics.Counter
+	NewGauge(name string, opts ...metrics.MetricOption) metrics.Gauge
+}
+
 // Nozzle reads envelopes and writes them to LogCache.
 type Nozzle struct {
 	log          *log.Logger
 	s            StreamConnector
-	metrics      metrics.Initializer
+	metrics      Metrics
 	shardId      string
 	selectors    []string
 	streamBuffer *diodes.OneToOne
+
+	ingressInc metrics.Counter
+	egressInc  metrics.Counter
+	errInc     metrics.Counter
 
 	// LogCache
 	addr string
@@ -41,13 +49,13 @@ type StreamConnector interface {
 }
 
 // NewNozzle creates a new Nozzle.
-func NewNozzle(c StreamConnector, logCacheAddr string, shardId string, opts ...NozzleOption) *Nozzle {
+func NewNozzle(c StreamConnector, logCacheAddr, shardId string, m Metrics, logger *log.Logger, opts ...NozzleOption) *Nozzle {
 	n := &Nozzle{
 		s:         c,
 		addr:      logCacheAddr,
 		opts:      []grpc.DialOption{grpc.WithInsecure()},
-		log:       log.New(ioutil.Discard, "", 0),
-		metrics:   metrics.NullMetrics{},
+		log:       logger,
+		metrics:   m,
 		shardId:   shardId,
 		selectors: []string{},
 	}
@@ -65,22 +73,6 @@ func NewNozzle(c StreamConnector, logCacheAddr string, shardId string, opts ...N
 
 // NozzleOption configures a Nozzle.
 type NozzleOption func(*Nozzle)
-
-// WithLogger returns a NozzleOption that configures a nozzle's logger.
-// It defaults to silent logging.
-func WithLogger(l *log.Logger) NozzleOption {
-	return func(n *Nozzle) {
-		n.log = l
-	}
-}
-
-// WithMetrics returns a NozzleOption that configures the metrics for the
-// Nozzle. It will add metrics to the given map.
-func WithMetrics(metrics metrics.Initializer) NozzleOption {
-	return func(n *Nozzle) {
-		n.metrics = metrics
-	}
-}
 
 // WithDialOpts returns a NozzleOption that configures the dial options
 // for dialing the LogCache. It defaults to grpc.WithInsecure().
@@ -107,17 +99,17 @@ func (n *Nozzle) Start() {
 	}
 	client := logcache_v1.NewIngressClient(conn)
 
-	ingressInc := n.metrics.NewCounter("nozzle_ingress")
-	egressInc := n.metrics.NewCounter("nozzle_egress")
-	errInc := n.metrics.NewCounter("nozzle_err")
+	n.ingressInc = n.metrics.NewCounter("nozzle_ingress")
+	n.egressInc = n.metrics.NewCounter("nozzle_egress")
+	n.errInc = n.metrics.NewCounter("nozzle_err")
 
-	go n.envelopeReader(rx, ingressInc)
+	go n.envelopeReader(rx)
 
 	ch := make(chan []*loggregator_v2.Envelope, BATCH_CHANNEL_SIZE)
 
 	log.Printf("Starting %d nozzle workers...", 2*runtime.NumCPU())
 	for i := 0; i < 2*runtime.NumCPU(); i++ {
-		go n.envelopeWriter(ch, client, errInc, egressInc)
+		go n.envelopeWriter(ch, client)
 	}
 
 	// The batcher will block indefinitely.
@@ -165,7 +157,7 @@ func (n *Nozzle) envelopeBatcher(ch chan []*loggregator_v2.Envelope) {
 	}
 }
 
-func (n *Nozzle) envelopeWriter(ch chan []*loggregator_v2.Envelope, client logcache_v1.IngressClient, errInc, egressInc func(uint64)) {
+func (n *Nozzle) envelopeWriter(ch chan []*loggregator_v2.Envelope, client logcache_v1.IngressClient) {
 	for {
 		envelopes := <-ch
 
@@ -177,20 +169,20 @@ func (n *Nozzle) envelopeWriter(ch chan []*loggregator_v2.Envelope, client logca
 		})
 
 		if err != nil {
-			errInc(1)
+			n.errInc.Add(1)
 			continue
 		}
 
-		egressInc(uint64(len(envelopes)))
+		n.egressInc.Add(float64(len(envelopes)))
 	}
 }
 
-func (n *Nozzle) envelopeReader(rx loggregator.EnvelopeStream, ingressInc func(uint64)) {
+func (n *Nozzle) envelopeReader(rx loggregator.EnvelopeStream) {
 	for {
 		envelopeBatch := rx()
 		for _, envelope := range envelopeBatch {
 			n.streamBuffer.Set(diodes.GenericDataType(envelope))
-			ingressInc(1)
+			n.ingressInc.Add(1)
 		}
 	}
 }

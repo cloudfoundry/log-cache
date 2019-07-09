@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,9 +26,9 @@ type CAPIClient struct {
 	cacheExpirationInterval time.Duration
 	log                     *log.Logger
 
-	storeAppsLatency                 func(float64)
-	storeListServiceInstancesLatency func(float64)
-	storeAppsByNameLatency           func(float64)
+	storeAppsLatency                 metrics.Gauge
+	storeListServiceInstancesLatency metrics.Gauge
+	storeAppsByNameLatency           metrics.Gauge
 }
 
 func NewCAPIClient(
@@ -42,6 +43,7 @@ func NewCAPIClient(
 		log.Fatalf("failed to parse CAPI addr: %s", err)
 	}
 
+	unitTag := map[string]string{"unit":"nanoseconds"}
 	c := &CAPIClient{
 		client:                  client,
 		addr:                    addr,
@@ -50,9 +52,9 @@ func NewCAPIClient(
 		cacheExpirationInterval: time.Minute,
 		log:                     log,
 
-		storeAppsLatency:                 m.NewGauge("cf_auth_proxy_last_capiv3_apps_latency", "nanoseconds"),
-		storeListServiceInstancesLatency: m.NewGauge("cf_auth_proxy_last_capiv3_list_service_instances_latency", "nanoseconds"),
-		storeAppsByNameLatency:           m.NewGauge("cf_auth_proxy_last_capiv3_apps_by_name_latency", "nanoseconds"),
+		storeAppsLatency:                 m.NewGauge("cf_auth_proxy_last_capiv3_apps_latency", metrics.WithMetricTags(unitTag)),
+		storeListServiceInstancesLatency: m.NewGauge("cf_auth_proxy_last_capiv3_list_service_instances_latency", metrics.WithMetricTags(unitTag)),
+		storeAppsByNameLatency:           m.NewGauge("cf_auth_proxy_last_capiv3_apps_by_name_latency", metrics.WithMetricTags(unitTag)),
 	}
 
 	for _, opt := range opts {
@@ -205,7 +207,7 @@ type resource struct {
 	Name string `json:"name"`
 }
 
-func (c *CAPIClient) doPaginatedResourceRequest(req *http.Request, authToken string, metric func(float64)) ([]resource, error) {
+func (c *CAPIClient) doPaginatedResourceRequest(req *http.Request, authToken string, metric metrics.Gauge) ([]resource, error) {
 	var resources []resource
 
 	for {
@@ -225,7 +227,7 @@ func (c *CAPIClient) doPaginatedResourceRequest(req *http.Request, authToken str
 	return resources, nil
 }
 
-func (c *CAPIClient) doResourceRequest(req *http.Request, authToken string, metric func(float64)) ([]resource, *url.URL, error) {
+func (c *CAPIClient) doResourceRequest(req *http.Request, authToken string, metric metrics.Gauge) ([]resource, *url.URL, error) {
 	resp, err := c.doRequest(req, authToken, metric)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed CAPI request (%s) with error: %s", req.URL.Path, err)
@@ -294,11 +296,11 @@ func (c *CAPIClient) pruneTokens() {
 	}
 }
 
-func (c *CAPIClient) doRequest(req *http.Request, authToken string, reporter func(float64)) (*http.Response, error) {
+func (c *CAPIClient) doRequest(req *http.Request, authToken string, reporter metrics.Gauge) (*http.Response, error) {
 	req.Header.Set("Authorization", authToken)
 	start := time.Now()
 	resp, err := c.client.Do(req)
-	reporter(float64(time.Since(start)))
+	reporter.Set(float64(time.Since(start)))
 
 	if err != nil {
 		c.log.Printf("CAPI request (%s) failed: %s", req.URL.Path, err)

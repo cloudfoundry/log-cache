@@ -1,6 +1,7 @@
 package end2end_test
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
 	"context"
 	"fmt"
 	"log"
@@ -38,16 +39,20 @@ var _ = Describe("LogCache", func() {
 			fmt.Sprintf("127.0.0.1:%d", 10000+(run*runIncBy)),
 		}
 
+		logger := log.New(GinkgoWriter, "", 0)
+		m := metrics.NewRegistry(logger)
 		node1 = cache.New(
+			m,
+			logger,
 			cache.WithAddr(lc_addrs[0]),
 			cache.WithClustered(0, lc_addrs, grpc.WithInsecure()),
-			cache.WithLogger(log.New(GinkgoWriter, "", 0)),
 		)
 
 		node2 = cache.New(
+			m,
+			logger,
 			cache.WithAddr(lc_addrs[1]),
 			cache.WithClustered(1, lc_addrs, grpc.WithInsecure()),
-			cache.WithLogger(log.New(GinkgoWriter, "", 0)),
 		)
 
 		lc_scheduler = scheduler.NewScheduler(

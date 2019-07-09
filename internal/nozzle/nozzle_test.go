@@ -1,6 +1,8 @@
 package nozzle_test
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics/testhelpers"
+	"log"
 	"sync"
 
 	"code.cloudfoundry.org/go-loggregator"
@@ -20,7 +22,8 @@ var _ = Describe("Nozzle", func() {
 		n               *Nozzle
 		streamConnector *spyStreamConnector
 		logCache        *testing.SpyLogCache
-		spyMetrics      *testing.SpyMetrics
+		spyMetrics      *testhelpers.SpyMetricsRegistry
+		logger 			*log.Logger
 	)
 
 	Context("With custom envelope selectors", func() {
@@ -33,12 +36,12 @@ var _ = Describe("Nozzle", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 			streamConnector = newSpyStreamConnector()
-			spyMetrics = testing.NewSpyMetrics()
+			spyMetrics = testhelpers.NewMetricsRegistry()
 			logCache = testing.NewSpyLogCache(tlsConfig)
+			logger = log.New(GinkgoWriter, "", log.LstdFlags)
 			addr := logCache.Start()
 
-			n = NewNozzle(streamConnector, addr, "log-cache",
-				WithMetrics(spyMetrics),
+			n = NewNozzle(streamConnector, addr, "log-cache", spyMetrics, logger,
 				WithDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
 				WithSelectors("gauge", "timer", "event"),
 			)
@@ -81,12 +84,12 @@ var _ = Describe("Nozzle", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 			streamConnector = newSpyStreamConnector()
-			spyMetrics = testing.NewSpyMetrics()
+			spyMetrics = testhelpers.NewMetricsRegistry()
 			logCache = testing.NewSpyLogCache(tlsConfig)
+			logger = log.New(GinkgoWriter, "", log.LstdFlags)
 			addr := logCache.Start()
 
-			n = NewNozzle(streamConnector, addr, "log-cache",
-				WithMetrics(spyMetrics),
+			n = NewNozzle(streamConnector, addr, "log-cache", spyMetrics, logger,
 				WithDialOpts(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))),
 				WithSelectors("log", "gauge", "counter", "timer", "event"),
 			)
@@ -153,9 +156,15 @@ var _ = Describe("Nozzle", func() {
 			addEnvelope(3, "some-source-id", streamConnector)
 
 			Eventually(logCache.GetEnvelopes).Should(HaveLen(3))
-			Expect(spyMetrics.Get("nozzle_ingress")).To(Equal(3.0))
-			Expect(spyMetrics.Get("nozzle_egress")).To(Equal(3.0))
-			Expect(spyMetrics.Get("nozzle_err")).To(BeZero())
+			Eventually(func() float64 {
+				return spyMetrics.GetMetricValue("nozzle_ingress", nil)
+			}).Should(Equal(3.0))
+			Eventually(func() float64 {
+				return spyMetrics.GetMetricValue("nozzle_egress", nil)
+			}).Should(Equal(3.0))
+			Eventually(func() float64 {
+				return spyMetrics.GetMetricValue("nozzle_err", nil)
+			}).Should(BeZero())
 		})
 	})
 })

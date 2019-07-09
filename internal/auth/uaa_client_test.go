@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics/testhelpers"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -418,7 +419,7 @@ func generateLegitTokenKey(keyId string) mockTokenKey {
 
 func uaaSetup(opts ...auth.UAAOption) *UAATestContext {
 	httpClient := newSpyHTTPClient()
-	metrics := newSpyMetrics()
+	metrics := testhelpers.NewMetricsRegistry()
 	tokenKey := generateLegitTokenKey("testKey1")
 
 	// default the minimumRefreshInterval in tests to 0, but make sure we
@@ -444,7 +445,7 @@ func uaaSetup(opts ...auth.UAAOption) *UAATestContext {
 type UAATestContext struct {
 	uaaClient   *auth.UAAClient
 	httpClient  *spyHTTPClient
-	metrics     *spyMetrics
+	metrics     *testhelpers.SpyMetricsRegistry
 	privateKeys []mockTokenKey
 }
 

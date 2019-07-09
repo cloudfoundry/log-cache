@@ -1,9 +1,12 @@
 package cache_test
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics/testhelpers"
 	"context"
 	"crypto/tls"
 	"errors"
+	"io/ioutil"
+	"log"
 	"math"
 	"time"
 
@@ -28,7 +31,7 @@ var _ = Describe("LogCache", func() {
 		cache     *LogCache
 		oc        rpc.OrchestrationClient
 
-		spyMetrics *testing.SpyMetrics
+		spyMetrics *testhelpers.SpyMetricsRegistry
 	)
 
 	BeforeEach(func() {
@@ -43,14 +46,15 @@ var _ = Describe("LogCache", func() {
 
 		peer = testing.NewSpyLogCache(tlsConfig)
 		peerAddr := peer.Start()
-		spyMetrics = testing.NewSpyMetrics()
+		spyMetrics = testhelpers.NewMetricsRegistry()
 
 		cache = New(
+			spyMetrics,
+			log.New(ioutil.Discard, "", 0),
 			WithAddr("127.0.0.1:0"),
 			WithClustered(0, []string{"my-addr", peerAddr},
 				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 			),
-			WithMetrics(spyMetrics),
 			WithServerOpts(
 				grpc.Creds(credentials.NewTLS(tlsConfig)),
 			),
@@ -213,8 +217,13 @@ var _ = Describe("LogCache", func() {
 		Expect(es[1].Timestamp).To(Equal(int64(3)))
 		Expect(es[1].SourceId).To(Equal("source-0"))
 
-		Eventually(spyMetrics.Get("log_cache_ingress")).Should(Equal(3.0))
-		Eventually(spyMetrics.Get("log_cache_egress")).Should(Equal(2.0))
+		Eventually(func() float64 {
+			return spyMetrics.GetMetricValue("log_cache_ingress", nil)
+		}).Should(Equal(3.0))
+
+		Eventually(func() float64 {
+			return spyMetrics.GetMetricValue("log_cache_egress", nil)
+		}).Should(Equal(2.0))
 	})
 
 	It("queries data via PromQL Instant Queries", func() {
@@ -322,7 +331,9 @@ var _ = Describe("LogCache", func() {
 			{Timestamp: 4, SourceId: "source-0"},
 		})
 
-		Eventually(spyMetrics.Get("log_cache_ingress")).Should(Equal(4.0))
+		Eventually(func() float64 {
+			return spyMetrics.GetMetricValue("log_cache_ingress", nil)
+		}).Should(Equal(4.0))
 	})
 
 	It("routes envelopes to peers", func() {

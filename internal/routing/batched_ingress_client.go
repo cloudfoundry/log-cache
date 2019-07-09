@@ -1,6 +1,7 @@
 package routing
 
 import (
+	"code.cloudfoundry.org/go-loggregator/metrics"
 	"log"
 	"time"
 
@@ -28,7 +29,7 @@ func NewBatchedIngressClient(
 	size int,
 	interval time.Duration,
 	c rpc.IngressClient,
-	incDroppedMetric func(uint64),
+	incDroppedMetric metrics.Counter,
 	log *log.Logger,
 ) *BatchedIngressClient {
 	b := &BatchedIngressClient{
@@ -39,7 +40,7 @@ func NewBatchedIngressClient(
 
 		buffer: diodes.NewOneToOne(10000, diodes.AlertFunc(func(dropped int) {
 			log.Printf("dropped %d envelopes", dropped)
-			incDroppedMetric(uint64(dropped))
+			incDroppedMetric.Add(float64(dropped))
 		})),
 	}
 

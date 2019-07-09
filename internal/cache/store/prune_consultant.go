@@ -1,5 +1,7 @@
 package store
 
+import "code.cloudfoundry.org/go-loggregator/metrics"
+
 // PruneConsultant keeps track of the available memory on the system and tries
 // to utilize as much memory as possible while not being a bad neighbor.
 type PruneConsultant struct {
@@ -7,7 +9,7 @@ type PruneConsultant struct {
 
 	percentToFill float64
 	stepBy        int
-	reportMemory  func(float64)
+	reportMemory  metrics.Gauge
 }
 
 // Memory is used to give information about system memory.
@@ -20,13 +22,12 @@ type Memory interface {
 func NewPruneConsultant(stepBy int, percentToFill float64, m Memory) *PruneConsultant {
 	return &PruneConsultant{
 		m:             m,
-		reportMemory:  func(_ float64) {},
 		percentToFill: percentToFill,
 		stepBy:        stepBy,
 	}
 }
 
-func (pc *PruneConsultant) SetMemoryReporter(mr func(float64)) {
+func (pc *PruneConsultant) SetMemoryReporter(mr metrics.Gauge) {
 	pc.reportMemory = mr
 }
 
@@ -35,7 +36,11 @@ func (pc *PruneConsultant) GetQuantityToPrune(storeCount int64) int {
 	heap, _, total := pc.m.Memory()
 
 	heapPercentage := float64(heap*100) / float64(total)
-	pc.reportMemory(heapPercentage)
+
+	if pc.reportMemory != nil {
+		pc.reportMemory.Set(heapPercentage)
+	}
+
 	if heapPercentage > pc.percentToFill {
 		percentageToPrune := (heapPercentage - pc.percentToFill) / heapPercentage
 		return int(float64(storeCount) * percentageToPrune)
