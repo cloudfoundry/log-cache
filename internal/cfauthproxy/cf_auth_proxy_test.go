@@ -2,7 +2,6 @@ package cfauthproxy_test
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -114,18 +113,9 @@ var _ = Describe("CFAuthProxy", func() {
 	})
 })
 
+var localhostCerts = testing.GenerateCerts("localhost-ca")
+
 func newCFAuthProxy(gatewayURL string, opts ...CFAuthProxyOption) *CFAuthProxy {
-	proxyCACert, err := ioutil.ReadFile(testing.Cert("localhost.crt"))
-	if err != nil {
-		panic("couldn't parse proxyCACert")
-	}
-
-	proxyCACertPool := x509.NewCertPool()
-	ok := proxyCACertPool.AppendCertsFromPEM(proxyCACert)
-	if !ok {
-		panic("couldn't create proxyCACertPool")
-	}
-
 	parsedURL, err := url.Parse(gatewayURL)
 	if err != nil {
 		panic("couldn't parse gateway URL")
@@ -134,19 +124,32 @@ func newCFAuthProxy(gatewayURL string, opts ...CFAuthProxyOption) *CFAuthProxy {
 	return NewCFAuthProxy(
 		parsedURL.String(),
 		"127.0.0.1:0",
-		testing.Cert("localhost.crt"),
-		testing.Cert("localhost.key"),
-		proxyCACertPool,
+		localhostCerts.Cert("localhost"),
+		localhostCerts.Key("localhost"),
+		localhostCerts.Pool(),
 		opts...,
 	)
 }
 
 func startSecureGateway(responseBody string) *httptest.Server {
-	testGateway := httptest.NewTLSServer(
+	testGateway := httptest.NewUnstartedServer(
 		http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			w.Write([]byte(responseBody))
 		}),
 	)
+
+	cert, err := tls.LoadX509KeyPair(localhostCerts.Cert("localhost"), localhostCerts.Key("localhost"))
+	if err != nil {
+		panic(err)
+	}
+
+	testGateway.TLS = &tls.Config{
+		RootCAs:      localhostCerts.Pool(),
+		Certificates: []tls.Certificate{cert},
+	}
+
+	testGateway.StartTLS()
+
 	return testGateway
 }
 

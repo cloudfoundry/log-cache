@@ -27,9 +27,9 @@ var _ = Describe("Gateway", func() {
 
 	BeforeEach(func() {
 		tlsConfig, err := testing.NewTLSConfig(
-			testing.Cert("log-cache-ca.crt"),
-			testing.Cert("log-cache.crt"),
-			testing.Cert("log-cache.key"),
+			testing.LogCacheTestCerts.CA(),
+			testing.LogCacheTestCerts.Cert("log-cache"),
+			testing.LogCacheTestCerts.Key("log-cache"),
 			"log-cache",
 		)
 		Expect(err).ToNot(HaveOccurred())
@@ -37,11 +37,12 @@ var _ = Describe("Gateway", func() {
 		spyLogCache = testing.NewSpyLogCache(tlsConfig)
 		logCacheAddr := spyLogCache.Start()
 
+		localHostCerts := testing.GenerateCerts("localhost-ca")
 		gw = NewGateway(
 			logCacheAddr,
 			"localhost:0",
-			testing.Cert("localhost.crt"),
-			testing.Cert("localhost.key"),
+			localHostCerts.Cert("localhost"),
+			localHostCerts.Key("localhost"),
 			WithGatewayLogCacheDialOpts(
 				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 			),

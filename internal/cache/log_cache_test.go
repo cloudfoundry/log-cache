@@ -34,9 +34,9 @@ var _ = Describe("LogCache", func() {
 	BeforeEach(func() {
 		var err error
 		tlsConfig, err = sharedtls.NewMutualTLSConfig(
-			testing.Cert("log-cache-ca.crt"),
-			testing.Cert("log-cache.crt"),
-			testing.Cert("log-cache.key"),
+			testing.LogCacheTestCerts.CA(),
+			testing.LogCacheTestCerts.Cert("log-cache"),
+			testing.LogCacheTestCerts.Key("log-cache"),
 			"log-cache",
 		)
 		Expect(err).ToNot(HaveOccurred())
@@ -213,8 +213,8 @@ var _ = Describe("LogCache", func() {
 		Expect(es[1].Timestamp).To(Equal(int64(3)))
 		Expect(es[1].SourceId).To(Equal("source-0"))
 
-		Eventually(spyMetrics.Get("log_cache_ingress")).Should(Equal(3.0))
-		Eventually(spyMetrics.Get("log_cache_egress")).Should(Equal(2.0))
+		Eventually(func() float64 { return spyMetrics.Get("log_cache_ingress") }).Should(Equal(3.0))
+		Eventually(func() float64 { return spyMetrics.Get("log_cache_egress") }).Should(Equal(2.0))
 	})
 
 	It("queries data via PromQL Instant Queries", func() {
@@ -322,7 +322,7 @@ var _ = Describe("LogCache", func() {
 			{Timestamp: 4, SourceId: "source-0"},
 		})
 
-		Eventually(spyMetrics.Get("log_cache_ingress")).Should(Equal(4.0))
+		Eventually(func() float64 { return spyMetrics.Get("log_cache_ingress") }).Should(Equal(4.0))
 	})
 
 	It("routes envelopes to peers", func() {
@@ -458,9 +458,9 @@ var _ = Describe("LogCache", func() {
 
 func writeEnvelopes(addr string, es []*loggregator_v2.Envelope) {
 	tlsConfig, err := testing.NewTLSConfig(
-		testing.Cert("log-cache-ca.crt"),
-		testing.Cert("log-cache.crt"),
-		testing.Cert("log-cache.key"),
+		testing.LogCacheTestCerts.CA(),
+		testing.LogCacheTestCerts.Cert("log-cache"),
+		testing.LogCacheTestCerts.Key("log-cache"),
 		"log-cache",
 	)
 	if err != nil {
