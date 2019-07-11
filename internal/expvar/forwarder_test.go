@@ -193,9 +193,9 @@ type testServer struct {
 func setup() *testContext {
 	var err error
 	tlsConfig, err := testing.NewTLSConfig(
-		testing.Cert("log-cache-ca.crt"),
-		testing.Cert("log-cache.crt"),
-		testing.Cert("log-cache.key"),
+		testing.LogCacheTestCerts.CA(),
+		testing.LogCacheTestCerts.Cert("log-cache"),
+		testing.LogCacheTestCerts.Key("log-cache"),
 		"log-cache",
 	)
 	Expect(err).ToNot(HaveOccurred())

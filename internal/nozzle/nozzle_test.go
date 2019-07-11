@@ -26,9 +26,9 @@ var _ = Describe("Nozzle", func() {
 	Context("With custom envelope selectors", func() {
 		BeforeEach(func() {
 			tlsConfig, err := testing.NewTLSConfig(
-				testing.Cert("log-cache-ca.crt"),
-				testing.Cert("log-cache.crt"),
-				testing.Cert("log-cache.key"),
+				testing.LogCacheTestCerts.CA(),
+				testing.LogCacheTestCerts.Cert("log-cache"),
+				testing.LogCacheTestCerts.Key("log-cache"),
 				"log-cache",
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -74,9 +74,9 @@ var _ = Describe("Nozzle", func() {
 	Context("With default envelope selectors", func() {
 		BeforeEach(func() {
 			tlsConfig, err := testing.NewTLSConfig(
-				testing.Cert("log-cache-ca.crt"),
-				testing.Cert("log-cache.crt"),
-				testing.Cert("log-cache.key"),
+				testing.LogCacheTestCerts.CA(),
+				testing.LogCacheTestCerts.Cert("log-cache"),
+				testing.LogCacheTestCerts.Key("log-cache"),
 				"log-cache",
 			)
 			Expect(err).ToNot(HaveOccurred())

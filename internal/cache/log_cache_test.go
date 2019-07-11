@@ -12,7 +12,7 @@ import (
 
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
 	. "code.cloudfoundry.org/log-cache/internal/cache"
-	logtls "code.cloudfoundry.org/log-cache/internal/tls"
+	sharedtls "code.cloudfoundry.org/log-cache/internal/tls"
 	rpc "code.cloudfoundry.org/log-cache/pkg/rpc/logcache_v1"
 
 	"code.cloudfoundry.org/log-cache/internal/testing"
@@ -33,10 +33,10 @@ var _ = Describe("LogCache", func() {
 
 	BeforeEach(func() {
 		var err error
-		tlsConfig, err = logtls.NewMutualTLSConfig(
-			testing.Cert("log-cache-ca.crt"),
-			testing.Cert("log-cache.crt"),
-			testing.Cert("log-cache.key"),
+		tlsConfig, err = sharedtls.NewMutualTLSConfig(
+			testing.LogCacheTestCerts.CA(),
+			testing.LogCacheTestCerts.Cert("log-cache"),
+			testing.LogCacheTestCerts.Key("log-cache"),
 			"log-cache",
 		)
 		Expect(err).ToNot(HaveOccurred())
@@ -213,8 +213,8 @@ var _ = Describe("LogCache", func() {
 		Expect(es[1].Timestamp).To(Equal(int64(3)))
 		Expect(es[1].SourceId).To(Equal("source-0"))
 
-		Eventually(spyMetrics.Getter("Ingress")).Should(Equal(uint64(3)))
-		Eventually(spyMetrics.Getter("Egress")).Should(Equal(uint64(2)))
+		Eventually(spyMetrics.Getter("Ingress")).Should(BeEquivalentTo(3.0))
+		Eventually(spyMetrics.Getter("Egress")).Should(BeEquivalentTo(2.0))
 	})
 
 	It("queries data via PromQL Instant Queries", func() {
@@ -322,7 +322,7 @@ var _ = Describe("LogCache", func() {
 			{Timestamp: 4, SourceId: "source-0"},
 		})
 
-		Eventually(spyMetrics.Getter("Ingress")).Should(Equal(uint64(4)))
+		Eventually(spyMetrics.Getter("Ingress")).Should(BeEquivalentTo(4.0))
 	})
 
 	It("routes envelopes to peers", func() {
@@ -458,9 +458,9 @@ var _ = Describe("LogCache", func() {
 
 func writeEnvelopes(addr string, es []*loggregator_v2.Envelope) {
 	tlsConfig, err := testing.NewTLSConfig(
-		testing.Cert("log-cache-ca.crt"),
-		testing.Cert("log-cache.crt"),
-		testing.Cert("log-cache.key"),
+		testing.LogCacheTestCerts.CA(),
+		testing.LogCacheTestCerts.Cert("log-cache"),
+		testing.LogCacheTestCerts.Key("log-cache"),
 		"log-cache",
 	)
 	if err != nil {

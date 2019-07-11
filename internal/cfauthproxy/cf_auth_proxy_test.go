@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 
 	"code.cloudfoundry.org/log-cache/internal/auth"
 	. "code.cloudfoundry.org/log-cache/internal/cfauthproxy"
@@ -24,9 +25,9 @@ var _ = Describe("CFAuthProxy", func() {
 
 		proxy := NewCFAuthProxy(
 			testServer.URL,
-			"127.0.0.1:0",
-			testing.Cert("localhost.crt"),
-			testing.Cert("localhost.key"),
+			"localhost:0",
+			testing.LogCacheTestCerts.Cert("localhost"),
+			testing.LogCacheTestCerts.Key("localhost"),
 		)
 		proxy.Start()
 
@@ -45,10 +46,10 @@ var _ = Describe("CFAuthProxy", func() {
 		})
 
 		proxy := NewCFAuthProxy(
-			"https://127.0.0.1",
-			"127.0.0.1:0",
-			testing.Cert("localhost.crt"),
-			testing.Cert("localhost.key"),
+			"https://localhost",
+			"localhost:0",
+			testing.LogCacheTestCerts.Cert("localhost"),
+			testing.LogCacheTestCerts.Key("localhost"),
 			WithAuthMiddleware(func(http.Handler) http.Handler {
 				return middleware
 			}),
@@ -70,10 +71,10 @@ var _ = Describe("CFAuthProxy", func() {
 		})
 
 		proxy := NewCFAuthProxy(
-			"https://127.0.0.1",
-			"127.0.0.1:0",
-			testing.Cert("localhost.crt"),
-			testing.Cert("localhost.key"),
+			"https://localhost",
+			"localhost:0",
+			testing.LogCacheTestCerts.Cert("localhost"),
+			testing.LogCacheTestCerts.Key("localhost"),
 			WithAccessMiddleware(func(http.Handler) *auth.AccessHandler {
 				return auth.NewAccessHandler(middleware, auth.NewNullAccessLogger(), "0.0.0.0", "1234")
 			}),
@@ -94,8 +95,8 @@ var _ = Describe("CFAuthProxy", func() {
 		proxy := NewCFAuthProxy(
 			testServer.URL,
 			"localhost:0",
-			testing.Cert("localhost.crt"),
-			testing.Cert("localhost.key"),
+			testing.LogCacheTestCerts.Cert("localhost"),
+			testing.LogCacheTestCerts.Key("localhost"),
 		)
 		proxy.Start()
 
@@ -105,6 +106,46 @@ var _ = Describe("CFAuthProxy", func() {
 		Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 	})
 })
+
+var localhostCerts = testing.GenerateCerts("localhost-ca")
+
+func newCFAuthProxy(gatewayURL string, opts ...CFAuthProxyOption) *CFAuthProxy {
+	parsedURL, err := url.Parse(gatewayURL)
+	if err != nil {
+		panic("couldn't parse gateway URL")
+	}
+
+	return NewCFAuthProxy(
+		parsedURL.String(),
+		"localhost:0",
+		localhostCerts.Cert("localhost"),
+		localhostCerts.Key("localhost"),
+		// localhostCerts.Pool(),
+		opts...,
+	)
+}
+
+func startSecureGateway(responseBody string) *httptest.Server {
+	testGateway := httptest.NewUnstartedServer(
+		http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			w.Write([]byte(responseBody))
+		}),
+	)
+
+	cert, err := tls.LoadX509KeyPair(localhostCerts.Cert("localhost"), localhostCerts.Key("localhost"))
+	if err != nil {
+		panic(err)
+	}
+
+	testGateway.TLS = &tls.Config{
+		RootCAs:      localhostCerts.Pool(),
+		Certificates: []tls.Certificate{cert},
+	}
+
+	testGateway.StartTLS()
+
+	return testGateway
+}
 
 func makeTLSReq(scheme, addr string) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s://%s", scheme, addr), nil)
