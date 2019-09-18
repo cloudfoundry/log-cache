@@ -1,3 +1,5 @@
+**Archived** Now bundled in https://github.com/cloudfoundry/log-cache-release
+
 Log Cache
 =========
 [![GoDoc][go-doc-badge]][go-doc] [![travis][travis-badge]][travis] [![slack.cloudfoundry.org][slack-badge]][log-cache-slack]
