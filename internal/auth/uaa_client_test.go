@@ -210,6 +210,39 @@ var _ = Describe("UAAClient", func() {
 		_, err := client.Read("valid-token")
 		Expect(err).To(HaveOccurred())
 	})
+
+	// If there's a problem, this test will fail when the -race flag is set
+	It("handles concurrent reads", func() {
+		done := make(chan struct{})
+		clientRead := func() {
+			data, err := json.Marshal(map[string]interface{}{
+				"scope": []string{"logs.admin"},
+				"exp":   float64(time.Now().Add(time.Minute).UnixNano()) / 1e9,
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			for {
+				select {
+				case <-done:
+					return
+				default:
+					resp := response{
+						body:   data,
+						status: http.StatusOK,
+					}
+
+					httpClient.addResponse(resp)
+					client.Read("my-token")
+				}
+			}
+		}
+
+		go clientRead()
+		go clientRead()
+
+		<-time.Tick(time.Second)
+		close(done)
+	})
 })
 
 type spyHTTPClient struct {
@@ -227,6 +260,13 @@ type response struct {
 
 func newSpyHTTPClient() *spyHTTPClient {
 	return &spyHTTPClient{}
+}
+
+func (s *spyHTTPClient) addResponse(resp response) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.resps = append(s.resps, resp)
 }
 
 func (s *spyHTTPClient) Do(r *http.Request) (*http.Response, error) {

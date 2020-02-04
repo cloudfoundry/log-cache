@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,6 +30,7 @@ type UAAClient struct {
 	clientSecret string
 	tokenCache   map[string]uaaResponse
 	storeLatency func(float64)
+	m            sync.Mutex
 }
 
 func NewUAAClient(
@@ -61,7 +63,7 @@ func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 		return Oauth2ClientContext{}, errors.New("missing token")
 	}
 
-	uaaR, ok := c.tokenCache[token]
+	uaaR, ok := c.getTokenCache(token)
 	if ok && time.Now().Before(uaaR.ExpTime) {
 		return Oauth2ClientContext{
 			IsAdmin: c.hasDopplerScope(uaaR),
@@ -104,7 +106,7 @@ func (c *UAAClient) Read(token string) (Oauth2ClientContext, error) {
 		return Oauth2ClientContext{}, err
 	}
 
-	c.tokenCache[token] = uaaR
+	c.updateTokenCache(token, uaaR)
 
 	return Oauth2ClientContext{
 		IsAdmin: resp.StatusCode == http.StatusOK && c.hasDopplerScope(uaaR),
@@ -122,6 +124,21 @@ type uaaResponse struct {
 	Scopes  []string  `json:"scope"`
 	Exp     float64   `json:"exp"`
 	ExpTime time.Time `json:"-"`
+}
+
+func (c *UAAClient) getTokenCache(key string) (uaaResponse, bool) {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	token, ok := c.tokenCache[key]
+	return token, ok
+}
+
+func (c *UAAClient) updateTokenCache(key string, value uaaResponse) {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	c.tokenCache[key] = value
 }
 
 func (c *UAAClient) hasDopplerScope(r uaaResponse) bool {
