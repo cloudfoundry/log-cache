@@ -78,58 +78,6 @@ var _ = Describe("CAPIClient", func() {
 			}).Should(Equal(4))
 		})
 
-		It("retries CAPI requests up to 3 times when a cache miss occurs", func() {
-			tc := setup(
-				auth.WithCacheExpirationInterval(250 * time.Millisecond),
-			)
-
-			tc.capiClient.resps = []response{
-				newCapiResp("37cbff06-79ef-4146-a7b0-01838940f185", http.StatusOK),
-				newCapiResp("afbdcab7-6fd1-418d-bfd0-95c60276507b", http.StatusOK),
-
-				newCapiResp("37cbff06-79ef-4146-a7b0-01838940f185", http.StatusOK),
-				newCapiResp("afbdcab7-6fd1-418d-bfd0-95c60276507b", http.StatusOK),
-
-				newCapiResp("37cbff06-79ef-4146-a7b0-01838940f185", http.StatusOK),
-				newCapiResp("afbdcab7-6fd1-418d-bfd0-95c60276507b", http.StatusOK),
-
-				newCapiResp("37cbff06-79ef-4146-a7b0-01838940f185", http.StatusOK),
-				newCapiResp("afbdcab7-6fd1-418d-bfd0-95c60276507b", http.StatusOK),
-
-				newCapiResp("37cbff06-79ef-4146-a7b0-01838940f185", http.StatusOK),
-				newCapiResp("afbdcab7-6fd1-418d-bfd0-95c60276507b", http.StatusOK),
-			}
-
-			// the first time we call IsAuthorized, we'll cache the response
-			authorized := tc.client.IsAuthorized("37cbff06-79ef-4146-a7b0-01838940f185", "some-token")
-
-			Expect(len(tc.capiClient.requests)).To(Equal(2))
-			Expect(authorized).To(BeTrue())
-
-			// when we use the same token to look for an unknown sourceId, the
-			// request should fail to authorize, but we've still made 2 new
-			// calls out to CAPI - this is retry #1
-			authorized = tc.client.IsAuthorized("abcd1234", "some-token")
-			Expect(len(tc.capiClient.requests)).To(Equal(4))
-			Expect(authorized).To(BeFalse())
-
-			// this is retry #2
-			authorized = tc.client.IsAuthorized("abcd1234", "some-token")
-			Expect(len(tc.capiClient.requests)).To(Equal(6))
-			Expect(authorized).To(BeFalse())
-
-			// this is retry #3
-			authorized = tc.client.IsAuthorized("abcd1234", "some-token")
-			Expect(len(tc.capiClient.requests)).To(Equal(8))
-			Expect(authorized).To(BeFalse())
-
-			// this would be retry #4, but exceeds our max of 3, thus no new
-			// requests are made out to CAPI
-			authorized = tc.client.IsAuthorized("abcd1234", "some-token")
-			Expect(len(tc.capiClient.requests)).To(Equal(8))
-			Expect(authorized).To(BeFalse())
-		})
-
 		It("succeeds when a CAPI retry returns a valid sourceId", func() {
 			tc := setup(
 				auth.WithCacheExpirationInterval(250 * time.Millisecond),

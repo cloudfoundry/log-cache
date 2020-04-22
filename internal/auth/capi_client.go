@@ -13,10 +13,6 @@ import (
 	"time"
 )
 
-const (
-	MAX_RETRIES = 3
-)
-
 type CAPIClient struct {
 	client                  HTTPClient
 	externalCapi            string
@@ -77,47 +73,35 @@ func WithCacheExpirationInterval(interval time.Duration) CAPIOption {
 }
 
 type authorizedSourceIds struct {
-	sourceIds  []string
-	retryCount int
-	expiresAt  time.Time
+	sourceIds []string
+	expiresAt time.Time
 }
 
 func (c *CAPIClient) IsAuthorized(sourceId string, clientToken string) bool {
 	var sourceIds []string
-	var retryCount int
 	s, ok := c.tokenCache.Load(clientToken)
 
 	// if the token was found in the cache and hasn't expired yet, we'll
 	// check to see if the sourceId is contained
 	if ok && time.Now().Before(s.(authorizedSourceIds).expiresAt) {
 		sourceIds = s.(authorizedSourceIds).sourceIds
-		retryCount = s.(authorizedSourceIds).retryCount
 
 		// if our cache contains the sourceId, then we're all set
 		if isContained(sourceIds, sourceId) {
 			return true
 		}
-
-		// if our cache doesn't have the sourceId and we're already at our retry limit
-		if retryCount >= MAX_RETRIES {
-			return false
-		}
-
-		retryCount += 1
 	}
 
 	// if we are here, one of two scenarios is possible:
 	// 1) we didn't find the token in the cache, so we're fetching from
 	//    CAPI for the very first time for this token
 	// 2) we found the token in the cache, but failed to find the sourceId
-	//    and are under our retry limit, thus we want to ask CAPI for a
-	//    refreshed list of sourceIds
+	//    thus we want to ask CAPI for a refreshed list of sourceIds
 	sourceIds = c.AvailableSourceIDs(clientToken)
 
 	c.tokenCache.Store(clientToken, authorizedSourceIds{
-		sourceIds:  sourceIds,
-		retryCount: retryCount,
-		expiresAt:  time.Now().Add(c.cacheExpirationInterval),
+		sourceIds: sourceIds,
+		expiresAt: time.Now().Add(c.cacheExpirationInterval),
 	})
 
 	return isContained(sourceIds, sourceId)
