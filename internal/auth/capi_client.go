@@ -14,12 +14,11 @@ import (
 )
 
 type CAPIClient struct {
-	client                  HTTPClient
-	externalCapi            string
-	tokenCache              *sync.Map
-	tokenPruningInterval    time.Duration
-	cacheExpirationInterval time.Duration
-
+	client                           HTTPClient
+	externalCapi                     string
+	tokenCache                       *sync.Map
+	cacheExpirationInterval          time.Duration
+	log                              *log.Logger
 	storeAppsLatency                 func(float64)
 	storeListServiceInstancesLatency func(float64)
 	storeAppsByNameLatency           func(float64)
@@ -41,8 +40,8 @@ func NewCAPIClient(
 		client:                  client,
 		externalCapi:            externalCapiAddr,
 		tokenCache:              &sync.Map{},
-		tokenPruningInterval:    time.Minute,
 		cacheExpirationInterval: time.Minute,
+		log:                     log,
 
 		storeAppsLatency:                 m.NewGauge("LastCAPIV3AppsLatency"),
 		storeListServiceInstancesLatency: m.NewGauge("LastCAPIV3ListServiceInstancesLatency"),
@@ -60,113 +59,53 @@ func NewCAPIClient(
 
 type CAPIOption func(c *CAPIClient)
 
-func WithTokenPruningInterval(interval time.Duration) CAPIOption {
-	return func(c *CAPIClient) {
-		c.tokenPruningInterval = interval
-	}
-}
-
 func WithCacheExpirationInterval(interval time.Duration) CAPIOption {
 	return func(c *CAPIClient) {
 		c.cacheExpirationInterval = interval
 	}
 }
 
-type authorizedSourceIds struct {
-	sourceIds []string
-	expiresAt time.Time
-}
-
 func (c *CAPIClient) IsAuthorized(sourceId string, clientToken string) bool {
-	var sourceIds []string
-	s, ok := c.tokenCache.Load(clientToken)
-
-	// if the token was found in the cache and hasn't expired yet, we'll
-	// check to see if the sourceId is contained
-	if ok && time.Now().Before(s.(authorizedSourceIds).expiresAt) {
-		sourceIds = s.(authorizedSourceIds).sourceIds
-
-		// if our cache contains the sourceId, then we're all set
-		if isContained(sourceIds, sourceId) {
-			return true
-		}
+	_, ok := c.tokenCache.Load(clientToken + sourceId)
+	if ok {
+		return true
 	}
 
-	// if we are here, one of two scenarios is possible:
-	// 1) we didn't find the token in the cache, so we're fetching from
-	//    CAPI for the very first time for this token
-	// 2) we found the token in the cache, but failed to find the sourceId
-	//    thus we want to ask CAPI for a refreshed list of sourceIds
-	sourceIds = c.AvailableSourceIDs(clientToken)
-
-	c.tokenCache.Store(clientToken, authorizedSourceIds{
-		sourceIds: sourceIds,
-		expiresAt: time.Now().Add(c.cacheExpirationInterval),
-	})
-
-	return isContained(sourceIds, sourceId)
-}
-
-func isContained(sourceIds []string, sourceId string) bool {
-	for _, s := range sourceIds {
-		if s == sourceId {
-			return true
-		}
+	if c.HasApp(sourceId, clientToken) || c.HasService(sourceId, clientToken) {
+		c.tokenCache.Store(clientToken+sourceId, time.Now())
+		return true
 	}
-
 	return false
 }
 
-func (c *CAPIClient) AvailableSourceIDs(authToken string) []string {
-	var sourceIDs []string
-	req, err := http.NewRequest(http.MethodGet, c.externalCapi+"/v3/apps", nil)
+func (c *CAPIClient) HasApp(sourceID, authToken string) bool {
+	req, err := http.NewRequest(http.MethodGet, c.externalCapi+"/v3/apps/"+sourceID, nil)
 	if err != nil {
-		log.Printf("failed to build authorize log access request: %s", err)
-		return nil
+		c.log.Printf("failed to build authorize log access request: %s", err)
+		return false
 	}
 
-	for {
-		resources, nextPageURL, err := c.doResourceRequest(req, authToken, c.storeAppsLatency)
-		if err != nil {
-			log.Print(err)
-			return nil
-		}
-
-		for _, resource := range resources {
-			sourceIDs = append(sourceIDs, resource.Guid)
-		}
-
-		if nextPageURL == nil {
-			break
-		}
-
-		req.URL = nextPageURL
+	resp, err := c.doRequest(req, authToken, c.storeAppsLatency)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return false
 	}
 
-	req, err = http.NewRequest(http.MethodGet, c.externalCapi+"/v3/service_instances", nil)
+	return true
+}
+
+func (c *CAPIClient) HasService(sourceID, authToken string) bool {
+	req, err := http.NewRequest(http.MethodGet, c.externalCapi+"/v3/service_instances/"+sourceID, nil)
 	if err != nil {
-		log.Printf("failed to build authorize service instance access request: %s", err)
-		return nil
+		c.log.Printf("failed to build authorize log access request: %s", err)
+		return false
 	}
 
-	for {
-		resources, nextPageURL, err := c.doResourceRequest(req, authToken, c.storeListServiceInstancesLatency)
-		if err != nil || resources == nil {
-			log.Print(err)
-			return nil
-		}
-
-		for _, resource := range resources {
-			sourceIDs = append(sourceIDs, resource.Guid)
-		}
-
-		if nextPageURL == nil {
-			break
-		}
-		req.URL = nextPageURL
+	resp, err := c.doRequest(req, authToken, c.storeListServiceInstancesLatency)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return false
 	}
 
-	return sourceIDs
+	return true
 }
 
 func (c *CAPIClient) GetRelatedSourceIds(appNames []string, authToken string) map[string][]string {
@@ -176,7 +115,7 @@ func (c *CAPIClient) GetRelatedSourceIds(appNames []string, authToken string) ma
 
 	req, err := http.NewRequest(http.MethodGet, c.externalCapi+"/v3/apps", nil)
 	if err != nil {
-		log.Printf("failed to build app list request: %s", err)
+		c.log.Printf("failed to build app list request: %s", err)
 		return map[string][]string{}
 	}
 
@@ -187,30 +126,79 @@ func (c *CAPIClient) GetRelatedSourceIds(appNames []string, authToken string) ma
 
 	guidSets := make(map[string][]string)
 
-	for {
-		resources, nextPageURL, err := c.doResourceRequest(req, authToken, c.storeAppsByNameLatency)
-		if err != nil {
-			log.Print(err)
-			return map[string][]string{}
-		}
-
-		for _, resource := range resources {
-			guidSets[resource.Name] = append(guidSets[resource.Name], resource.Guid)
-		}
-
-		if nextPageURL == nil {
-			break
-		}
-
-		req.URL = nextPageURL
+	resources, err := c.doPaginatedResourceRequest(req, authToken, c.storeAppsByNameLatency)
+	if err != nil {
+		c.log.Print(err)
+		return map[string][]string{}
+	}
+	for _, resource := range resources {
+		guidSets[resource.Name] = append(guidSets[resource.Name], resource.Guid)
 	}
 
 	return guidSets
 }
 
+func (c *CAPIClient) AvailableSourceIDs(authToken string) []string {
+	appIDs, err := c.sourceIDsForResourceType("apps", authToken, c.storeAppsLatency)
+	if err != nil {
+		return nil
+	}
+
+	serviceIDs, err := c.sourceIDsForResourceType("service_instances", authToken, c.storeListServiceInstancesLatency)
+	if err != nil {
+		return nil
+	}
+
+	return append(appIDs, serviceIDs...)
+}
+
+func (c *CAPIClient) sourceIDsForResourceType(resourceType, authToken string, metrics func(float64)) ([]string, error) {
+	var sourceIDs []string
+	req, err := http.NewRequest(http.MethodGet, c.externalCapi+"/v3/"+resourceType, nil)
+	if err != nil {
+		c.log.Printf("failed to build authorize service instance access request: %s", err)
+		return nil, err
+	}
+
+	query := req.URL.Query()
+	query.Set("per_page", "5000")
+	req.URL.RawQuery = query.Encode()
+
+	resources, err := c.doPaginatedResourceRequest(req, authToken, metrics)
+	if err != nil {
+		c.log.Print(err)
+		return nil, err
+	}
+	for _, resource := range resources {
+		sourceIDs = append(sourceIDs, resource.Guid)
+	}
+
+	return sourceIDs, nil
+}
+
 type resource struct {
 	Guid string `json:"guid"`
 	Name string `json:"name"`
+}
+
+func (c *CAPIClient) doPaginatedResourceRequest(req *http.Request, authToken string, metric func(float64)) ([]resource, error) {
+	var resources []resource
+
+	for {
+		page, nextPageURL, err := c.doResourceRequest(req, authToken, metric)
+		if err != nil {
+			return nil, err
+		}
+
+		resources = append(resources, page...)
+
+		if nextPageURL == nil {
+			break
+		}
+		req.URL = nextPageURL
+	}
+
+	return resources, nil
 }
 
 func (c *CAPIClient) doResourceRequest(req *http.Request, authToken string, metric func(float64)) ([]resource, *url.URL, error) {
@@ -267,13 +255,12 @@ func (c *CAPIClient) TokenCacheSize() int {
 }
 
 func (c *CAPIClient) pruneTokens() {
-	for range time.Tick(c.tokenPruningInterval) {
-		now := time.Now()
+	for range time.Tick(c.cacheExpirationInterval) {
 
 		c.tokenCache.Range(func(k, v interface{}) bool {
-			cachedSources := v.(authorizedSourceIds)
+			requestTime := v.(time.Time)
 
-			if now.After(cachedSources.expiresAt) {
+			if time.Since(requestTime) >= c.cacheExpirationInterval {
 				c.tokenCache.Delete(k)
 			}
 
@@ -289,12 +276,12 @@ func (c *CAPIClient) doRequest(req *http.Request, authToken string, reporter fun
 	reporter(float64(time.Since(start)))
 
 	if err != nil {
-		log.Printf("CAPI request (%s) failed: %s", req.URL.Path, err)
+		c.log.Printf("CAPI request (%s) failed: %s", req.URL.Path, err)
 		return nil, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("CAPI request (%s) returned: %d", req.URL.Path, resp.StatusCode)
+		c.log.Printf("CAPI request (%s) returned: %d", req.URL.Path, resp.StatusCode)
 		cleanup(resp)
 		return resp, nil
 	}

@@ -278,7 +278,7 @@ func (s *spyHTTPClient) Do(r *http.Request) (*http.Response, error) {
 
 	if len(s.resps) == 0 {
 		return &http.Response{
-			StatusCode: http.StatusOK,
+			StatusCode: http.StatusNotFound,
 			Body:       ioutil.NopCloser(bytes.NewReader(nil)),
 		}, nil
 	}
