@@ -94,7 +94,7 @@ func (c *CAPIClient) HasApp(sourceID, authToken string) bool {
 }
 
 func (c *CAPIClient) HasService(sourceID, authToken string) bool {
-	req, err := http.NewRequest(http.MethodGet, c.externalCapi+"/v3/service_instances/"+sourceID, nil)
+	req, err := http.NewRequest(http.MethodGet, c.externalCapi+"/v2/service_instances/"+sourceID, nil)
 	if err != nil {
 		c.log.Printf("failed to build authorize log access request: %s", err)
 		return false
